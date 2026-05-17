@@ -3235,6 +3235,9 @@
     function initSheetsSync() {
       _loadStoredURL();
 
+      // Auto-load on first open if a URL is available
+      if (sheetsURL) setTimeout(function() { loadFromSheets(); }, 300);
+
       document.getElementById('sheets-config-btn').addEventListener('click', openSheetsModal);
       document.getElementById('sheets-load-btn').addEventListener('click', loadFromSheets);
       document.getElementById('sheets-save-btn').addEventListener('click', saveToSheets);
