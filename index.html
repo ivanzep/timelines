@@ -3052,11 +3052,16 @@
       lbl.textContent = label;
     }
 
+    // Default URL embedded in file — works across all browsers/computers without setup
+    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzvUEF1Tf7JeG75y1zDvpvYYLbA63k9WJzndvsy4IvFzhvQ9249FznLjU2kCTvw5yAd/exec';
+
     function _loadStoredURL() {
       try {
-        var v = localStorage.getItem('lacosta_sheets_url');
+        var v = localStorage.getItem('lacosta_sheets_url') || DEFAULT_SHEETS_URL;
         if (v) { sheetsURL = v; _syncDot('ok', 'Connected'); }
-      } catch(e) {}
+      } catch(e) {
+        if (DEFAULT_SHEETS_URL) { sheetsURL = DEFAULT_SHEETS_URL; _syncDot('ok', 'Connected'); }
+      }
     }
 
     function _storeURL(url) {
