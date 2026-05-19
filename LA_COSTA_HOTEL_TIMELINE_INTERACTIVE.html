@@ -1,3 +1,37 @@
+<!--
+  ============================================================
+  LA COSTA HOTEL — Interactive Project Timeline
+  File: LA_COSTA_HOTEL_TIMELINE_INTERACTIVE.html
+
+  VERSION HISTORY
+  ───────────────
+  V1.01  2026-05-18
+    • collectSettings() / applySettings() wired to Sheets sync
+    • Chart settings (dark mode, font size, label width, group
+      colours, collapsed state, discipline order, bar text colour,
+      today line, flat mode, show name/phase/note) are now saved
+      to the "GANTT SETTINGS-DO NOT EDIT" tab on every Save and
+      restored automatically on every Load
+    • dashedOutline bar style fully supported in Sheets round-trip
+
+  V1.0   2026-05-18  (baseline — working release)
+    • Two-way Google Sheets sync (PROJECT TASK LIST)
+    • Collapse/expand arrows per discipline group
+    • Per-discipline colour picker → applies to side header + rollup bar
+    • Adjustable label column width (drag)
+    • Resizable task table columns
+    • Bar font size control
+    • Today line toggle
+    • Dark / light theme toggle
+    • Flat mode toggle
+    • Tasks tab (full-page task list, no Gantt toolbar)
+    • Duration (weeks) column — editing recalculates end date
+    • MD save/load as Markdown pipe table
+    • Search filters task table only (chart unaffected)
+    • Bar styles: Solid / Dashed / Dashed Outline
+    • Auto bar text colour with manual override picker
+  ============================================================
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -99,6 +133,7 @@
     .task-bar { stroke: rgba(15,23,42,0.25); stroke-width: 0.5; cursor: grab; }
     .task-bar.selected { stroke: #0284c7; stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(2,132,199,0.4)); }
     .task-bar.dashed { fill: none; stroke-dasharray: 4 3; stroke: #dc2626; stroke-width: 1.5; cursor: grab; }
+    .task-bar.dashed-outline { stroke-dasharray: 5 3; stroke-width: 2; cursor: grab; }
     .resize-handle { fill: rgba(0,0,0,0.0); stroke: rgba(0,0,0,0.0); cursor: ew-resize; }
     .resize-handle:hover, .resize-handle.active { fill: rgba(2,132,199,0.25); stroke: rgba(2,132,199,0.8); stroke-width: 1; }
     .grid-line { stroke: #e2e8f0; stroke-width: 0.5; }
@@ -121,7 +156,7 @@
     .task-list-panel { margin-top: 14px; }
     .task-table-wrapper { margin-top: 8px; border-radius: 12px; border: 1px solid var(--border-strong); max-height: 420px; overflow: auto; background: var(--bg-alt); }
     table { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 100%; }
-    th, td { padding: 5px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
+    th, td { padding: 2px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
     th { position: sticky; top: 0; background: var(--panel-soft); z-index: 1; text-align: left; font-weight: 600; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-strong); }
     th[data-sort] { cursor: pointer; user-select: none; }
     th[data-sort]:hover { background: rgba(2,132,199,0.08); color: var(--text); }
@@ -280,6 +315,7 @@
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-flat-mode" /> Flat</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-today" checked /> Today</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Font <input type="number" id="gantt-font-size" value="12" min="6" max="24" style="width:44px;height:22px;padding:2px 4px;border-radius:6px;font-size:0.74rem;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" /></label>
+              <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Text <input type="color" id="gantt-text-color" value="#ffffff" style="width:28px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" /> <input type="checkbox" id="gantt-text-color-auto" checked style="width:13px;height:13px;cursor:pointer;" title="Auto text color based on bar brightness" /> Auto</label>
             </div>
           </div>
 
@@ -590,6 +626,7 @@
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
     var showTodayLine = true;  // whether to draw the Today vertical line
+    var barTextColor  = null;  // null = auto (contrast), hex string = manual override
     var groupColors  = {};     // { disciplineKey: '#rrggbb' } — header / rollup bar tint per group
     var currentTab   = 'gantt'; // 'gantt' | 'tasks'
     var collapsedGroups  = {};   // { 'DISCIPLINE-KEY': true } when collapsed
@@ -688,8 +725,8 @@
     }
 
     function getDisplayedRows() {
-      var sf = searchFilter.trim().toLowerCase();
-      // Build group→tasks map
+      // NOTE: search filter is intentionally NOT applied here — chart always shows all tasks.
+      // Search only filters the task table (handled in refreshTaskTable).
       var groupMap = {}, seenG = {}, orderedDiscs = [];
       for (var j = 0; j < disciplineOrder.length; j++) {
         var dk = disciplineOrder[j];
@@ -700,23 +737,16 @@
         if (!kg) continue;
         if (!seenG[kg]) { orderedDiscs.push(kg); disciplineOrder.push(kg); seenG[kg] = true; }
         if (!groupMap[kg]) groupMap[kg] = [];
-        var matchSearch = !sf ||
-          (tasks[i].name  || '').toLowerCase().indexOf(sf) >= 0 ||
-          (tasks[i].group || '').toLowerCase().indexOf(sf) >= 0 ||
-          (tasks[i].note  || '').toLowerCase().indexOf(sf) >= 0;
-        if (matchSearch) groupMap[kg].push(tasks[i]);
+        groupMap[kg].push(tasks[i]);
       }
 
       if (flatMode) {
-        // Flat mode: one row per discipline; all tasks in that disc overlap in that row
         var flat = [];
         for (var fi = 0; fi < orderedDiscs.length; fi++) {
           var disc = orderedDiscs[fi];
           var ftasks = groupMap[disc] || [];
           if (!ftasks.length) continue;
           flat.push({ type:'disc', key:'disc_'+disc, label:disc, discipline:disc });
-          // Task keys still needed for findRowIdx — point them at the disc row index
-          // (done implicitly: findRowIdx uses 'disc_'+task.group in flat mode)
         }
         return flat;
       }
@@ -726,8 +756,7 @@
       for (var g = 0; g < orderedDiscs.length; g++) {
         var disc   = orderedDiscs[g];
         var gtasks = groupMap[disc] || [];
-        if (!gtasks.length && sf) continue; // hide empty groups when searching
-        if (!gtasks.length) continue; // skip discipline groups with no tasks
+        if (!gtasks.length) continue;
         result.push({ type:'gh', key:'gh_'+disc, label:disc, discipline:disc });
         if (!collapsedGroups[disc]) {
           for (var t2 = 0; t2 < gtasks.length; t2++) {
@@ -785,6 +814,7 @@
         sub: t.sub || '',
         note: t.note || '',
         dashed: !!t.dashed,
+        dashedOutline: !!t.dashedOutline,
         type: type,
         symbol: t.symbol || '',
         start: parseDate(t.start) || new Date(),
@@ -989,12 +1019,19 @@
       taskTableBody.innerHTML = '';
 
       // Build ordered list of discipline groups + tasks within each
+      // Search filter applies HERE (task table only — chart is unaffected)
+      var sf = searchFilter.trim().toLowerCase();
       var groupOrder = [];
       var groupMap   = {};
       for (var gi = 0; gi < tasks.length; gi++) {
-        var gkey = tasks[gi].group || '(no discipline)';
+        var t0 = tasks[gi];
+        var gkey = t0.group || '(no discipline)';
         if (!groupMap[gkey]) { groupMap[gkey] = []; groupOrder.push(gkey); }
-        groupMap[gkey].push(tasks[gi]);
+        var matches = !sf ||
+          (t0.name  || '').toLowerCase().indexOf(sf) >= 0 ||
+          (t0.group || '').toLowerCase().indexOf(sf) >= 0 ||
+          (t0.note  || '').toLowerCase().indexOf(sf) >= 0;
+        if (matches) groupMap[gkey].push(t0);
       }
 
       var TOTAL_COLS = 14; // number of <th> columns in the header row
@@ -1155,6 +1192,7 @@
         dot.style.borderRadius = '999px';
       }
       if (task.dashed) { dot.style.background = 'transparent'; dot.style.border = '1.5px dashed ' + task.color; }
+      else if (task.dashedOutline) { dot.style.border = '1.5px dashed rgba(15,23,42,0.7)'; }
       tdDot.appendChild(dot);
       tr.appendChild(tdDot);
 
@@ -1263,9 +1301,13 @@
       // Style
       var tdStyle = document.createElement('td');
       var styleSelect = document.createElement('select'); styleSelect.className = 'row-input';
-      styleSelect.innerHTML = '<option value="solid">Solid</option><option value="dashed">Dashed</option>';
-      styleSelect.value = task.dashed ? 'dashed' : 'solid';
-      styleSelect.addEventListener('change', function() { task.dashed = styleSelect.value === 'dashed'; renderGantt(); });
+      styleSelect.innerHTML = '<option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dashed-outline">Dashed Outline</option>';
+      styleSelect.value = task.dashed ? 'dashed' : (task.dashedOutline ? 'dashed-outline' : 'solid');
+      styleSelect.addEventListener('change', function() {
+        task.dashed = styleSelect.value === 'dashed';
+        task.dashedOutline = styleSelect.value === 'dashed-outline';
+        refreshTaskTable(); renderGantt();
+      });
       tdStyle.appendChild(styleSelect); tr.appendChild(tdStyle);
 
       // Delete
@@ -1639,7 +1681,7 @@
       var bg = document.createElementNS(svgNS, 'rect');
       bg.setAttribute('x', 0); bg.setAttribute('y', 0);
       bg.setAttribute('width', w); bg.setAttribute('height', h);
-      bg.setAttribute('fill', '#ffffff');
+      bg.setAttribute('fill', darkMode ? '#1e293b' : '#ffffff');
       svg.appendChild(bg);
 
       var yearSegments = computeYearSegments();
@@ -1798,7 +1840,7 @@
       var bg = document.createElementNS(svgNS, 'rect');
       bg.setAttribute('x', 0); bg.setAttribute('y', 0);
       bg.setAttribute('width', w); bg.setAttribute('height', h);
-      bg.setAttribute('fill', '#ffffff');
+      bg.setAttribute('fill', darkMode ? '#0f172a' : '#ffffff');
       bg.addEventListener('mousedown', function() { selectedTaskId = null; refreshTaskTable(); renderGantt(); });
       svg.appendChild(bg);
 
@@ -1808,13 +1850,13 @@
           var stripe = document.createElementNS(svgNS, 'rect');
           stripe.setAttribute('x', 0); stripe.setAttribute('y', yTop);
           stripe.setAttribute('width', w); stripe.setAttribute('height', geom.rowHeight);
-          stripe.setAttribute('fill', '#f8fafc');
+          stripe.setAttribute('fill', darkMode ? '#1e293b' : '#f8fafc');
           svg.appendChild(stripe);
         }
         var sep = document.createElementNS(svgNS, 'line');
         sep.setAttribute('x1', 0); sep.setAttribute('y1', r * (geom.rowHeight + geom.rowGap) + geom.rowHeight);
         sep.setAttribute('x2', w); sep.setAttribute('y2', r * (geom.rowHeight + geom.rowGap) + geom.rowHeight);
-        sep.setAttribute('stroke', '#f1f5f9'); sep.setAttribute('stroke-width', 0.5);
+        sep.setAttribute('stroke', darkMode ? '#263248' : '#f1f5f9'); sep.setAttribute('stroke-width', 0.5);
         svg.appendChild(sep);
       }
 
@@ -2059,6 +2101,10 @@
       rect.setAttribute('rx', 3);
       if (task.dashed) {
         rect.setAttribute('class', 'task-bar dashed' + (task.id === selectedTaskId ? ' selected' : ''));
+      } else if (task.dashedOutline) {
+        rect.setAttribute('fill', task.color);
+        rect.setAttribute('stroke', 'rgba(15,23,42,0.7)');
+        rect.setAttribute('class', 'task-bar dashed-outline' + (task.id === selectedTaskId ? ' selected' : ''));
       } else {
         rect.setAttribute('fill', task.color);
         rect.setAttribute('class', 'task-bar' + (task.id === selectedTaskId ? ' selected' : ''));
@@ -2098,9 +2144,11 @@
         t.setAttribute('y', currentY);
         t.setAttribute('font-size', fontSizes[lbl.kind]);
         t.setAttribute('class', lbl.kind === 'name' ? 'task-label-big' : (lbl.kind === 'sub' ? 'task-label-sub' : (lbl.text === 'APPROVAL' ? 'approval-text' : 'task-label-note')));
-        // Determine fill colour
+        // Determine fill colour — manual override takes precedence over auto
         var textFillColor;
-        if (task.dashed) {
+        if (barTextColor !== null) {
+          textFillColor = barTextColor;
+        } else if (task.dashed) {
           textFillColor = '#dc2626';
         } else if (darkText) {
           if (lbl.kind === 'name') textFillColor = '#1c1917';
@@ -2110,11 +2158,6 @@
           textFillColor = '#ffffff';
         }
         t.setAttribute('fill', textFillColor);
-        // Always add a contrasting outline so labels stay legible beyond bar edges
-        t.setAttribute('paint-order', 'stroke');
-        t.setAttribute('stroke', darkText ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.55)');
-        t.setAttribute('stroke-width', '2.5');
-        t.setAttribute('stroke-linejoin', 'round');
         t.style.pointerEvents = 'none';
         t.textContent = lbl.text;
         g.appendChild(t);
@@ -2453,7 +2496,7 @@
           dur,
           escapeMdCell(t.note),
           t.color || '',
-          t.dashed ? 'dashed' : 'solid',
+          t.dashed ? 'dashed' : (t.dashedOutline ? 'dashed-outline' : 'solid'),
           escapeMdCell(t.symbol)
         ];
         lines.push('| ' + row.join(' | ') + ' |');
@@ -2552,6 +2595,7 @@
               sub: td['PHASE'] || '',
               note: td['STATUS'] || '',
               dashed: (td['STYLE'] || '') === 'dashed',
+              dashedOutline: (td['STYLE'] || '') === 'dashed-outline',
               type: td['TYPE'] || 'bar',
               symbol: td['SYMBOL'] || '',
               start: td['START'] || '',
@@ -2573,6 +2617,7 @@
               sub: pairs.phase || '',
               note: pairs.note || '',
               dashed: pairs.style === 'dashed',
+              dashedOutline: pairs.style === 'dashed-outline',
               type: pairs.type || 'bar',
               symbol: pairs.symbol || '',
               start: pairs.start,
@@ -2815,6 +2860,24 @@
         renderGantt();
       });
 
+      // Bar text color control
+      var ganttTextColorEl    = document.getElementById('gantt-text-color');
+      var ganttTextColorAutoEl = document.getElementById('gantt-text-color-auto');
+      if (ganttTextColorAutoEl) {
+        ganttTextColorAutoEl.addEventListener('change', function() {
+          barTextColor = this.checked ? null : (ganttTextColorEl ? ganttTextColorEl.value : '#ffffff');
+          renderGantt();
+        });
+      }
+      if (ganttTextColorEl) {
+        ganttTextColorEl.addEventListener('input', function() {
+          if (ganttTextColorAutoEl && !ganttTextColorAutoEl.checked) {
+            barTextColor = this.value;
+            renderGantt();
+          }
+        });
+      }
+
       // Bar font size control
       var ganttFontSizeEl = document.getElementById('gantt-font-size');
       if (ganttFontSizeEl) {
@@ -2902,8 +2965,7 @@
       if (searchInp) {
         searchInp.addEventListener('input', function() {
           searchFilter = searchInp.value;
-          refreshTaskTable();
-          renderGantt();
+          refreshTaskTable(); // chart is unaffected by search
         });
       }
 
@@ -3052,11 +3114,16 @@
       lbl.textContent = label;
     }
 
+    // Default URL embedded in file — works across all browsers/computers without setup
+    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzvUEF1Tf7JeG75y1zDvpvYYLbA63k9WJzndvsy4IvFzhvQ9249FznLjU2kCTvw5yAd/exec';
+
     function _loadStoredURL() {
       try {
-        var v = localStorage.getItem('lacosta_sheets_url');
+        var v = localStorage.getItem('lacosta_sheets_url') || DEFAULT_SHEETS_URL;
         if (v) { sheetsURL = v; _syncDot('ok', 'Connected'); }
-      } catch(e) {}
+      } catch(e) {
+        if (DEFAULT_SHEETS_URL) { sheetsURL = DEFAULT_SHEETS_URL; _syncDot('ok', 'Connected'); }
+      }
     }
 
     function _storeURL(url) {
@@ -3097,6 +3164,70 @@
       }
     }
 
+    // ── Gantt settings helpers ─────────────────────────────────
+    // Collect all current UI settings into a flat key/value object.
+    function collectSettings() {
+      captureDisplayOptions();
+      return {
+        userLabelWidth:      userLabelWidth,
+        ganttBarFontSize:    ganttBarFontSize,
+        showTodayLine:       showTodayLine ? 'true' : 'false',
+        darkMode:            darkMode      ? 'true' : 'false',
+        flatMode:            flatMode      ? 'true' : 'false',
+        barTextColor:        barTextColor  !== null ? barTextColor : '',
+        groupColors:         JSON.stringify(groupColors),
+        collapsedGroups:     JSON.stringify(collapsedGroups),
+        disciplineOrder:     JSON.stringify(disciplineOrder),
+        showName:            displayOptions.showName  ? 'true' : 'false',
+        showPhase:           displayOptions.showPhase ? 'true' : 'false',
+        showNote:            displayOptions.showNote  ? 'true' : 'false'
+      };
+    }
+
+    // Apply a flat key/value settings object to all UI state variables.
+    function applySettings(s) {
+      if (!s) return;
+      var toBool = function(v) { return v === 'true' || v === true; };
+
+      if (s.userLabelWidth    !== undefined) { userLabelWidth    = parseFloat(s.userLabelWidth)    || userLabelWidth; }
+      if (s.ganttBarFontSize  !== undefined) { ganttBarFontSize  = parseFloat(s.ganttBarFontSize)  || ganttBarFontSize; }
+      if (s.showTodayLine     !== undefined) { showTodayLine     = toBool(s.showTodayLine); }
+      if (s.flatMode          !== undefined) { flatMode          = toBool(s.flatMode); }
+      if (s.darkMode          !== undefined) {
+        darkMode = toBool(s.darkMode);
+        document.body.classList.toggle('dark', darkMode);
+        var dmBtn = document.getElementById('dark-mode-toggle');
+        if (dmBtn) dmBtn.textContent = darkMode ? '☀' : '🌙';
+      }
+      if (s.barTextColor !== undefined) {
+        barTextColor = s.barTextColor === '' ? null : s.barTextColor;
+        var tcEl = document.getElementById('gantt-text-color');
+        var tcAutoEl = document.getElementById('gantt-text-color-auto');
+        if (tcAutoEl) tcAutoEl.checked = (barTextColor === null);
+        if (tcEl && barTextColor !== null) tcEl.value = barTextColor;
+      }
+      try { if (s.groupColors     !== undefined) groupColors     = JSON.parse(s.groupColors)     || {}; } catch(e) {}
+      try { if (s.collapsedGroups !== undefined) collapsedGroups = JSON.parse(s.collapsedGroups) || {}; } catch(e) {}
+      try { if (s.disciplineOrder !== undefined) disciplineOrder = JSON.parse(s.disciplineOrder) || []; } catch(e) {}
+
+      if (s.showName  !== undefined) { displayOptions.showName  = toBool(s.showName);  if (optName)  optName.checked  = displayOptions.showName; }
+      if (s.showPhase !== undefined) { displayOptions.showPhase = toBool(s.showPhase); if (optPhase) optPhase.checked = displayOptions.showPhase; }
+      if (s.showNote  !== undefined) { displayOptions.showNote  = toBool(s.showNote);  if (optNote)  optNote.checked  = displayOptions.showNote; }
+
+      // Sync font size input
+      var fsEl = document.getElementById('gantt-font-size');
+      if (fsEl) fsEl.value = ganttBarFontSize;
+
+      // Sync today line checkbox
+      var tlEl = document.getElementById('opt-today');
+      if (tlEl) tlEl.checked = showTodayLine;
+
+      // Sync flat mode checkbox
+      var fmEl = document.getElementById('opt-flat-mode');
+      if (fmEl) fmEl.checked = flatMode;
+    }
+    // ─────────────────────────────────────────────────────────────
+
     // Load tasks FROM Google Sheets → timeline
     async function loadFromSheets() {
       if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
@@ -3116,17 +3247,18 @@
             var e = parseDate(t.end);
             if (!s || !e) return;
             loaded.push({
-              id:     idx + 1,
-              name:   t.name    || '',
-              group:  t.group   || 'UTIL',
-              sub:    t.sub     || '',
-              type:   t.type    || 'bar',
-              start:  s,
-              end:    e,
-              color:  t.color   || '#0284c7',
-              note:   t.note    || '',
-              dashed: t.dashed === 'true' || t.dashed === true,
-              symbol: t.symbol  || ''
+              id:           idx + 1,
+              name:         t.name    || '',
+              group:        t.group   || 'UTIL',
+              sub:          t.sub     || '',
+              type:         t.type    || 'bar',
+              start:        s,
+              end:          e,
+              color:        t.color   || '#0284c7',
+              note:         t.note    || '',
+              dashed:       t.dashed         === 'true' || t.dashed         === true,
+              dashedOutline: t.dashedOutline === 'true' || t.dashedOutline === true,
+              symbol:       t.symbol  || ''
             });
           });
         }
@@ -3140,13 +3272,17 @@
           syncMetaInputs();
         }
 
+        // Apply saved settings first (before render so they take effect visually)
+        if (data.settings) applySettings(data.settings);
+
         if (loaded.length > 0) {
           tasks = loaded;
           taskIdCounter = tasks.length + 1;
           selectedTaskId = null;
           sortState = { column: null, direction: 1 };
-          disciplineOrder = []; // reset so stale groups don't linger after a fresh load
-          collapsedGroups = {};
+          // Only reset discipline order/collapsed state if NOT restored from settings
+          if (!data.settings || !data.settings.disciplineOrder) disciplineOrder = [];
+          if (!data.settings || !data.settings.collapsedGroups) collapsedGroups = {};
           refreshTaskTable();
           updateStatusText();
           autoSetDateRange();
@@ -3173,17 +3309,18 @@
       var payload = {
         tasks: tasks.map(function(t) {
           return {
-            id:     t.id,
-            name:   t.name    || '',
-            group:  t.group   || '',
-            sub:    t.sub     || '',
-            type:   t.type    || 'bar',
-            start:  formatDate(t.start),
-            end:    formatDate(t.end),
-            color:  t.color   || '#0284c7',
-            note:   t.note    || '',
-            dashed: t.dashed  ? 'true' : 'false',
-            symbol: t.symbol  || ''
+            id:           t.id,
+            name:         t.name    || '',
+            group:        t.group   || '',
+            sub:          t.sub     || '',
+            type:         t.type    || 'bar',
+            start:        formatDate(t.start),
+            end:          formatDate(t.end),
+            color:        t.color   || '#0284c7',
+            note:         t.note    || '',
+            dashed:       t.dashed         ? 'true' : 'false',
+            dashedOutline: t.dashedOutline ? 'true' : 'false',
+            symbol:       t.symbol  || ''
           };
         }),
         meta: {
@@ -3191,14 +3328,16 @@
           subtitle: projectMeta.subtitle || '',
           updated:  projectMeta.updated  || '',
           note:     projectMeta.note     || ''
-        }
+        },
+        settings: collectSettings()
       };
 
-      // Try normal CORS fetch first; fall back to no-cors if browser blocks it
+      // Use text/plain content-type — avoids CORS preflight that Apps Script can't handle.
+      // The body is still JSON; Apps Script reads it via e.postData.contents regardless.
       try {
         var resp = await fetch(sheetsURL, {
           method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'text/plain' },
           body:    JSON.stringify(payload)
         });
         var result = await resp.json();
@@ -3209,12 +3348,12 @@
           throw new Error(result.error || 'Unknown error from script');
         }
       } catch(corsErr) {
-        // Apps Script may return a redirect that triggers CORS; fall back to no-cors fire-and-forget
+        // Final fallback: fire-and-forget no-cors
         try {
           await fetch(sheetsURL, {
             method: 'POST',
             mode:   'no-cors',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain' },
             body:   JSON.stringify(payload)
           });
           _syncDot('ok', 'Save sent ✓');
@@ -3229,6 +3368,9 @@
     // Wire up the Sheets sync buttons
     function initSheetsSync() {
       _loadStoredURL();
+
+      // Auto-load on first open if a URL is available
+      if (sheetsURL) setTimeout(function() { loadFromSheets(); }, 300);
 
       document.getElementById('sheets-config-btn').addEventListener('click', openSheetsModal);
       document.getElementById('sheets-load-btn').addEventListener('click', loadFromSheets);
