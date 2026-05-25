@@ -14,11 +14,11 @@
  */
 
 // ── CONFIG ─────────────────────────────────────────────────────────────────
-const SOURCE_SHEET  = 'PROJECT TASK LIST';
-const DASH_NAME     = 'DASHBOARD';
+const DB_DB_SOURCE_SHEET  = 'PROJECT TASK LIST';
+const DB_DB_DASH_NAME     = 'DASHBOARD';
 
-// Column letters in SOURCE_SHEET (do not change unless headers move)
-const COL = {
+// Column letters in DB_DB_SOURCE_SHEET (do not change unless headers move)
+const DB_COL = {
   DISCIPLINE : 'A',
   ID         : 'B',
   TASK       : 'C',
@@ -37,7 +37,7 @@ const COL = {
 };
 
 // ── COLORS ─────────────────────────────────────────────────────────────────
-const C = {
+const DB_C = {
   navy        : '#162032',
   navyLight   : '#1E3050',
   navyMid     : '#2A4A6E',
@@ -72,21 +72,21 @@ const C = {
 // ── MAIN FUNCTION ──────────────────────────────────────────────────────────
 function createProjectDashboard() {
   const ss  = SpreadsheetApp.getActiveSpreadsheet();
-  const src = ss.getSheetByName(SOURCE_SHEET);
+  const src = ss.getSheetByName(DB_SOURCE_SHEET);
 
   if (!src) {
-    SpreadsheetApp.getUi().alert(`Sheet "${SOURCE_SHEET}" not found.\nCheck the tab name and try again.`);
+    SpreadsheetApp.getUi().alert(`Sheet "${DB_SOURCE_SHEET}" not found.\nCheck the tab name and try again.`);
     return;
   }
 
   // Create or wipe dashboard tab
-  let dash = ss.getSheetByName(DASH_NAME);
+  let dash = ss.getSheetByName(DB_DASH_NAME);
   if (dash) {
     dash.clear();
     dash.clearFormats();
     dash.clearConditionalFormatRules();
   } else {
-    dash = ss.insertSheet(DASH_NAME, 0);
+    dash = ss.insertSheet(DB_DASH_NAME, 0);
   }
 
   // ── COLUMN WIDTHS ──────────────────────────────
@@ -98,9 +98,9 @@ function createProjectDashboard() {
 
   // ── ROW 1 — TITLE ──────────────────────────────
   dash.setRowHeight(1, 52);
-  cell(dash, 'A1:I1', {
+  dbCell(dash, 'A1:I1', {
     value     : 'PROJECT DASHBOARD  ·  WEEKLY REPORTING VIEW',
-    bg        : C.navy,
+    bg        : DB_C.navy,
     fontColor : '#FFFFFF',
     fontSize  : 15,
     bold      : true,
@@ -110,9 +110,9 @@ function createProjectDashboard() {
 
   // ── ROW 2 — TIMESTAMP ──────────────────────────
   dash.setRowHeight(2, 20);
-  cell(dash, 'A2:I2', {
+  dbCell(dash, 'A2:I2', {
     formula   : '="Last viewed: " & TEXT(NOW(),"MMM D, YYYY  ·  h:MM AM/PM")',
-    bg        : C.navyLight,
+    bg        : DB_DB_C.navyLight,
     fontColor : '#7A9BC0',
     fontSize  : 8,
     hAlign    : 'center',
@@ -121,7 +121,7 @@ function createProjectDashboard() {
 
   // ── ROW 3 — SPACER ─────────────────────────────
   dash.setRowHeight(3, 8);
-  dash.getRange('A3:I3').setBackground(C.separator);
+  dash.getRange('A3:I3').setBackground(DB_C.separator);
 
   // ── ROWS 4-5 — KPI CARDS ───────────────────────
   dash.setRowHeight(4, 18);
@@ -131,54 +131,54 @@ function createProjectDashboard() {
     {
       col: 'A', span: 2,
       label   : 'IN PROGRESS',
-      formula : `=COUNTIF('${SOURCE_SHEET}'!${COL.STATUS}:${COL.STATUS},"IN PROGRESS")`,
-      labelBg : C.orangeDark,
-      numBg   : C.orange,
+      formula : `=COUNTIF('${DB_SOURCE_SHEET}'!${DB_COL.STATUS}:${DB_COL.STATUS},"IN PROGRESS")`,
+      labelBg : DB_DB_C.orangeDark,
+      numBg   : DB_C.orange,
     },
     {
       col: 'C', span: 2,
       label   : 'UPCOMING',
-      formula : `=COUNTIF('${SOURCE_SHEET}'!${COL.STATUS}:${COL.STATUS},"UPCOMING")`,
-      labelBg : C.cobaltDark,
-      numBg   : C.cobalt,
+      formula : `=COUNTIF('${DB_SOURCE_SHEET}'!${DB_COL.STATUS}:${DB_COL.STATUS},"UPCOMING")`,
+      labelBg : DB_DB_C.cobaltDark,
+      numBg   : DB_C.cobalt,
     },
     {
       col: 'E', span: 2,
       label   : '1-HIGH ACTIVE',
-      formula : `=COUNTIFS('${SOURCE_SHEET}'!${COL.PRIORITY}:${COL.PRIORITY},"1-HIGH",`
-              + `'${SOURCE_SHEET}'!${COL.STATUS}:${COL.STATUS},"<>COMPLETED",`
-              + `'${SOURCE_SHEET}'!${COL.STATUS}:${COL.STATUS},"<>CANCELLED")`,
-      labelBg : C.redDark,
-      numBg   : C.red,
+      formula : `=COUNTIFS('${DB_SOURCE_SHEET}'!${DB_COL.PRIORITY}:${DB_COL.PRIORITY},"1-HIGH",`
+              + `'${DB_SOURCE_SHEET}'!${DB_COL.STATUS}:${DB_COL.STATUS},"<>COMPLETED",`
+              + `'${DB_SOURCE_SHEET}'!${DB_COL.STATUS}:${DB_COL.STATUS},"<>CANCELLED")`,
+      labelBg : DB_DB_C.redDark,
+      numBg   : DB_C.red,
     },
     {
       col: 'G', span: 2,
       label   : 'WEEKLY TRACKED',
-      formula : `=COUNTIFS('${SOURCE_SHEET}'!${COL.WEEKLY}:${COL.WEEKLY},TRUE,`
-              + `'${SOURCE_SHEET}'!${COL.STATUS}:${COL.STATUS},"<>COMPLETED",`
-              + `'${SOURCE_SHEET}'!${COL.STATUS}:${COL.STATUS},"<>CANCELLED")`,
-      labelBg : C.purpleDark,
-      numBg   : C.purple,
+      formula : `=COUNTIFS('${DB_SOURCE_SHEET}'!${DB_COL.WEEKLY}:${DB_COL.WEEKLY},TRUE,`
+              + `'${DB_SOURCE_SHEET}'!${DB_COL.STATUS}:${DB_COL.STATUS},"<>COMPLETED",`
+              + `'${DB_SOURCE_SHEET}'!${DB_COL.STATUS}:${DB_COL.STATUS},"<>CANCELLED")`,
+      labelBg : DB_DB_C.purpleDark,
+      numBg   : DB_C.purple,
     },
     {
       col: 'I', span: 1,
       label   : 'COMPLETED',
-      formula : `=COUNTIF('${SOURCE_SHEET}'!${COL.STATUS}:${COL.STATUS},"COMPLETED")`,
-      labelBg : C.greenDark,
-      numBg   : C.green,
+      formula : `=COUNTIF('${DB_SOURCE_SHEET}'!${DB_COL.STATUS}:${DB_COL.STATUS},"COMPLETED")`,
+      labelBg : DB_DB_C.greenDark,
+      numBg   : DB_C.green,
     },
   ];
 
   kpis.forEach(k => {
-    const endCol   = colLetter(colIndex(k.col) + k.span - 1);
+    const endCol   = dbColLetter(dbColIndex(k.col) + k.span - 1);
     const labelRng = `${k.col}4:${endCol}4`;
     const numRng   = `${k.col}5:${endCol}5`;
 
-    cell(dash, labelRng, {
+    dbCell(dash, labelRng, {
       value: k.label, bg: k.labelBg, fontColor: '#FFFFFF',
       fontSize: 8, bold: true, hAlign: 'center', vAlign: 'middle',
     });
-    cell(dash, numRng, {
+    dbCell(dash, numRng, {
       formula: k.formula, bg: k.numBg, fontColor: '#FFFFFF',
       fontSize: 30, bold: true, hAlign: 'center', vAlign: 'middle',
     });
@@ -186,14 +186,14 @@ function createProjectDashboard() {
 
   // ── ROW 6 — SPACER ─────────────────────────────
   dash.setRowHeight(6, 12);
-  dash.getRange('A6:I6').setBackground(C.separator);
+  dash.getRange('A6:I6').setBackground(DB_C.separator);
 
   // ── ROW 7 — SECTION LABEL ──────────────────────
   dash.setRowHeight(7, 30);
-  cell(dash, 'A7:I7', {
+  dbCell(dash, 'A7:I7', {
     value     : '   WEEKLY TASKS  —  ACTIVE PROJECT ITEMS',
-    bg        : C.navy,
-    fontColor : C.blue,
+    bg        : DB_C.navy,
+    fontColor : DB_C.blue,
     fontSize  : 11,
     bold      : true,
     hAlign    : 'left',
@@ -206,7 +206,7 @@ function createProjectDashboard() {
     .forEach((h, i) => {
       dash.getRange(8, i + 1)
         .setValue(h)
-        .setBackground(C.navyMid)
+        .setBackground(DB_DB_C.navyMid)
         .setFontColor('#FFFFFF')
         .setFontSize(8)
         .setFontWeight('bold')
@@ -220,7 +220,7 @@ function createProjectDashboard() {
   //   Filter:  N (WEEKLY) = true, L not COMPLETED/CANCELLED
   //   Sort:    M (PRIORITY) asc, H (END DATE) asc
   const q = [
-    `=IFERROR(QUERY('${SOURCE_SHEET}'!A:T,`,
+    `=IFERROR(QUERY('${DB_SOURCE_SHEET}'!A:T,`,
     `"SELECT A, C, D, E, G, H, L, M, T`,
     ` WHERE N = true`,
     ` AND L <> 'COMPLETED'`,
@@ -239,7 +239,7 @@ function createProjectDashboard() {
     .setVerticalAlignment('middle')
     .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
 
-  dash.getRange('A9:A400').setFontWeight('bold').setFontColor(C.navyMid);
+  dash.getRange('A9:A400').setFontWeight('bold').setFontColor(DB_DB_C.navyMid);
 
   for (let r = 9; r <= 400; r++) dash.setRowHeight(r, 22);
 
@@ -252,11 +252,11 @@ function createProjectDashboard() {
   const priorityRng = dash.getRange('H9:H400');
 
   [
-    ['IN PROGRESS', C.statusIP],
-    ['UPCOMING',    C.statusUP],
-    ['DOWNSTREAM',  C.statusDS],
-    ['PENDING',     C.statusPN],
-    ['75% COMPLETE',C.status75],
+    ['IN PROGRESS', DB_C.statusIP],
+    ['UPCOMING',    DB_C.statusUP],
+    ['DOWNSTREAM',  DB_C.statusDS],
+    ['PENDING',     DB_C.statusPN],
+    ['75% COMPLETE',DB_C.status75],
   ].forEach(([text, colors]) => {
     rules.push(
       SpreadsheetApp.newConditionalFormatRule()
@@ -269,9 +269,9 @@ function createProjectDashboard() {
   });
 
   [
-    ['1-HIGH',   C.high],
-    ['2-MEDIUM', C.medium],
-    ['3-LOW',    C.low],
+    ['1-HIGH',   DB_C.high],
+    ['2-MEDIUM', DB_C.medium],
+    ['3-LOW',    DB_C.low],
   ].forEach(([text, colors]) => {
     rules.push(
       SpreadsheetApp.newConditionalFormatRule()
@@ -298,7 +298,7 @@ function createProjectDashboard() {
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
 
-function cell(sheet, a1, opts) {
+function dbCell(sheet, a1, opts) {
   const rng = sheet.getRange(a1);
   const [start, end] = a1.split(':');
   if (end && start !== end) rng.merge();
@@ -312,10 +312,10 @@ function cell(sheet, a1, opts) {
   if (opts.vAlign)    rng.setVerticalAlignment(opts.vAlign);
 }
 
-function colIndex(letter) {
+function dbColIndex(letter) {
   return letter.toUpperCase().charCodeAt(0) - 64;
 }
 
-function colLetter(index) {
+function dbColLetter(index) {
   return String.fromCharCode(64 + index);
 }
