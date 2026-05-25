@@ -1,16 +1,57 @@
 /**
  * PROJECT DASHBOARD — WEEKLY REPORTING VIEW
  *
- * HOW TO RUN:
- *   1. Open your Google Spreadsheet
- *   2. Extensions → Apps Script → add a new script file, paste this code
- *   3. Click Run → createProjectDashboard
- *   4. Grant permissions when prompted
- *   5. A "DASHBOARD" tab is created (or replaced if it already exists)
+ * STEP 1 — Run debugDashboard() first to confirm the exact tab name and columns.
+ * STEP 2 — Update SRC below if needed, then run createProjectDashboard().
  *
- * All formulas are live — the dashboard auto-updates whenever
- * "PROJECT TASK LIST" data changes.
+ * All formulas are live — the dashboard auto-updates whenever the source tab changes.
  */
+
+/**
+ * Run this first to verify the sheet name and column layout.
+ * Output appears in the Apps Script execution log (View → Logs).
+ */
+function debugDashboard() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ss.getSheets();
+
+  let report = '=== ALL TAB NAMES (copy the exact one you want) ===\n';
+  sheets.forEach((s, i) => {
+    report += `  [${i}] "${s.getName()}"  (${s.getLastRow()} rows, ${s.getLastColumn()} cols)\n`;
+  });
+
+  // Try to find the task list tab automatically
+  const candidates = sheets.filter(s =>
+    s.getName().toUpperCase().includes('TASK') ||
+    s.getName().toUpperCase().includes('PROJECT')
+  );
+
+  if (candidates.length > 0) {
+    const s = candidates[0];
+    const headers = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
+    report += `\n=== HEADERS IN "${s.getName()}" (row 1) ===\n`;
+    headers.forEach((h, i) => {
+      if (h) report += `  Col ${columnLetter_(i+1)} (${i+1}): "${h}"\n`;
+    });
+
+    // Sample 3 data rows to show WEEKLY column type
+    const weeklyIdx = headers.findIndex(h => String(h).toUpperCase() === 'WEEKLY');
+    const statusIdx = headers.findIndex(h => String(h).toUpperCase() === 'STATUS');
+    if (weeklyIdx >= 0) {
+      const sample = s.getRange(2, 1, 5, s.getLastColumn()).getValues();
+      report += `\n=== SAMPLE ROWS (WEEKLY col ${columnLetter_(weeklyIdx+1)}, STATUS col ${columnLetter_(statusIdx+1)}) ===\n`;
+      sample.forEach((row, i) => {
+        const weekly = row[weeklyIdx];
+        const status = row[statusIdx];
+        const task   = row[2] || '';
+        report += `  Row ${i+2}: WEEKLY="${weekly}" (${typeof weekly})  STATUS="${status}"  TASK="${String(task).substring(0,40)}"\n`;
+      });
+    }
+  }
+
+  Logger.log(report);
+  SpreadsheetApp.getUi().alert(report);
+}
 
 function createProjectDashboard() {
 
@@ -222,3 +263,6 @@ function createProjectDashboard() {
 
   function colLtr(n) { return String.fromCharCode(64 + n); }
 }
+
+// Shared helper (outside both functions so debugDashboard can use it)
+function columnLetter_(n) { return String.fromCharCode(64 + n); }
