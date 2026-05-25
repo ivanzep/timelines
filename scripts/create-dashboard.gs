@@ -8,27 +8,22 @@
  *   4. Grant permissions when prompted
  *   5. A "DASHBOARD" tab is created (or replaced if it already exists)
  *
- * All formulas (COUNTIF / QUERY) are live — the dashboard auto-updates
- * whenever data in "PROJECT TASK LIST" changes.
+ * All formulas are live — the dashboard auto-updates whenever
+ * "PROJECT TASK LIST" data changes.
  */
 
 function createProjectDashboard() {
 
-  // ── CONFIG (all locals — no global scope pollution) ──────────────────────
+  // ── CONFIG ───────────────────────────────────────────────────────────────
   const SRC  = 'PROJECT TASK LIST';
   const DASH = 'DASHBOARD';
 
-  // Source column letters
-  const STATUS   = 'L';
-  const PRIORITY = 'M';
-  const WEEKLY   = 'N';
-
   // Colors
-  const NAVY       = '#162032';
-  const NAVY_LT    = '#1E3050';
-  const NAVY_MID   = '#2A4A6E';
-  const BLUE_ACC   = '#5AAFF0';
-  const SEP        = '#DCE5F0';
+  const NAVY     = '#162032';
+  const NAVY_LT  = '#1E3050';
+  const NAVY_MID = '#2A4A6E';
+  const BLUE_ACC = '#5AAFF0';
+  const SEP      = '#DCE5F0';
 
   // ── SHEET SETUP ──────────────────────────────────────────────────────────
   const ss  = SpreadsheetApp.getActiveSpreadsheet();
@@ -48,7 +43,6 @@ function createProjectDashboard() {
     dash = ss.insertSheet(DASH, 0);
   }
 
-  // Column widths for 9 data columns (A–I)
   [175, 320, 115, 135, 92, 92, 135, 105, 270].forEach((w, i) => dash.setColumnWidth(i + 1, w));
   if (dash.getMaxColumns() > 9) dash.hideColumns(10, dash.getMaxColumns() - 9);
 
@@ -74,39 +68,40 @@ function createProjectDashboard() {
   dash.setRowHeight(4, 18);
   dash.setRowHeight(5, 46);
 
+  // WEEKLY card uses summed COUNTIFS to handle both boolean TRUE and text "TRUE"
+  const weeklyFormula =
+    `=COUNTIFS('${SRC}'!N:N,TRUE,'${SRC}'!L:L,"<>COMPLETED",'${SRC}'!L:L,"<>CANCELLED")` +
+    `+COUNTIFS('${SRC}'!N:N,"TRUE",'${SRC}'!L:L,"<>COMPLETED",'${SRC}'!L:L,"<>CANCELLED")`;
+
   const kpis = [
     {
       start: 1, span: 2,
       label: 'IN PROGRESS',
-      formula: `=COUNTIF('${SRC}'!${STATUS}:${STATUS},"IN PROGRESS")`,
+      formula: `=COUNTIF('${SRC}'!L:L,"IN PROGRESS")`,
       lBg: '#BF4F00', nBg: '#E86A00',
     },
     {
       start: 3, span: 2,
       label: 'UPCOMING',
-      formula: `=COUNTIF('${SRC}'!${STATUS}:${STATUS},"UPCOMING")`,
+      formula: `=COUNTIF('${SRC}'!L:L,"UPCOMING")`,
       lBg: '#145A8C', nBg: '#1A72B8',
     },
     {
       start: 5, span: 2,
       label: '1-HIGH ACTIVE',
-      formula: `=COUNTIFS('${SRC}'!${PRIORITY}:${PRIORITY},"1-HIGH",`
-             + `'${SRC}'!${STATUS}:${STATUS},"<>COMPLETED",`
-             + `'${SRC}'!${STATUS}:${STATUS},"<>CANCELLED")`,
+      formula: `=COUNTIFS('${SRC}'!M:M,"1-HIGH",'${SRC}'!L:L,"<>COMPLETED",'${SRC}'!L:L,"<>CANCELLED")`,
       lBg: '#9B1C1C', nBg: '#C62828',
     },
     {
       start: 7, span: 2,
       label: 'WEEKLY TRACKED',
-      formula: `=COUNTIFS('${SRC}'!${WEEKLY}:${WEEKLY},TRUE,`
-             + `'${SRC}'!${STATUS}:${STATUS},"<>COMPLETED",`
-             + `'${SRC}'!${STATUS}:${STATUS},"<>CANCELLED")`,
+      formula: weeklyFormula,
       lBg: '#5B21B6', nBg: '#7C3AED',
     },
     {
       start: 9, span: 1,
       label: 'COMPLETED',
-      formula: `=COUNTIF('${SRC}'!${STATUS}:${STATUS},"COMPLETED")`,
+      formula: `=COUNTIF('${SRC}'!L:L,"COMPLETED")`,
       lBg: '#065F46', nBg: '#059669',
     },
   ];
@@ -138,22 +133,32 @@ function createProjectDashboard() {
       .setFontSize(8).setFontWeight('bold')
       .setHorizontalAlignment('center').setVerticalAlignment('middle'));
 
-  // ── ROW 9+ — WEEKLY TASKS (live QUERY) ───────────────────────────────────
-  // Source: A=DISCIPLINE C=TASK D=CONSULTANT E=PERSON G=START H=END
-  //         L=STATUS M=PRIORITY N=WEEKLY T=NOTES
-  // Filter: WEEKLY=true, STATUS not COMPLETED/CANCELLED
-  // Sort:   PRIORITY asc, END DATE asc
-  const query =
-    `=IFERROR(QUERY('${SRC}'!A:T,` +
-    `"SELECT A,C,D,E,G,H,L,M,T ` +
-    `WHERE N=true ` +
-    `AND L<>'COMPLETED' ` +
-    `AND L<>'CANCELLED' ` +
-    `ORDER BY M ASC,H ASC ` +
-    `LABEL A'',C'',D'',E'',G'',H'',L'',M'',T''",0),` +
+  // ── ROW 9+ — WEEKLY TASKS (live FILTER) ──────────────────────────────────
+  //
+  // FILTER handles both boolean TRUE and text "TRUE" in the WEEKLY column (N).
+  //   (N2:N=TRUE)+(N2:N="TRUE")  →  1 or 2 for any truthy value, 0 otherwise
+  //
+  // Source column map:
+  //   A=DISCIPLINE  C=TASK  D=CONSULTANT  E=PERSON
+  //   G=START  H=END  L=STATUS  M=PRIORITY  T=NOTES  N=WEEKLY
+  //
+  // Sorted by: PRIORITY asc (col 8), then END DATE asc (col 6)
+
+  const s = `'${SRC}'!`;
+  const filterFormula =
+    `=IFERROR(` +
+      `SORT(` +
+        `FILTER(` +
+          `{${s}A2:A,${s}C2:C,${s}D2:D,${s}E2:E,${s}G2:G,${s}H2:H,${s}L2:L,${s}M2:M,${s}T2:T},` +
+          `(${s}N2:N=TRUE)+(${s}N2:N="TRUE"),` +   // WEEKLY = true (boolean or text)
+          `${s}L2:L<>"COMPLETED",` +
+          `${s}L2:L<>"CANCELLED",` +
+          `${s}L2:L<>""` +                          // exclude blank/separator rows
+        `)` +
+      `,8,TRUE,6,TRUE),` +                          // sort: priority asc, end date asc
     `"— No active weekly tasks —")`;
 
-  dash.getRange('A9').setFormula(query);
+  dash.getRange('A9').setFormula(filterFormula);
   dash.getRange('A9:I400')
     .setFontSize(9).setFontFamily('Arial')
     .setVerticalAlignment('middle')
@@ -200,12 +205,12 @@ function createProjectDashboard() {
     '"PROJECT TASK LIST" data changes — no refresh needed.'
   );
 
-  // ── LOCAL HELPERS (inside function — zero global footprint) ──────────────
+  // ── LOCAL HELPERS ─────────────────────────────────────────────────────────
   function mergeSet(sheet, a1, opts) {
     const rng = sheet.getRange(a1);
     const parts = a1.split(':');
     if (parts.length === 2 && parts[0] !== parts[1]) rng.merge();
-    if (opts.formula)               rng.setFormula(opts.formula);
+    if (opts.formula)                  rng.setFormula(opts.formula);
     else if (opts.value !== undefined) rng.setValue(opts.value);
     if (opts.bg)   rng.setBackground(opts.bg);
     if (opts.font) rng.setFontColor(opts.font);
