@@ -221,7 +221,7 @@ function createProjectDashboard() {
     .setVerticalAlignment('middle')
     .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
   dash.getRange('A9:A400').setFontWeight('bold').setFontColor(NAVY_MID);
-  for (let r = 9; r <= 400; r++) dash.setRowHeight(r, 22);
+  dash.setRowHeights(9, 392, 22);  // single API call instead of 392
 
   // ── 14. FREEZE ───────────────────────────────────────────────────────────────
   dash.setFrozenRows(8);
