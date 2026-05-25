@@ -5,6 +5,25 @@
 
   VERSION HISTORY
   ───────────────
+  V1.15  2026-05-22
+    • Shift+click multi-select on Gantt bars, milestones, and flags.
+      Shift+click any bar/milestone/flag to add it to a multi-selection.
+      Shift+click again to deselect. Clicking any selected item drags
+      the entire group; all items move together preserving durations and
+      relative separations. Multi-selected items glow amber (vs. blue for
+      single-selected). Status bar shows count + ESC hint when multiple
+      items are selected. ESC or click on empty Gantt area clears selection.
+    • Milestones and Flags tabs (filtered task-list views) added alongside
+      the existing Tasks tab.
+    • Independent collapse/expand state per tab (Gantt, Tasks, Milestones,
+      Flags all have separate collapse sets).
+    • Global ◉ Markers toggle button shows/hides milestone & flag markers
+      on collapsed rollup bars. Button appears only when groups are collapsed.
+    • Print mode respects collapsed groups, flag shapes, and markers toggle.
+    • Four new settings keys persisted to GANTT SETTINGS spreadsheet tab:
+      ganttCollapsedGroups, milestonesCollapsedGroups, flagsCollapsedGroups,
+      ganttRollupMarkersVisible.
+
   V1.13  2026-05-22
     • Group color (groupColors) decoupled from individual task bar fills.
       Task bars now use colorOverride → task.color (status) only.
@@ -104,7 +123,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Project 2 - Interactive Project Schedule</title>
+  <title>La Costa Hotel - Interactive Project Schedule</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
@@ -204,6 +223,7 @@
     .axis-label-major { font-size: 12px; fill: #0f172a; font-weight: 700; letter-spacing: 0.06em; }
     .task-bar { stroke: rgba(15,23,42,0.25); stroke-width: 0.5; cursor: grab; }
     .task-bar.selected { stroke: #0284c7; stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(2,132,199,0.4)); }
+    .task-bar.multi-selected { stroke: #f59e0b; stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(245,158,11,0.5)); }
     .task-bar.dashed { fill: none; stroke-dasharray: 4 3; stroke: #dc2626; stroke-width: 1.5; cursor: grab; }
     .task-bar.dashed-outline { stroke-dasharray: 5 3; stroke-width: 2; cursor: grab; }
     .resize-handle { fill: rgba(0,0,0,0.0); stroke: rgba(0,0,0,0.0); cursor: ew-resize; }
@@ -229,9 +249,9 @@
     .task-table-wrapper { margin-top: 8px; border-radius: 12px; border: 1px solid var(--border-strong); max-height: 420px; overflow: auto; background: var(--bg-alt); }
     table { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 100%; }
     th, td { padding: 2px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
-    th { position: sticky; top: 0; background: var(--panel-soft); z-index: 1; text-align: left; font-weight: 600; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-strong); }
+    th { position: sticky; top: 0; background: var(--panel-soft); z-index: 10; text-align: left; font-weight: 600; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-strong); }
     th[data-sort] { cursor: pointer; user-select: none; }
-    th[data-sort]:hover { background: rgba(2,132,199,0.08); color: var(--text); }
+    th[data-sort]:hover { background: var(--panel-soft); box-shadow: inset 0 0 0 9999px rgba(2,132,199,0.10); color: var(--text); }
     .sort-indicator { color: var(--accent); margin-left: 4px; font-size: 11px; }
     tr:last-child td { border-bottom: none; }
     tr.selected-row { background: rgba(2,132,199,0.08); }
@@ -277,7 +297,7 @@
     }
 
     /* ---- Task table: discipline group headings ---- */
-    .disc-group-header { background: var(--panel-soft); cursor: pointer; user-select: none; position: sticky; }
+    .disc-group-header { background: var(--panel-soft); cursor: pointer; user-select: none; position: sticky; z-index: 2; }
     .disc-group-header:hover td { background: var(--border-strong); }
     .disc-group-header td { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.09em; color: var(--text-muted); padding: 4px 10px; text-transform: uppercase; border-bottom: 1px solid var(--border-strong); }
     .disc-group-toggle { display: inline-block; width: 14px; margin-right: 5px; font-style: normal; transition: transform 0.15s; }
@@ -530,7 +550,7 @@
       <div class="project-meta">
         <div class="meta-name-row">
           <span class="logo-dot"></span>
-          <input type="text" id="meta-name" class="meta-input meta-name" value="PROJECT 2" />
+          <input type="text" id="meta-name" class="meta-input meta-name" value="LA COSTA HOTEL" />
         </div>
         <input type="text" id="meta-subtitle" class="meta-input meta-subtitle" value="PROJECT SCHEDULE" />
         <div class="meta-updated-wrap">
@@ -651,6 +671,7 @@
               <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
               <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
               <button id="sheets-config-btn" class="secondary" title="Configure Google Sheets connection">⚙ Setup</button>
+              <span id="sheet-name-display" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title=""></span>
             </div>
           </div>
 
@@ -662,6 +683,8 @@
     <div class="app-tabs">
       <button class="app-tab-btn active" id="tab-gantt">Timeline</button>
       <button class="app-tab-btn" id="tab-tasks">Tasks</button>
+      <button class="app-tab-btn" id="tab-milestones">Milestones</button>
+      <button class="app-tab-btn" id="tab-flags">Flags</button>
     </div>
 
     <div class="panel" id="gantt-panel">
@@ -670,6 +693,7 @@
         <div style="display:flex; gap:8px; align-items:center;">
           <button id="gantt-expand-all-btn" class="secondary" title="Expand all groups">⊞ Expand</button>
           <button id="gantt-collapse-all-btn" class="secondary" title="Collapse all groups">⊟ Collapse</button>
+          <button id="gantt-markers-toggle-btn" class="secondary" title="Show/hide milestone & flag markers on collapsed groups">◉ Markers</button>
           <button id="print-preview-btn" class="secondary" title="Open Gantt print preview">Print</button>
           <button id="export-svg-btn" class="secondary" title="Export full Gantt chart as SVG file">SVG</button>
           <div class="badge" id="summary-pill">0 tasks</div>
@@ -852,89 +876,13 @@
     // -----------------------------
     // DEFAULT TASKS (organized so groups appear in ROW_LAYOUT order)
     // -----------------------------
-    var DEFAULT_TASKS = [
-      // UTILITIES
-      { name: "AT&T DROP STATUS",          group: "UTIL",  sub: "UTILITIES",     type: "bar", start: "2026-01-10", end: "2026-01-12", color: "#e8862a", note: "VERIFY DROP" },
-      { name: "SDG&E DISCONNECTS",         group: "UTIL",  sub: "UTILITIES",     type: "bar", start: "2026-01-10", end: "2026-01-31", color: "#e8862a", note: "GAS & ELECTRIC" },
-      { name: "SDG&E SERVICE PACKAGE",     group: "UTIL",  sub: "UTILITIES",     type: "bar", start: "2026-02-01", end: "2026-04-15", color: "#f0a958", note: "LONG-LEAD" },
-      { name: "SDG&E GUY-WIRE RELOCATION", group: "UTIL",  sub: "UTILITIES",     type: "bar", start: "2026-02-28", end: "2026-03-31", color: "#f0a958", note: "PRE-GRADING" },
-
-      // HAZMAT
-      { name: "LEAD/ASBESTOS TESTING",     group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-12", end: "2026-01-14", color: "#a01e2e", note: "ON-SITE" },
-      { name: "LEAD/ASBESTOS REPORT",      group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-16", end: "2026-01-17", color: "#a01e2e", note: "REPORT" },
-      { name: "ABATEMENT BIDDING",         group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-17", end: "2026-01-23", color: "#c43a4a", note: "BIDS OUT" },
-      { name: "ABATEMENT CONTRACTOR",      group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-26", end: "2026-01-27", color: "#a01e2e", note: "SELECTED" },
-      { name: "ABATEMENT & CLEARANCE",     group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-27", end: "2026-02-07", color: "#a01e2e", note: "CLEARANCE LETTERS" },
-
-      // DEMO
-      { name: "DEMO PERMIT SUBMITTED",     group: "DEMO",  sub: "PERMITTING",    type: "bar", start: "2026-01-05", end: "2026-01-07", color: "#8b5cf6", note: "INITIAL" },
-      { name: "WASTE MGMT PLAN",           group: "DEMO",  sub: "PERMITTING",    type: "bar", start: "2026-02-08", end: "2026-02-10", color: "#8b5cf6", note: "COMPLETED" },
-      { name: "DEMO PERMIT RESUBMITTED",   group: "DEMO",  sub: "PERMITTING",    type: "bar", start: "2026-02-12", end: "2026-02-14", color: "#8b5cf6", note: "RESUBMIT" },
-
-      // CIVIL
-      { name: "ENGINEERING COMMENTS",      group: "CIVIL", sub: "CIVIL",         type: "bar", start: "2026-01-06", end: "2026-01-08", color: "#d9c34a", note: "RECEIVED" },
-      { name: "COORDINATE W/ JESSE",       group: "CIVIL", sub: "CIVIL",         type: "bar", start: "2026-01-07", end: "2026-01-09", color: "#d9c34a", note: "CIVIL ENGR" },
-      { name: "ROW + HOLD-HARMLESS",       group: "CIVIL", sub: "CIVIL",         type: "bar", start: "2026-01-08", end: "2026-02-28", color: "#d9c34a", note: "ROW / DRAINAGE" },
-
-      // SITE
-      { name: "DEMOLITION",                group: "SITE",  sub: "SITEWORK",      type: "bar", start: "2026-03-10", end: "2026-03-14", color: "#5d8a3a", note: "" },
-      { name: "GRADING & EARTHWORK",       group: "SITE",  sub: "SITEWORK",      type: "bar", start: "2026-03-16", end: "2026-03-27", color: "#5d8a3a", note: "" },
-      { name: "WET UTILITIES",             group: "SITE",  sub: "SITEWORK",      type: "bar", start: "2026-04-01", end: "2026-04-30", color: "#5d8a3a", note: "SEWER/STORM/WATER" },
-      { name: "DRY UTILITIES",             group: "SITE",  sub: "SITEWORK",      type: "bar", start: "2026-04-16", end: "2026-04-30", color: "#7eb04a", note: "ELEC/COMM" },
-
-      // RGP
-      { name: "RGP SUB1",                  group: "RGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-06-15", end: "2026-08-07", color: "#e8862a", note: "REVIEW" },
-      { name: "RGP ISSUANCE & BONDING",    group: "RGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-08-17", end: "2026-09-11", color: "#f0a958", note: "APPROVAL" },
-
-      // PGP
-      { name: "PGP SUB4",                  group: "PGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-05-04", end: "2026-07-17", color: "#e8862a", note: "REVIEW" },
-      { name: "PGP SUB5",                  group: "PGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-08-07", end: "2026-09-18", color: "#e8862a", note: "REVIEW" },
-      { name: "PGP ISSUANCE & BONDING",    group: "PGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-09-18", end: "2026-10-30", color: "#f0a958", note: "APPROVAL" },
-
-      // GCPC
-      { name: "GCPC SUB1",                 group: "GCPC",  sub: "NEW DESIGN",    type: "bar", start: "2026-11-02", end: "2026-12-15", color: "#e8862a", note: "GRADING ONLY & BUILDING PADS" },
-      { name: "GCPC SUB2",                 group: "GCPC",  sub: "NEW DESIGN",    type: "bar", start: "2027-02-01", end: "2027-03-31", color: "#e8862a", note: "APPROVAL" },
-
-      // BP
-      { name: "BP SUB1",                   group: "BP",    sub: "CDP DESIGN",    type: "bar", start: "2026-05-04", end: "2026-06-19", color: "#5d8a3a", note: "REVIEW" },
-      { name: "BP SUB2",                   group: "BP",    sub: "CDP DESIGN",    type: "bar", start: "2026-07-10", end: "2026-08-21", color: "#5d8a3a", note: "REVIEW" },
-      { name: "BP SUB3",                   group: "BP",    sub: "CDP DESIGN",    type: "bar", start: "2026-09-14", end: "2026-11-13", color: "#5d8a3a", note: "REVIEW" },
-      { name: "BP SUB4",                   group: "BP",    sub: "NEW DESIGN",    type: "bar", start: "2026-12-14", end: "2027-03-19", color: "#5d8a3a", note: "GRADING ONLY & BUILDING PADS" },
-      { name: "BP APPROVAL",               group: "BP",    sub: "NEW DESIGN",    type: "bar", start: "2027-03-19", end: "2027-04-09", color: "#4a6e2c", note: "APPROVAL" },
-
-      // BCPC
-      { name: "BCPC SUB1",                 group: "BCPC",  sub: "NEW DESIGN",    type: "bar", start: "2027-04-06", end: "2027-07-03", color: "#5d8a3a", note: "REVIEW" },
-      { name: "BCPC APPROVAL",             group: "BCPC",  sub: "NEW DESIGN",    type: "bar", start: "2027-07-03", end: "2027-07-20", color: "#4a6e2c", note: "APPROVAL" },
-
-      // SUBC
-      { name: "SUBC SUB1",                 group: "SUBC",  sub: "SUB-C DESIGN",  type: "bar", start: "2026-11-13", end: "2026-12-18", color: "#6878a8", note: "GRADING ONLY & BUILDING PADS" },
-      { name: "SUBC SUB2",                 group: "SUBC",  sub: "NEW DESIGN",    type: "bar", start: "2027-04-06", end: "2027-07-03", color: "#6878a8", note: "INTERIOR FLOOR PLAN / EXT MATERIALS" },
-      { name: "SUBC APPROVAL",             group: "SUBC",  sub: "SUB-C DESIGN",  type: "bar", start: "2027-07-03", end: "2027-09-11", color: "#8a98c4", note: "APPROVAL" },
-
-      // GRADE
-      { name: "ROUGH GRADING",             group: "GRADE", sub: "CDP DESIGN",    type: "bar", start: "2026-09-14", end: "2026-11-13", color: "#d9c34a", note: "" },
-      { name: "PRECISE GRADING",           group: "GRADE", sub: "CDP DESIGN",    type: "bar", start: "2026-11-13", end: "2027-04-06", color: "#d9c34a", note: "" },
-
-      // VERT
-      { name: "VERTICAL CONSTRUCTION",     group: "VERT",  sub: "24 MONTHS",     type: "bar", start: "2027-04-06", end: "2029-04-06", color: "#4a1c2e", note: "24 MONTHS" },
-
-      // CDP
-      { name: "CDP EXTENSION 1",           group: "CDP",   sub: "CDP EXT",       type: "bar", start: "2026-05-04", end: "2026-05-25", color: "#a01e2e", note: "", dashed: true },
-      { name: "CDP EXTENSION 2",           group: "CDP",   sub: "CDP EXT",       type: "bar", start: "2027-04-01", end: "2027-04-22", color: "#a01e2e", note: "", dashed: true },
-
-      // MILESTONES & FLAGS
-      { name: "PROJECT KICKOFF",           group: "MILE",  sub: "MILESTONE",     type: "milestone", start: "2026-01-05", end: "2026-01-05", color: "#0284c7", note: "Project start", symbol: "*" },
-      { name: "DEMO PERMIT ISSUED",        group: "MILE",  sub: "MILESTONE",     type: "milestone", start: "2026-02-20", end: "2026-02-20", color: "#8b5cf6", note: "Demo permit issued", symbol: "*" },
-      { name: "GRADING PERMIT ISSUED",     group: "MILE",  sub: "MILESTONE",     type: "milestone", start: "2026-03-05", end: "2026-03-05", color: "#d9c34a", note: "Grading permit issued", symbol: "*" },
-      { name: "GROUNDBREAKING",            group: "MILE",  sub: "FLAG",          type: "flag",      start: "2026-03-10", end: "2026-03-10", color: "#16a34a", note: "Demo begins", symbol: "G" },
-      { name: "VERTICAL START",            group: "MILE",  sub: "FLAG",          type: "flag",      start: "2027-04-06", end: "2027-04-06", color: "#dc2626", note: "Construction begins", symbol: "V" }
-    ];
+    var DEFAULT_TASKS = [];
 
     var DEFAULT_META = {
-      name: "PROJECT 2",
-      subtitle: "PROJECT SCHEDULE",
-      updated: "2026-05-14",
-      note: "Master construction schedule - permitting sequence and vertical build."
+      name: "",
+      subtitle: "",
+      updated: "",
+      note: ""
     };
 
     // -----------------------------
@@ -971,13 +919,19 @@
     var groupHeaderTint    = 30;       // 0–100: opacity of group header background tint (independent of bar tint)
     var groupHeaderTextColor = '#0369a1'; // text color for discipline group header labels
     var taskRowTint        = 50;       // 0–100: opacity of grey alternating stripe in task label column (0=none, 50=default)
-    var currentTab   = 'gantt'; // 'gantt' | 'tasks'
-    var collapsedGroups = {};   // { 'DISCIPLINE-KEY': true } when collapsed
+    var currentTab   = 'gantt'; // 'gantt' | 'tasks' | 'milestones' | 'flags'
+    var taskTypeFilter = null;  // null = all | 'milestone' | 'flag'
+    var collapsedGroups          = {};  // task list tab collapse state
+    var milestonesCollapsedGroups = {}; // milestones tab collapse state
+    var flagsCollapsedGroups      = {}; // flags tab collapse state
+    var ganttCollapsedGroups      = {}; // Gantt chart collapse state (independent)
+    var ganttRollupMarkersVisible = true; // global: show/hide M+F markers on all collapsed rollup bars
     var disciplineOrder = [];   // Gantt chart group order (affected by sort buttons + Gantt drag)
     var taskListOrder   = [];   // Task List section group order (affected by task-list drag only)
     var taskTableVisible = true;
     var searchFilter    = '';
     var selectedTaskIds = {};
+    var ganttMultiSelected = {}; // taskId → true — set of Gantt bars in multi-selection (shift+click)
 
     function taskMatchesFilter(t) {
       var sf = searchFilter.trim().toLowerCase();
@@ -985,6 +939,19 @@
       return (t.name  || '').toLowerCase().indexOf(sf) >= 0 ||
              (t.group || '').toLowerCase().indexOf(sf) >= 0 ||
              (t.note  || '').toLowerCase().indexOf(sf) >= 0;
+    }
+
+    // Returns the collapsed-groups object for whichever list tab is active
+    function _currentListCollapsed() {
+      if (currentTab === 'milestones') return milestonesCollapsedGroups;
+      if (currentTab === 'flags')      return flagsCollapsedGroups;
+      return collapsedGroups; // 'tasks' and default
+    }
+    // Replaces the collapsed-groups object for the active list tab
+    function _setListCollapsed(val) {
+      if      (currentTab === 'milestones') milestonesCollapsedGroups = val;
+      else if (currentTab === 'flags')      flagsCollapsedGroups      = val;
+      else                                  collapsedGroups           = val;
     }
     var dragType        = null;   // 'task' | 'group'
     var darkMode        = false;
@@ -1135,7 +1102,7 @@
         var gtasks = groupMap[disc] || [];
         if (!gtasks.length) continue;
         result.push({ type:'gh', key:'gh_'+disc, label:disc, discipline:disc });
-        if (!collapsedGroups[disc]) {
+        if (!ganttCollapsedGroups[disc]) {
           for (var t2 = 0; t2 < gtasks.length; t2++) {
             result.push({ type:'task', key:'task_'+gtasks[t2].id, label:gtasks[t2].name, taskId:gtasks[t2].id });
           }
@@ -1260,6 +1227,7 @@
       };
       syncMetaInputs();
       selectedTaskId = null;
+      ganttMultiSelected = {};
       sortState = { column: null, direction: 1 };
       refreshTaskTable();
       updateStatusText();
@@ -1307,6 +1275,7 @@
       if (!confirm('Clear all tasks?')) return;
       tasks = [];
       selectedTaskId = null;
+      ganttMultiSelected = {};
       refreshTaskTable();
       updateStatusText();
       renderGantt();
@@ -1315,6 +1284,7 @@
     function deleteTask(id) {
       tasks = tasks.filter(function(t) { return t.id !== id; });
       if (selectedTaskId === id) selectedTaskId = null;
+      delete ganttMultiSelected[id];
       refreshTaskTable();
       updateStatusText();
       renderGantt();
@@ -1463,6 +1433,8 @@
       var groupMap = {};
       for (var gi = 0; gi < tasks.length; gi++) {
         var t0 = tasks[gi];
+        // Filter by tab type (Milestones / Flags tabs)
+        if (taskTypeFilter && t0.type !== taskTypeFilter) continue;
         var gkey = t0.group || '(no discipline)';
         if (!groupMap[gkey]) groupMap[gkey] = [];
         var matches = !sf ||
@@ -1494,7 +1466,7 @@
 
       for (var gi2 = 0; gi2 < groupOrder.length; gi2++) {
         (function(discipline, groupTasks) {
-          var isCollapsed = !!collapsedGroups[discipline];
+          var isCollapsed = !!_currentListCollapsed()[discipline];
 
           // --- Discipline heading row --- (always shown, even in flat mode)
           var headTr = document.createElement('tr');
@@ -1563,7 +1535,7 @@
             if (e.target === headGrip) return;
             if (e.target === groupCb) return;
             if (e.target === gcPicker) return;
-            collapsedGroups[discipline] = !collapsedGroups[discipline];
+            _currentListCollapsed()[discipline] = !_currentListCollapsed()[discipline];
             refreshTaskTable();
           });
 
@@ -1892,7 +1864,9 @@
         if (tasks[i].end > endMax) endMax = tasks[i].end;
       }
       var days = daysBetween(startMin, endMax) + 1;
-      statusText.textContent = tasks.length + ' tasks (' + ms + ' milestones, ' + fl + ' flags) - Range: ' + formatDate(startMin) + ' to ' + formatDate(endMax) + ' (' + days + ' days)';
+      var multiCount = Object.keys(ganttMultiSelected).length;
+      var multiNote = multiCount > 1 ? '  ·  ⬡ ' + multiCount + ' selected — drag any to move all  ·  ESC to clear' : '';
+      statusText.textContent = tasks.length + ' tasks (' + ms + ' milestones, ' + fl + ' flags) - Range: ' + formatDate(startMin) + ' to ' + formatDate(endMax) + ' (' + days + ' days)' + multiNote;
       summaryPill.textContent = tasks.length + ' tasks - ' + ms + ' milestones - ' + fl + ' flags';
     }
 
@@ -2096,6 +2070,10 @@
     }
 
     function renderGantt() {
+      // Show the Markers toggle only when at least one group is collapsed
+      var _mBtn = document.getElementById('gantt-markers-toggle-btn');
+      if (_mBtn) _mBtn.style.display = Object.keys(ganttCollapsedGroups).length > 0 ? '' : 'none';
+
       clearCells();
       if (!tasks.length) return;
 
@@ -2398,13 +2376,13 @@
             hit.setAttribute('fill', 'transparent');
             hit.style.cursor = 'pointer';
             hit.addEventListener('click', function() {
-              if (collapsedGroups[disc]) { delete collapsedGroups[disc]; }
-              else { collapsedGroups[disc] = true; }
-              refreshTaskTable();
+              if (ganttCollapsedGroups[disc]) { delete ganttCollapsedGroups[disc]; }
+              else { ganttCollapsedGroups[disc] = true; }
               renderGantt();
             });
             svg.appendChild(hit);
-          })(row.discipline, !!collapsedGroups[row.discipline], yTop);
+          })(row.discipline, !!ganttCollapsedGroups[row.discipline], yTop);
+
         }
 
         var sep = document.createElementNS(svgNS, 'line');
@@ -2433,7 +2411,7 @@
       bg.setAttribute('x', 0); bg.setAttribute('y', 0);
       bg.setAttribute('width', w); bg.setAttribute('height', h);
       bg.setAttribute('fill', darkMode ? '#0f172a' : '#ffffff');
-      bg.addEventListener('mousedown', function() { selectedTaskId = null; refreshTaskTable(); renderGantt(); });
+      bg.addEventListener('mousedown', function() { selectedTaskId = null; ganttMultiSelected = {}; refreshTaskTable(); renderGantt(); });
       svg.appendChild(bg);
 
       for (var r = 0; r < geom.displayedRows.length; r++) {
@@ -2517,7 +2495,9 @@
       svg.appendChild(arrowsLayer);
 
       // Pre-compute date ranges per discipline (used by both normal rollup bars and flat mode)
-      var grpRanges = {};
+      // Also build grpTaskMap so collapsed groups can render milestone/flag markers on their row.
+      var grpRanges  = {};
+      var grpTaskMap = {}; // discipline → [tasks]
       for (var gb = 0; gb < tasks.length; gb++) {
         var gbt = tasks[gb];
         if (!gbt.group || !gbt.start || !gbt.end) continue;
@@ -2525,6 +2505,8 @@
         if (gbt.start < grpRanges[gbt.group].start) grpRanges[gbt.group].start = gbt.start;
         if (gbt.end   > grpRanges[gbt.group].end)   grpRanges[gbt.group].end   = gbt.end;
         grpRanges[gbt.group].count++;
+        if (!grpTaskMap[gbt.group]) grpTaskMap[gbt.group] = [];
+        grpTaskMap[gbt.group].push(gbt);
       }
 
       if (flatMode) {
@@ -2559,6 +2541,16 @@
             tick.setAttribute('stroke', rollColor); tick.setAttribute('stroke-width', 2);
             svg.appendChild(tick);
           });
+
+          // When collapsed: draw milestone/flag markers on the rollup row (unless hidden by global toggle)
+          if (ganttCollapsedGroups[ghRow.discipline] && ganttRollupMarkersVisible) {
+            var collapsedTasks = grpTaskMap[ghRow.discipline] || [];
+            for (var cm = 0; cm < collapsedTasks.length; cm++) {
+              var cmt = collapsedTasks[cm];
+              if (cmt.type === 'milestone') renderCollapsedMilestone(svg, cmt, gr2);
+              else if (cmt.type === 'flag')  renderCollapsedFlag(svg, cmt, gr2);
+            }
+          }
         }
 
         // Individual task bars
@@ -2787,15 +2779,16 @@
       rect.setAttribute('height', barH);
       rect.setAttribute('rx', 3);
       var barColor = task.colorOverride || task.color;
+      var _barSelClass = task.id === selectedTaskId ? ' selected' : (ganttMultiSelected[task.id] ? ' multi-selected' : '');
       if (task.dashed) {
-        rect.setAttribute('class', 'task-bar dashed' + (task.id === selectedTaskId ? ' selected' : ''));
+        rect.setAttribute('class', 'task-bar dashed' + _barSelClass);
       } else if (task.dashedOutline) {
         rect.setAttribute('fill', barColor);
         rect.setAttribute('stroke', 'rgba(15,23,42,0.7)');
-        rect.setAttribute('class', 'task-bar dashed-outline' + (task.id === selectedTaskId ? ' selected' : ''));
+        rect.setAttribute('class', 'task-bar dashed-outline' + _barSelClass);
       } else {
         rect.setAttribute('fill', barColor);
-        rect.setAttribute('class', 'task-bar' + (task.id === selectedTaskId ? ' selected' : ''));
+        rect.setAttribute('class', 'task-bar' + _barSelClass);
       }
       rect.dataset.taskId = task.id;
       rect.dataset.role = 'body';
@@ -3252,10 +3245,13 @@
         x + ',' + (yMid + s) + ' ' +
         (x - s) + ',' + yMid
       );
+      var _mSelClass = task.id === selectedTaskId ? ' selected' : (ganttMultiSelected[task.id] ? ' multi-selected' : '');
+      var _mStroke = task.id === selectedTaskId ? '#0284c7' : (ganttMultiSelected[task.id] ? '#f59e0b' : 'rgba(15,23,42,0.4)');
+      var _mStrokeW = (task.id === selectedTaskId || ganttMultiSelected[task.id]) ? 2.5 : 1;
       poly.setAttribute('fill', task.colorOverride || task.color);
-      poly.setAttribute('class', 'task-bar' + (task.id === selectedTaskId ? ' selected' : ''));
-      poly.setAttribute('stroke', task.id === selectedTaskId ? '#0284c7' : 'rgba(15,23,42,0.4)');
-      poly.setAttribute('stroke-width', task.id === selectedTaskId ? 2.5 : 1);
+      poly.setAttribute('class', 'task-bar' + _mSelClass);
+      poly.setAttribute('stroke', _mStroke);
+      poly.setAttribute('stroke-width', _mStrokeW);
       poly.dataset.taskId = task.id;
       poly.dataset.role = 'body';
       g.appendChild(poly);
@@ -3321,12 +3317,17 @@
       g.dataset.taskId = task.id;
       if (searchFilter.trim() && !taskMatchesFilter(task)) { g.setAttribute('opacity', '0.15'); }
 
+      var _fSelClass = task.id === selectedTaskId ? ' selected' : (ganttMultiSelected[task.id] ? ' multi-selected' : '');
+      var _fStroke = task.id === selectedTaskId ? '#0284c7' : (ganttMultiSelected[task.id] ? '#f59e0b' : 'rgba(15,23,42,0.4)');
+      var _fStrokeW = (task.id === selectedTaskId || ganttMultiSelected[task.id]) ? 2 : 0.8;
+      var _fPoleW = (task.id === selectedTaskId || ganttMultiSelected[task.id]) ? 2 : 1.5;
+
       // Pole
       var pole = document.createElementNS(svgNS, 'line');
       pole.setAttribute('x1', x); pole.setAttribute('y1', topY);
       pole.setAttribute('x2', x); pole.setAttribute('y2', bottomY);
       pole.setAttribute('stroke', '#374151');
-      pole.setAttribute('stroke-width', task.id === selectedTaskId ? 2 : 1.5);
+      pole.setAttribute('stroke-width', _fPoleW);
       g.appendChild(pole);
 
       // Flag (triangle pointing right)
@@ -3337,9 +3338,9 @@
         x + ',' + (topY + flagH)
       );
       flag.setAttribute('fill', task.colorOverride || task.color);
-      flag.setAttribute('stroke', task.id === selectedTaskId ? '#0284c7' : 'rgba(15,23,42,0.4)');
-      flag.setAttribute('stroke-width', task.id === selectedTaskId ? 2 : 0.8);
-      flag.setAttribute('class', 'task-bar' + (task.id === selectedTaskId ? ' selected' : ''));
+      flag.setAttribute('stroke', _fStroke);
+      flag.setAttribute('stroke-width', _fStrokeW);
+      flag.setAttribute('class', 'task-bar' + _fSelClass);
       flag.dataset.taskId = task.id;
       flag.dataset.role = 'body';
       g.appendChild(flag);
@@ -3399,6 +3400,122 @@
       svg.appendChild(g);
     }
 
+    // ── Collapsed-group overlay renderers ─────────────────────────────────
+    // Render a scaled-down milestone diamond on the group-header rollup row.
+    // No text labels (row is shared with rollup bar); hover tooltip still works
+    // because barPositions is registered and _findHoveredBar uses it.
+    function renderCollapsedMilestone(svg, task, rowIdx) {
+      var x = dateToX(task.start);
+      // Clamp to visible chart area
+      if (x < 0 || x > geom.bodyWidth) return;
+      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
+      var yMid = yTop + geom.rowHeight / 2;
+      var s = Math.max(4, Math.min(7, geom.rowHeight / 3)); // smaller than normal
+      barPositions[task.id] = { x1: x, x2: x, midY: yMid };
+
+      var g = document.createElementNS(svgNS, 'g');
+      g.dataset.taskId = task.id;
+
+      var poly = document.createElementNS(svgNS, 'polygon');
+      poly.setAttribute('points',
+        x + ',' + (yMid - s) + ' ' +
+        (x + s) + ',' + yMid + ' ' +
+        x + ',' + (yMid + s) + ' ' +
+        (x - s) + ',' + yMid);
+      var _cmSelClass = task.id === selectedTaskId ? ' selected' : (ganttMultiSelected[task.id] ? ' multi-selected' : '');
+      var _cmStroke = task.id === selectedTaskId ? '#0284c7' : (ganttMultiSelected[task.id] ? '#f59e0b' : 'rgba(15,23,42,0.5)');
+      var _cmStrokeW = (task.id === selectedTaskId || ganttMultiSelected[task.id]) ? 2 : 1;
+      poly.setAttribute('fill', task.colorOverride || task.color);
+      poly.setAttribute('stroke', _cmStroke);
+      poly.setAttribute('stroke-width', _cmStrokeW);
+      poly.setAttribute('class', 'task-bar' + _cmSelClass);
+      poly.dataset.taskId = task.id;
+      poly.dataset.role = 'body';
+      g.appendChild(poly);
+
+      if (task.symbol) {
+        var sym = document.createElementNS(svgNS, 'text');
+        sym.setAttribute('x', x);
+        sym.setAttribute('y', yMid + Math.round(s * 0.4));
+        sym.setAttribute('text-anchor', 'middle');
+        sym.setAttribute('font-size', Math.max(6, s - 1));
+        sym.setAttribute('font-weight', '800');
+        sym.setAttribute('fill', isLightColor(task.colorOverride || task.color) ? '#1c1917' : '#ffffff');
+        sym.style.pointerEvents = 'none';
+        sym.textContent = task.symbol;
+        g.appendChild(sym);
+      }
+
+      g.addEventListener('mousedown', onBarMouseDown);
+      svg.appendChild(g);
+    }
+
+    // Render a scaled-down flag on the group-header rollup row.
+    function renderCollapsedFlag(svg, task, rowIdx) {
+      var x = dateToX(task.start);
+      if (x < 0 || x > geom.bodyWidth) return;
+      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
+      var yMid = yTop + geom.rowHeight / 2;
+      var poleH = Math.min(14, geom.rowHeight - 8);
+      var topY   = yMid - poleH / 2;
+      var botY   = yMid + poleH / 2;
+      var flagH  = Math.min(7, poleH * 0.55);
+      barPositions[task.id] = { x1: x, x2: x, midY: yMid };
+
+      var g = document.createElementNS(svgNS, 'g');
+      g.dataset.taskId = task.id;
+
+      var _cfSelClass = task.id === selectedTaskId ? ' selected' : (ganttMultiSelected[task.id] ? ' multi-selected' : '');
+      var _cfStroke = task.id === selectedTaskId ? '#0284c7' : (ganttMultiSelected[task.id] ? '#f59e0b' : 'rgba(15,23,42,0.4)');
+      var _cfStrokeW = (task.id === selectedTaskId || ganttMultiSelected[task.id]) ? 2 : 0.8;
+      var _cfPoleW = (task.id === selectedTaskId || ganttMultiSelected[task.id]) ? 2 : 1.5;
+
+      var pole = document.createElementNS(svgNS, 'line');
+      pole.setAttribute('x1', x); pole.setAttribute('y1', topY);
+      pole.setAttribute('x2', x); pole.setAttribute('y2', botY);
+      pole.setAttribute('stroke', '#374151');
+      pole.setAttribute('stroke-width', _cfPoleW);
+      g.appendChild(pole);
+
+      var flag = document.createElementNS(svgNS, 'polygon');
+      flag.setAttribute('points',
+        x + ',' + topY + ' ' +
+        (x + 12) + ',' + (topY + flagH / 2) + ' ' +
+        x + ',' + (topY + flagH));
+      flag.setAttribute('fill', task.colorOverride || task.color);
+      flag.setAttribute('stroke', _cfStroke);
+      flag.setAttribute('stroke-width', _cfStrokeW);
+      flag.setAttribute('class', 'task-bar' + _cfSelClass);
+      flag.dataset.taskId = task.id;
+      flag.dataset.role = 'body';
+      g.appendChild(flag);
+
+      if (task.symbol) {
+        var sym = document.createElementNS(svgNS, 'text');
+        sym.setAttribute('x', x + 2);
+        sym.setAttribute('y', topY + flagH * 0.75);
+        sym.setAttribute('font-size', Math.max(5, flagH - 2));
+        sym.setAttribute('font-weight', '800');
+        sym.setAttribute('fill', isLightColor(task.colorOverride || task.color) ? '#000000' : '#ffffff');
+        sym.style.pointerEvents = 'none';
+        sym.textContent = task.symbol;
+        g.appendChild(sym);
+      }
+
+      // Transparent hit area for easier hover/click
+      var hit = document.createElementNS(svgNS, 'rect');
+      hit.setAttribute('x', x - 3); hit.setAttribute('y', topY);
+      hit.setAttribute('width', 16); hit.setAttribute('height', poleH);
+      hit.setAttribute('fill', 'rgba(0,0,0,0)');
+      hit.style.cursor = 'grab';
+      hit.dataset.taskId = task.id;
+      hit.dataset.role = 'body';
+      g.appendChild(hit);
+
+      g.addEventListener('mousedown', onBarMouseDown);
+      svg.appendChild(g);
+    }
+
     // -----------------------------
     // Drag / resize bars
     // -----------------------------
@@ -3415,21 +3532,87 @@
       for (var i = 0; i < tasks.length; i++) if (tasks[i].id === taskId) { task = tasks[i]; break; }
       if (!task) return;
 
-      selectedTaskId = taskId;
       var svg = document.getElementById('gantt-body-svg');
       var startPt = clientToSvg(svg, e.clientX, e.clientY);
-      drag = {
-        taskId: taskId,
-        role: role,
-        startX: startPt.x,
-        origStart: new Date(task.start.getTime()),
-        origEnd: new Date(task.end.getTime())
-      };
-      document.body.style.cursor = role === 'body' ? 'grabbing' : 'ew-resize';
-      renderGantt();
-      var rows = taskTableBody.querySelectorAll('tr');
-      for (var r = 0; r < rows.length; r++) {
-        rows[r].classList.toggle('selected-row', parseInt(rows[r].dataset.taskId, 10) === selectedTaskId);
+      selectedTaskId = taskId;
+
+      if (e.shiftKey) {
+        // Shift+click: toggle task in multi-selection
+        if (ganttMultiSelected[taskId]) {
+          delete ganttMultiSelected[taskId];
+        } else {
+          ganttMultiSelected[taskId] = true;
+        }
+        // Build multi-drag setup in case user drags after selecting
+        var multiKeys = Object.keys(ganttMultiSelected);
+        drag = {
+          taskId: taskId,
+          role: 'body',
+          startX: startPt.x,
+          origStart: new Date(task.start.getTime()),
+          origEnd:   new Date(task.end.getTime()),
+          isMulti:   multiKeys.length > 0,
+          multiOriginals: {}
+        };
+        for (var mi = 0; mi < tasks.length; mi++) {
+          if (ganttMultiSelected[tasks[mi].id]) {
+            drag.multiOriginals[tasks[mi].id] = {
+              start: new Date(tasks[mi].start.getTime()),
+              end:   new Date(tasks[mi].end.getTime())
+            };
+          }
+        }
+        document.body.style.cursor = 'grabbing';
+        renderGantt();
+        updateStatusText();
+        // Update task-table highlight for primary selected task
+        var rows = taskTableBody.querySelectorAll('tr');
+        for (var r = 0; r < rows.length; r++) {
+          rows[r].classList.toggle('selected-row', parseInt(rows[r].dataset.taskId, 10) === selectedTaskId);
+        }
+      } else if (ganttMultiSelected[taskId] && Object.keys(ganttMultiSelected).length > 1) {
+        // Plain click on a multi-selected item — start multi-drag, keep selection
+        drag = {
+          taskId: taskId,
+          role: 'body',
+          startX: startPt.x,
+          origStart: new Date(task.start.getTime()),
+          origEnd:   new Date(task.end.getTime()),
+          isMulti:   true,
+          multiOriginals: {}
+        };
+        for (var mi2 = 0; mi2 < tasks.length; mi2++) {
+          if (ganttMultiSelected[tasks[mi2].id]) {
+            drag.multiOriginals[tasks[mi2].id] = {
+              start: new Date(tasks[mi2].start.getTime()),
+              end:   new Date(tasks[mi2].end.getTime())
+            };
+          }
+        }
+        document.body.style.cursor = 'grabbing';
+        renderGantt();
+        var rows2 = taskTableBody.querySelectorAll('tr');
+        for (var r2 = 0; r2 < rows2.length; r2++) {
+          rows2[r2].classList.toggle('selected-row', parseInt(rows2[r2].dataset.taskId, 10) === selectedTaskId);
+        }
+      } else {
+        // Plain click on non-multi-selected item — clear multi-selection, single drag
+        ganttMultiSelected = {};
+        drag = {
+          taskId: taskId,
+          role: role,
+          startX: startPt.x,
+          origStart: new Date(task.start.getTime()),
+          origEnd:   new Date(task.end.getTime()),
+          isMulti:   false,
+          multiOriginals: {}
+        };
+        document.body.style.cursor = role === 'body' ? 'grabbing' : 'ew-resize';
+        renderGantt();
+        var rows3 = taskTableBody.querySelectorAll('tr');
+        for (var r3 = 0; r3 < rows3.length; r3++) {
+          rows3[r3].classList.toggle('selected-row', parseInt(rows3[r3].dataset.taskId, 10) === selectedTaskId);
+        }
       }
     }
 
@@ -3444,43 +3627,73 @@
       var totalMs = geom.maxDate - geom.minDate;
       var dxMs = (dxPx / totalPx) * totalMs;
       var dxDays = Math.round(dxMs / (1000 * 60 * 60 * 24));
-
-      var task = null;
-      for (var i = 0; i < tasks.length; i++) if (tasks[i].id === drag.taskId) { task = tasks[i]; break; }
-      if (!task) return;
-
-      if (task.type !== 'bar') {
-        // Markers only move (no resize)
-        task.start = addDays(drag.origStart, dxDays);
-        task.end = new Date(task.start.getTime());
-      } else if (drag.role === 'body') {
-        task.start = addDays(drag.origStart, dxDays);
-        task.end   = addDays(drag.origEnd, dxDays);
-      } else if (drag.role === 'left') {
-        var newStart = addDays(drag.origStart, dxDays);
-        if (newStart >= task.end) newStart = addDays(task.end, -1);
-        task.start = newStart;
-      } else if (drag.role === 'right') {
-        var newEnd = addDays(drag.origEnd, dxDays);
-        if (newEnd <= task.start) newEnd = addDays(task.start, 1);
-        task.end = newEnd;
-      }
-
       var snap = parseInt(snapSelect.value, 10);
-      if (snap && snap > 1) {
-        if (drag.role !== 'right') task.start = snapDate(task.start);
-        if (drag.role !== 'left' && task.type === 'bar') task.end = snapDate(task.end);
-        if (task.type !== 'bar') task.end = new Date(task.start.getTime());
-        else if (task.end <= task.start) task.end = addDays(task.start, snap);
+
+      if (drag.isMulti) {
+        // ── Multi-drag: move all selected tasks by the same day delta ──
+        for (var mi = 0; mi < tasks.length; mi++) {
+          var mt = tasks[mi];
+          var morig = drag.multiOriginals[mt.id];
+          if (!morig) continue;
+          var mNewStart = addDays(morig.start, dxDays);
+          if (snap && snap > 1) mNewStart = snapDate(mNewStart);
+          mt.start = mNewStart;
+          if (mt.type !== 'bar') {
+            mt.end = new Date(mt.start.getTime());
+          } else {
+            // Preserve original duration
+            var mDur = morig.end.getTime() - morig.start.getTime();
+            mt.end = new Date(mt.start.getTime() + mDur);
+          }
+        }
+        // Live-update task-table date inputs for all moved tasks
+        for (var mj = 0; mj < tasks.length; mj++) {
+          if (!drag.multiOriginals[tasks[mj].id]) continue;
+          var mrow = taskTableBody.querySelector('tr[data-task-id="' + tasks[mj].id + '"]');
+          if (mrow) {
+            var mdi = mrow.querySelectorAll('input.date-input');
+            if (mdi[0]) mdi[0].value = formatDate(tasks[mj].start);
+            if (mdi[1]) mdi[1].value = formatDate(tasks[mj].end);
+          }
+        }
+      } else {
+        // ── Single-task drag (original behaviour) ──
+        var task = null;
+        for (var i = 0; i < tasks.length; i++) if (tasks[i].id === drag.taskId) { task = tasks[i]; break; }
+        if (!task) return;
+
+        if (task.type !== 'bar') {
+          task.start = addDays(drag.origStart, dxDays);
+          task.end = new Date(task.start.getTime());
+        } else if (drag.role === 'body') {
+          task.start = addDays(drag.origStart, dxDays);
+          task.end   = addDays(drag.origEnd, dxDays);
+        } else if (drag.role === 'left') {
+          var newStart = addDays(drag.origStart, dxDays);
+          if (newStart >= task.end) newStart = addDays(task.end, -1);
+          task.start = newStart;
+        } else if (drag.role === 'right') {
+          var newEnd = addDays(drag.origEnd, dxDays);
+          if (newEnd <= task.start) newEnd = addDays(task.start, 1);
+          task.end = newEnd;
+        }
+
+        if (snap && snap > 1) {
+          if (drag.role !== 'right') task.start = snapDate(task.start);
+          if (drag.role !== 'left' && task.type === 'bar') task.end = snapDate(task.end);
+          if (task.type !== 'bar') task.end = new Date(task.start.getTime());
+          else if (task.end <= task.start) task.end = addDays(task.start, snap);
+        }
+
+        var row = taskTableBody.querySelector('tr[data-task-id="' + task.id + '"]');
+        if (row) {
+          var dateInputs = row.querySelectorAll('input.date-input');
+          if (dateInputs[0]) dateInputs[0].value = formatDate(task.start);
+          if (dateInputs[1]) dateInputs[1].value = formatDate(task.end);
+        }
       }
 
       renderGantt();
-      var row = taskTableBody.querySelector('tr[data-task-id="' + task.id + '"]');
-      if (row) {
-        var dateInputs = row.querySelectorAll('input.date-input');
-        if (dateInputs[0]) dateInputs[0].value = formatDate(task.start);
-        if (dateInputs[1]) dateInputs[1].value = formatDate(task.end);
-      }
       updateStatusText();
     }
 
@@ -3717,6 +3930,7 @@
           taskIdCounter = tasks.length + 1;
           for (var i = 0; i < tasks.length; i++) tasks[i].id = i + 1;
           selectedTaskId = null;
+          ganttMultiSelected = {};
           sortState = { column: null, direction: 1 };
           refreshTaskTable();
           updateStatusText();
@@ -4135,22 +4349,40 @@
         });
       }
 
-      // Gantt panel: Expand All / Collapse All
-      var ganttExpandAllBtn  = document.getElementById('gantt-expand-all-btn');
-      var ganttCollapseAllBtn = document.getElementById('gantt-collapse-all-btn');
+      // Gantt panel: Expand All / Collapse All / Markers toggle
+      var ganttExpandAllBtn    = document.getElementById('gantt-expand-all-btn');
+      var ganttCollapseAllBtn  = document.getElementById('gantt-collapse-all-btn');
+      var ganttMarkersToggleBtn = document.getElementById('gantt-markers-toggle-btn');
+      function _updateMarkersBtn() {
+        if (!ganttMarkersToggleBtn) return;
+        ganttMarkersToggleBtn.textContent = ganttRollupMarkersVisible ? '◉ Markers' : '○ Markers';
+        ganttMarkersToggleBtn.title = ganttRollupMarkersVisible
+          ? 'Hide milestone & flag markers on collapsed groups'
+          : 'Show milestone & flag markers on collapsed groups';
+        ganttMarkersToggleBtn.style.opacity = ganttRollupMarkersVisible ? '1' : '0.55';
+      }
+      if (ganttMarkersToggleBtn) {
+        ganttMarkersToggleBtn.style.display = 'none'; // hidden until a group is collapsed
+        _updateMarkersBtn();
+        ganttMarkersToggleBtn.addEventListener('click', function() {
+          ganttRollupMarkersVisible = !ganttRollupMarkersVisible;
+          _updateMarkersBtn();
+          renderGantt();
+        });
+      }
       if (ganttExpandAllBtn) ganttExpandAllBtn.addEventListener('click', function() {
-        collapsedGroups = {};
-        refreshTaskTable(); renderGantt();
+        ganttCollapsedGroups = {};
+        renderGantt();
       });
       if (ganttCollapseAllBtn) ganttCollapseAllBtn.addEventListener('click', function() {
         var seen = {};
         for (var i = 0; i < tasks.length; i++) {
           if (tasks[i].group && !seen[tasks[i].group]) {
-            collapsedGroups[tasks[i].group] = true;
+            ganttCollapsedGroups[tasks[i].group] = true;
             seen[tasks[i].group] = true;
           }
         }
-        refreshTaskTable(); renderGantt();
+        renderGantt();
       });
 
       // Gantt label-column resize handle
@@ -4196,11 +4428,16 @@
       // Expand / collapse all groups
       var expandAllBtn  = document.getElementById('expand-all-btn');
       var collapseAllBtn = document.getElementById('collapse-all-btn');
-      if (expandAllBtn)  expandAllBtn.addEventListener('click', function() { collapsedGroups = {}; refreshTaskTable(); renderGantt(); });
+      if (expandAllBtn)  expandAllBtn.addEventListener('click', function() { _setListCollapsed({}); refreshTaskTable(); });
       if (collapseAllBtn) collapseAllBtn.addEventListener('click', function() {
-        var rows = getDisplayedRows();
-        rows.forEach(function(r) { if (r.type === 'gh') collapsedGroups[r.discipline] = true; });
-        refreshTaskTable(); renderGantt();
+        var cg = _currentListCollapsed();
+        var seen = {};
+        for (var i = 0; i < tasks.length; i++) {
+          var t = tasks[i];
+          if (taskTypeFilter && t.type !== taskTypeFilter) continue;
+          if (t.group && !seen[t.group]) { cg[t.group] = true; seen[t.group] = true; }
+        }
+        refreshTaskTable();
       });
 
       // Live search
@@ -4287,7 +4524,13 @@
       // Keyboard
       document.addEventListener('keydown', function(e) {
         var inField = (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT');
-        if ((e.ctrlKey || e.metaKey)) {
+        if (e.key === 'Escape' && !inField && Object.keys(ganttMultiSelected).length > 0) {
+          e.preventDefault();
+          ganttMultiSelected = {};
+          selectedTaskId = null;
+          renderGantt();
+          refreshTaskTable();
+        } else if ((e.ctrlKey || e.metaKey)) {
           if (e.key === '=' || e.key === '+') { e.preventDefault(); setZoom(zoomLevel + 20); }
           else if (e.key === '-' || e.key === '_') { e.preventDefault(); setZoom(zoomLevel - 20); }
           else if (e.key === '0') { e.preventDefault(); setZoom(100); }
@@ -4305,24 +4548,45 @@
       var tasksPanelEl  = document.querySelector('.task-list-panel');
       var ganttToolbarEl = document.getElementById('gantt-toolbar');
 
+      var tabMilestonesBtn = document.getElementById('tab-milestones');
+      var tabFlagsBtn      = document.getElementById('tab-flags');
+      var taskListTitleEl  = document.querySelector('.task-list-panel .panel-title');
+
       function switchTab(tab) {
         currentTab = tab;
-        if (tab === 'gantt') {
-          if (ganttPanelEl)   ganttPanelEl.style.display   = '';
-          if (ganttToolbarEl) ganttToolbarEl.style.display  = '';
-          if (tasksPanelEl)   tasksPanelEl.classList.remove('tasks-fullscreen');
-          if (tabGanttBtn)    tabGanttBtn.classList.add('active');
-          if (tabTasksBtn)    tabTasksBtn.classList.remove('active');
-        } else {
-          if (ganttPanelEl)   ganttPanelEl.style.display   = 'none';
-          if (ganttToolbarEl) ganttToolbarEl.style.display  = 'none';
-          if (tasksPanelEl)   tasksPanelEl.classList.add('tasks-fullscreen');
-          if (tabGanttBtn)    tabGanttBtn.classList.remove('active');
-          if (tabTasksBtn)    tabTasksBtn.classList.add('active');
+        // Set type filter
+        if      (tab === 'milestones') taskTypeFilter = 'milestone';
+        else if (tab === 'flags')      taskTypeFilter = 'flag';
+        else                           taskTypeFilter = null;
+
+        var isGantt = (tab === 'gantt');
+        if (ganttPanelEl)   ganttPanelEl.style.display  = isGantt ? '' : 'none';
+        if (ganttToolbarEl) ganttToolbarEl.style.display = isGantt ? '' : 'none';
+        if (tasksPanelEl) {
+          if (isGantt) tasksPanelEl.classList.remove('tasks-fullscreen');
+          else         tasksPanelEl.classList.add('tasks-fullscreen');
         }
+
+        // Update tab button active states
+        [tabGanttBtn, tabTasksBtn, tabMilestonesBtn, tabFlagsBtn].forEach(function(btn) {
+          if (btn) btn.classList.remove('active');
+        });
+        var activeBtn = { gantt: tabGanttBtn, tasks: tabTasksBtn, milestones: tabMilestonesBtn, flags: tabFlagsBtn }[tab];
+        if (activeBtn) activeBtn.classList.add('active');
+
+        // Update panel title
+        if (taskListTitleEl) {
+          if      (tab === 'milestones') taskListTitleEl.textContent = 'Milestone Properties';
+          else if (tab === 'flags')      taskListTitleEl.textContent = 'Flag Properties';
+          else                           taskListTitleEl.textContent = 'Task Properties';
+        }
+
+        refreshTaskTable();
       }
-      if (tabGanttBtn) tabGanttBtn.addEventListener('click', function() { switchTab('gantt'); });
-      if (tabTasksBtn) tabTasksBtn.addEventListener('click', function() { switchTab('tasks'); });
+      if (tabGanttBtn)      tabGanttBtn.addEventListener('click',      function() { switchTab('gantt'); });
+      if (tabTasksBtn)      tabTasksBtn.addEventListener('click',      function() { switchTab('tasks'); });
+      if (tabMilestonesBtn) tabMilestonesBtn.addEventListener('click', function() { switchTab('milestones'); });
+      if (tabFlagsBtn)      tabFlagsBtn.addEventListener('click',      function() { switchTab('flags'); });
 
       // Column resize handles on task table headers
       initTableColResize();
@@ -4356,8 +4620,21 @@
       lbl.textContent = label;
     }
 
+    function _setSheetNameDisplay(name) {
+      var el = document.getElementById('sheet-name-display');
+      if (!el) return;
+      if (name) {
+        el.textContent = '📋 ' + name;
+        el.title = name;
+        el.style.display = '';
+      } else {
+        el.style.display = 'none';
+        el.textContent = '';
+      }
+    }
+
     // Default URL embedded in file — works across all browsers/computers without setup
-    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwD0rXgO3FqGRQVSJL_U2_MSFpm_8UMEEImhf9nMi1GwKlAiJ0CXBoB5sZ_NSD8qhp_8Q/exec';
+    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyxSSKucN2DSLEBVtXASN4yjA2ZciEtgASj-lZsWzDav4hKYTOh2d7018XTInJM7iGP5w/exec';
 
     function _loadStoredURL() {
       // localStorage wins (holds the URL confirmed working in the last session).
@@ -4535,7 +4812,11 @@
         flatMode:            flatMode      ? 'true' : 'false',
         barTextColor:        barTextColor  !== null ? barTextColor : '',
         groupColors:         JSON.stringify(groupColors),
-        collapsedGroups:     JSON.stringify(collapsedGroups),
+        collapsedGroups:           JSON.stringify(collapsedGroups),
+        milestonesCollapsedGroups: JSON.stringify(milestonesCollapsedGroups),
+        flagsCollapsedGroups:      JSON.stringify(flagsCollapsedGroups),
+        ganttCollapsedGroups:      JSON.stringify(ganttCollapsedGroups),
+        ganttRollupMarkersVisible: ganttRollupMarkersVisible ? 'true' : 'false',
         disciplineOrder:     JSON.stringify(disciplineOrder),
         taskListOrder:       JSON.stringify(taskListOrder),
         showName:            displayOptions.showName  ? 'true' : 'false',
@@ -4605,7 +4886,19 @@
         if (tcEl && barTextColor !== null) tcEl.value = barTextColor;
       }
       try { if (s.groupColors     !== undefined) groupColors     = JSON.parse(s.groupColors)     || {}; } catch(e) {}
-      try { if (s.collapsedGroups !== undefined) collapsedGroups = JSON.parse(s.collapsedGroups) || {}; } catch(e) {}
+      try { if (s.collapsedGroups           !== undefined) collapsedGroups           = JSON.parse(s.collapsedGroups)           || {}; } catch(e) {}
+      try { if (s.milestonesCollapsedGroups !== undefined) milestonesCollapsedGroups = JSON.parse(s.milestonesCollapsedGroups) || {}; } catch(e) {}
+      try { if (s.flagsCollapsedGroups      !== undefined) flagsCollapsedGroups      = JSON.parse(s.flagsCollapsedGroups)      || {}; } catch(e) {}
+      try { if (s.ganttCollapsedGroups      !== undefined) ganttCollapsedGroups      = JSON.parse(s.ganttCollapsedGroups)      || {}; } catch(e) {}
+      if (s.ganttRollupMarkersVisible !== undefined) {
+        ganttRollupMarkersVisible = (s.ganttRollupMarkersVisible !== 'false');
+        var _mb2 = document.getElementById('gantt-markers-toggle-btn');
+        if (_mb2) {
+          _mb2.textContent = ganttRollupMarkersVisible ? '◉ Markers' : '○ Markers';
+          _mb2.title       = ganttRollupMarkersVisible ? 'Hide milestone & flag markers on collapsed groups' : 'Show milestone & flag markers on collapsed groups';
+          _mb2.style.opacity = ganttRollupMarkersVisible ? '1' : '0.55';
+        }
+      }
       try { if (s.disciplineOrder !== undefined) disciplineOrder = JSON.parse(s.disciplineOrder) || []; } catch(e) {}
       try { if (s.taskListOrder   !== undefined) taskListOrder   = JSON.parse(s.taskListOrder)   || []; } catch(e) {}
 
@@ -4804,20 +5097,27 @@
           tasks = loaded;
           taskIdCounter = tasks.length + 1;
           selectedTaskId = null;
+          ganttMultiSelected = {};
           sortState = { column: null, direction: 1 };
           // Only reset order/collapse state if NOT restored from settings
           if (!data.settings || !data.settings.taskListOrder)   taskListOrder   = [];
           if (!data.settings || !data.settings.disciplineOrder) disciplineOrder = [];
-          if (!data.settings || !data.settings.collapsedGroups) collapsedGroups = {};
+          if (!data.settings || !data.settings.collapsedGroups)           collapsedGroups           = {};
+          if (!data.settings || !data.settings.milestonesCollapsedGroups) milestonesCollapsedGroups = {};
+          if (!data.settings || !data.settings.flagsCollapsedGroups)      flagsCollapsedGroups      = {};
+          if (!data.settings || !data.settings.ganttCollapsedGroups)      ganttCollapsedGroups      = {};
+          if (!data.settings || !data.settings.ganttRollupMarkersVisible) ganttRollupMarkersVisible = true;
           refreshTaskTable();
           updateStatusText();
           autoSetDateRange();
           renderGantt();
           _syncDot('ok', 'Loaded ' + loaded.length + ' tasks');
           if (statusText) statusText.textContent = '☁ Loaded ' + loaded.length + ' tasks from Google Sheets at ' + new Date().toLocaleTimeString();
+          _setSheetNameDisplay(data.spreadsheetName);
         } else {
           _syncDot('ok', 'Sheet empty — use Save to push data');
           if (statusText) statusText.textContent = 'Google Sheet has no tasks yet. Make edits here, then click ⬆ Save.';
+          _setSheetNameDisplay(data.spreadsheetName);
         }
       } catch(err) {
         _syncDot('err', 'Load failed');
@@ -5112,7 +5412,7 @@
           var gtasks = groupMap[disc] || [];
           if (!gtasks.length) continue;
           rows.push({ type: 'gh', disc: disc });
-          if (!collapsedGroups[disc]) {
+          if (!ganttCollapsedGroups[disc]) {
             for (var t2 = 0; t2 < gtasks.length; t2++) {
               rows.push({ type: 'task', task: gtasks[t2] });
             }
@@ -5386,6 +5686,38 @@
                           fill:ghColor + tintHex, 'clip-path':'url(#'+clipId+')'});
           }
 
+          // Collapsed milestone/flag markers — mirrors interactive chart behaviour
+          if (ganttCollapsedGroups[row.disc] && ganttRollupMarkersVisible) {
+            for (var cmi = 0; cmi < tasks.length; cmi++) {
+              var cmt = tasks[cmi];
+              if (cmt.group !== row.disc) continue;
+              if (cmt.type !== 'milestone' && cmt.type !== 'flag') continue;
+              if (!cmt.start) continue;
+              var cmx = _pDateToX(cmt.start, opts.sliceMin, opts.sliceMax, tw);
+              if (cmx < 0 || cmx > tw) continue;
+              var cmColor = cmt.colorOverride || cmt.color || '#0284c7';
+              var cmCx = mL + lw + cmx, cmCy = ry + rowH / 2;
+              if (cmt.type === 'milestone') {
+                var cmHs = Math.min(rowH / 3, 5);
+                var cmDia = document.createElementNS(NS, 'polygon');
+                cmDia.setAttribute('points',
+                  cmCx+','+(cmCy-cmHs)+' '+(cmCx+cmHs)+','+cmCy+' '+
+                  cmCx+','+(cmCy+cmHs)+' '+(cmCx-cmHs)+','+cmCy);
+                cmDia.setAttribute('fill', cmColor);
+                cmDia.setAttribute('clip-path', 'url(#'+clipId+')');
+                svg.appendChild(cmDia);
+              } else {
+                var cmPH = Math.min(rowH - 6, 14), cmFH = Math.min(cmPH * 0.5, 7);
+                var cmTop = cmCy - cmPH / 2;
+                mk('line', {x1:cmCx, y1:cmTop, x2:cmCx, y2:cmCy+cmPH/2,
+                             stroke:'#374151', 'stroke-width':1.5, 'clip-path':'url(#'+clipId+')'});
+                mk('polygon', {
+                  points: cmCx+','+cmTop+' '+(cmCx+9)+','+(cmTop+cmFH/2)+' '+cmCx+','+(cmTop+cmFH),
+                  fill: cmColor, 'clip-path':'url(#'+clipId+')'});
+              }
+            }
+          }
+
         } else if (row.type === 'disc') {
           // ── Flat mode disc row ──
           var dcColor = groupColors[row.disc] || '#64748b';
@@ -5436,6 +5768,15 @@
               dia.setAttribute('fill', barColor);
               dia.setAttribute('clip-path', 'url(#' + clipId + ')');
               svg.appendChild(dia);
+            } else if (t.type === 'flag') {
+              var fx = mL + lw + bx1, fCy = ry + rowH/2;
+              var fPH = Math.min(rowH - 4, 18), fFH = Math.min(fPH * 0.5, 8);
+              var fTop = fCy - fPH/2;
+              mk('line', {x1:fx, y1:fTop, x2:fx, y2:fCy+fPH/2,
+                           stroke:'#374151', 'stroke-width':1.5, 'clip-path':'url(#'+clipId+')'});
+              mk('polygon', {
+                points: fx+','+fTop+' '+(fx+11)+','+(fTop+fFH/2)+' '+fx+','+(fTop+fFH),
+                fill: barColor, 'clip-path':'url(#'+clipId+')'});
             } else {
               var barEl = mk('rect', {
                 x:mL+lw+bC1, y:bY, width:bW, height:bH, rx:2,
