@@ -1,80 +1,111 @@
 /**
  * PROJECT DASHBOARD — WEEKLY REPORTING VIEW
  *
- * STEP 1 — Run debugDashboard() first to confirm the exact tab name and columns.
- * STEP 2 — Update SRC below if needed, then run createProjectDashboard().
+ * HOW TO RUN:
+ *   1. Extensions → Apps Script → paste this into your create-dashboard file
+ *   2. Run → createProjectDashboard
  *
- * All formulas are live — the dashboard auto-updates whenever the source tab changes.
+ * The script auto-detects the source tab and every column position by
+ * reading row 1 headers — no hardcoded column letters anywhere.
  */
 
-/**
- * Run this first to verify the sheet name and column layout.
- * Output appears in the Apps Script execution log (View → Logs).
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// DIAGNOSTIC — run this first if the dashboard shows all zeros
+// It logs every tab name and every header it finds.
+// ─────────────────────────────────────────────────────────────────────────────
 function debugDashboard() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheets = ss.getSheets();
-
-  let report = '=== ALL TAB NAMES (copy the exact one you want) ===\n';
-  sheets.forEach((s, i) => {
-    report += `  [${i}] "${s.getName()}"  (${s.getLastRow()} rows, ${s.getLastColumn()} cols)\n`;
-  });
-
-  // Try to find the task list tab automatically
-  const candidates = sheets.filter(s =>
-    s.getName().toUpperCase().includes('TASK') ||
-    s.getName().toUpperCase().includes('PROJECT')
-  );
-
-  if (candidates.length > 0) {
-    const s = candidates[0];
-    const headers = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
-    report += `\n=== HEADERS IN "${s.getName()}" (row 1) ===\n`;
-    headers.forEach((h, i) => {
-      if (h) report += `  Col ${columnLetter_(i+1)} (${i+1}): "${h}"\n`;
+  let msg = '=== TAB NAMES ===\n';
+  ss.getSheets().forEach((s, i) => {
+    msg += `  [${i}] "${s.getName()}"\n`;
+    const headers = s.getRange(1, 1, 1, Math.min(s.getLastColumn(), 30)).getValues()[0];
+    headers.forEach((h, j) => {
+      if (h) msg += `        col ${j+1} (${String.fromCharCode(65+j)}): "${h}"\n`;
     });
-
-    // Sample 3 data rows to show WEEKLY column type
-    const weeklyIdx = headers.findIndex(h => String(h).toUpperCase() === 'WEEKLY');
-    const statusIdx = headers.findIndex(h => String(h).toUpperCase() === 'STATUS');
-    if (weeklyIdx >= 0) {
-      const sample = s.getRange(2, 1, 5, s.getLastColumn()).getValues();
-      report += `\n=== SAMPLE ROWS (WEEKLY col ${columnLetter_(weeklyIdx+1)}, STATUS col ${columnLetter_(statusIdx+1)}) ===\n`;
-      sample.forEach((row, i) => {
-        const weekly = row[weeklyIdx];
-        const status = row[statusIdx];
-        const task   = row[2] || '';
-        report += `  Row ${i+2}: WEEKLY="${weekly}" (${typeof weekly})  STATUS="${status}"  TASK="${String(task).substring(0,40)}"\n`;
-      });
-    }
-  }
-
-  Logger.log(report);
-  SpreadsheetApp.getUi().alert(report);
+  });
+  Logger.log(msg);
+  SpreadsheetApp.getUi().alert(msg);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN
+// ─────────────────────────────────────────────────────────────────────────────
 function createProjectDashboard() {
 
-  // ── CONFIG ───────────────────────────────────────────────────────────────
-  const SRC  = 'PROJECT TASK LIST';
-  const DASH = 'DASHBOARD';
-
-  // Colors
-  const NAVY     = '#162032';
-  const NAVY_LT  = '#1E3050';
-  const NAVY_MID = '#2A4A6E';
-  const BLUE_ACC = '#5AAFF0';
-  const SEP      = '#DCE5F0';
-
-  // ── SHEET SETUP ──────────────────────────────────────────────────────────
+  // ── 1. FIND SOURCE SHEET (auto-detect by looking for WEEKLY + STATUS headers)
   const ss  = SpreadsheetApp.getActiveSpreadsheet();
-  const src = ss.getSheetByName(SRC);
+  const src = ss.getSheets().find(sheet => {
+    const hdrs = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
+                      .map(h => String(h).toUpperCase().trim());
+    return hdrs.includes('WEEKLY') && hdrs.includes('STATUS');
+  });
 
   if (!src) {
-    SpreadsheetApp.getUi().alert(`Sheet "${SRC}" not found.\nCheck the tab name.`);
+    SpreadsheetApp.getUi().alert(
+      'Could not find a tab with both WEEKLY and STATUS column headers.\n' +
+      'Run debugDashboard() to see all tab names and their headers.'
+    );
     return;
   }
 
+  const SRC_NAME = src.getName();
+
+  // ── 2. MAP HEADERS → COLUMN LETTERS ────────────────────────────────────────
+  const rawHeaders = src.getRange(1, 1, 1, src.getLastColumn()).getValues()[0];
+
+  // Returns the spreadsheet column letter for the first matching header name.
+  // Pass multiple aliases in priority order.
+  function col() {
+    for (const alias of arguments) {
+      const idx = rawHeaders.findIndex(
+        h => String(h).toUpperCase().trim() === alias.toUpperCase().trim()
+      );
+      if (idx >= 0) return String.fromCharCode(65 + idx);
+    }
+    return null;
+  }
+
+  const C = {
+    discipline : col('DISCIPLINE'),
+    task       : col('TASK'),
+    consultant : col('CONSULTANT'),
+    person     : col('PERSON'),
+    start      : col('START DATE', 'START'),
+    end        : col('END DATE', 'END'),
+    status     : col('STATUS'),
+    priority   : col('PRIORITY'),
+    weekly     : col('WEEKLY'),
+    notes      : col('NOTES'),
+  };
+
+  // Abort if critical columns are missing
+  const missing = Object.entries(C)
+    .filter(([k, v]) => !v && ['status','weekly','task','discipline'].includes(k))
+    .map(([k]) => k.toUpperCase());
+
+  if (missing.length) {
+    SpreadsheetApp.getUi().alert(
+      `Missing required columns: ${missing.join(', ')}\n\n` +
+      `Headers found: ${rawHeaders.filter(h=>h).join(' | ')}\n\n` +
+      'Run debugDashboard() to see the full column list.'
+    );
+    return;
+  }
+
+  // ── 3. BUILD FORMULA HELPERS ────────────────────────────────────────────────
+  // Safely quote the sheet name for use inside formula strings
+  const Q = `'${SRC_NAME.replace(/'/g, "''")}'`;
+
+  // Full-column reference: e.g. range(C.status) → 'Sheet'!L:L
+  function range(letter, fromRow) {
+    if (!letter) return null;
+    return fromRow
+      ? `${Q}!${letter}${fromRow}:${letter}`
+      : `${Q}!${letter}:${letter}`;
+  }
+
+  // ── 4. CREATE / RESET DASHBOARD SHEET ──────────────────────────────────────
+  const DASH = 'DASHBOARD';
   let dash = ss.getSheetByName(DASH);
   if (dash) {
     dash.clear();
@@ -84,119 +115,108 @@ function createProjectDashboard() {
     dash = ss.insertSheet(DASH, 0);
   }
 
-  [175, 320, 115, 135, 92, 92, 135, 105, 270].forEach((w, i) => dash.setColumnWidth(i + 1, w));
+  const COL_WIDTHS = [175, 320, 115, 135, 92, 92, 135, 105, 270];
+  COL_WIDTHS.forEach((w, i) => dash.setColumnWidth(i + 1, w));
   if (dash.getMaxColumns() > 9) dash.hideColumns(10, dash.getMaxColumns() - 9);
 
-  // ── ROW 1 — TITLE ────────────────────────────────────────────────────────
+  // ── 5. COLORS ───────────────────────────────────────────────────────────────
+  const NAVY     = '#162032';
+  const NAVY_LT  = '#1E3050';
+  const NAVY_MID = '#2A4A6E';
+  const BLUE_ACC = '#5AAFF0';
+  const SEP      = '#DCE5F0';
+
+  // ── 6. ROW 1 — TITLE ────────────────────────────────────────────────────────
   dash.setRowHeight(1, 52);
-  mergeSet(dash, 'A1:I1', {
+  put(dash, 'A1:I1', {
     value: 'PROJECT DASHBOARD  ·  WEEKLY REPORTING VIEW',
-    bg: NAVY, font: '#FFFFFF', size: 15, bold: true, h: 'center', v: 'middle',
+    bg: NAVY, font: '#FFF', size: 15, bold: true, h: 'center', v: 'middle',
   });
 
-  // ── ROW 2 — LIVE TIMESTAMP ───────────────────────────────────────────────
+  // ── 7. ROW 2 — TIMESTAMP ────────────────────────────────────────────────────
   dash.setRowHeight(2, 20);
-  mergeSet(dash, 'A2:I2', {
+  put(dash, 'A2:I2', {
     formula: '="Last viewed: "&TEXT(NOW(),"MMM D, YYYY  ·  h:MM AM/PM")',
     bg: NAVY_LT, font: '#7A9BC0', size: 8, h: 'center', v: 'middle',
   });
 
-  // ── ROW 3 — SPACER ───────────────────────────────────────────────────────
+  // ── 8. ROW 3 — SPACER ───────────────────────────────────────────────────────
   dash.setRowHeight(3, 8);
   dash.getRange('A3:I3').setBackground(SEP);
 
-  // ── ROWS 4-5 — KPI CARDS ─────────────────────────────────────────────────
+  // ── 9. ROWS 4-5 — KPI CARDS ─────────────────────────────────────────────────
   dash.setRowHeight(4, 18);
   dash.setRowHeight(5, 46);
 
-  // WEEKLY card uses summed COUNTIFS to handle both boolean TRUE and text "TRUE"
-  const weeklyFormula =
-    `=COUNTIFS('${SRC}'!N:N,TRUE,'${SRC}'!L:L,"<>COMPLETED",'${SRC}'!L:L,"<>CANCELLED")` +
-    `+COUNTIFS('${SRC}'!N:N,"TRUE",'${SRC}'!L:L,"<>COMPLETED",'${SRC}'!L:L,"<>CANCELLED")`;
+  const sr = range(C.status);
+  const pr = range(C.priority);
+  const wr = range(C.weekly);
+
+  // WEEKLY card sums both boolean TRUE and text "TRUE" to handle either storage type
+  const weeklyKpi = wr
+    ? `=COUNTIFS(${wr},TRUE,${sr},"<>COMPLETED",${sr},"<>CANCELLED")`
+    + `+COUNTIFS(${wr},"TRUE",${sr},"<>COMPLETED",${sr},"<>CANCELLED")`
+    : '=0';
 
   const kpis = [
-    {
-      start: 1, span: 2,
-      label: 'IN PROGRESS',
-      formula: `=COUNTIF('${SRC}'!L:L,"IN PROGRESS")`,
-      lBg: '#BF4F00', nBg: '#E86A00',
-    },
-    {
-      start: 3, span: 2,
-      label: 'UPCOMING',
-      formula: `=COUNTIF('${SRC}'!L:L,"UPCOMING")`,
-      lBg: '#145A8C', nBg: '#1A72B8',
-    },
-    {
-      start: 5, span: 2,
-      label: '1-HIGH ACTIVE',
-      formula: `=COUNTIFS('${SRC}'!M:M,"1-HIGH",'${SRC}'!L:L,"<>COMPLETED",'${SRC}'!L:L,"<>CANCELLED")`,
-      lBg: '#9B1C1C', nBg: '#C62828',
-    },
-    {
-      start: 7, span: 2,
-      label: 'WEEKLY TRACKED',
-      formula: weeklyFormula,
-      lBg: '#5B21B6', nBg: '#7C3AED',
-    },
-    {
-      start: 9, span: 1,
-      label: 'COMPLETED',
-      formula: `=COUNTIF('${SRC}'!L:L,"COMPLETED")`,
-      lBg: '#065F46', nBg: '#059669',
-    },
+    { start:1, span:2, label:'IN PROGRESS',   lBg:'#BF4F00', nBg:'#E86A00',
+      formula: sr ? `=COUNTIF(${sr},"IN PROGRESS")` : '=0' },
+    { start:3, span:2, label:'UPCOMING',       lBg:'#145A8C', nBg:'#1A72B8',
+      formula: sr ? `=COUNTIF(${sr},"UPCOMING")` : '=0' },
+    { start:5, span:2, label:'1-HIGH ACTIVE',  lBg:'#9B1C1C', nBg:'#C62828',
+      formula: (sr && pr)
+        ? `=COUNTIFS(${pr},"1-HIGH",${sr},"<>COMPLETED",${sr},"<>CANCELLED")`
+        : '=0' },
+    { start:7, span:2, label:'WEEKLY TRACKED', lBg:'#5B21B6', nBg:'#7C3AED',
+      formula: weeklyKpi },
+    { start:9, span:1, label:'COMPLETED',      lBg:'#065F46', nBg:'#059669',
+      formula: sr ? `=COUNTIF(${sr},"COMPLETED")` : '=0' },
   ];
 
   kpis.forEach(k => {
-    const c1 = colLtr(k.start);
-    const c2 = colLtr(k.start + k.span - 1);
-    mergeSet(dash, `${c1}4:${c2}4`, { value: k.label, bg: k.lBg, font: '#FFF', size: 8, bold: true, h: 'center', v: 'middle' });
-    mergeSet(dash, `${c1}5:${c2}5`, { formula: k.formula, bg: k.nBg, font: '#FFF', size: 30, bold: true, h: 'center', v: 'middle' });
+    const c1 = ltr(k.start), c2 = ltr(k.start + k.span - 1);
+    put(dash, `${c1}4:${c2}4`, { value:k.label,    bg:k.lBg, font:'#FFF', size:8,  bold:true, h:'center', v:'middle' });
+    put(dash, `${c1}5:${c2}5`, { formula:k.formula, bg:k.nBg, font:'#FFF', size:30, bold:true, h:'center', v:'middle' });
   });
 
-  // ── ROW 6 — SPACER ───────────────────────────────────────────────────────
+  // ── 10. ROW 6 — SPACER ──────────────────────────────────────────────────────
   dash.setRowHeight(6, 12);
   dash.getRange('A6:I6').setBackground(SEP);
 
-  // ── ROW 7 — SECTION LABEL ────────────────────────────────────────────────
+  // ── 11. ROW 7 — SECTION LABEL ───────────────────────────────────────────────
   dash.setRowHeight(7, 30);
-  mergeSet(dash, 'A7:I7', {
+  put(dash, 'A7:I7', {
     value: '   WEEKLY TASKS  —  ACTIVE PROJECT ITEMS',
     bg: NAVY, font: BLUE_ACC, size: 11, bold: true, h: 'left', v: 'middle',
   });
 
-  // ── ROW 8 — COLUMN HEADERS ───────────────────────────────────────────────
+  // ── 12. ROW 8 — COLUMN HEADERS ──────────────────────────────────────────────
   dash.setRowHeight(8, 22);
   ['DISCIPLINE','TASK','CONSULTANT','PERSON','START','END DATE','STATUS','PRIORITY','NOTES']
-    .forEach((h, i) => dash.getRange(8, i + 1)
-      .setValue(h)
-      .setBackground(NAVY_MID).setFontColor('#FFF')
+    .forEach((h, i) => dash.getRange(8, i+1)
+      .setValue(h).setBackground(NAVY_MID).setFontColor('#FFF')
       .setFontSize(8).setFontWeight('bold')
       .setHorizontalAlignment('center').setVerticalAlignment('middle'));
 
-  // ── ROW 9+ — WEEKLY TASKS (live FILTER) ──────────────────────────────────
-  //
-  // FILTER handles both boolean TRUE and text "TRUE" in the WEEKLY column (N).
-  //   (N2:N=TRUE)+(N2:N="TRUE")  →  1 or 2 for any truthy value, 0 otherwise
-  //
-  // Source column map:
-  //   A=DISCIPLINE  C=TASK  D=CONSULTANT  E=PERSON
-  //   G=START  H=END  L=STATUS  M=PRIORITY  T=NOTES  N=WEEKLY
-  //
-  // Sorted by: PRIORITY asc (col 8), then END DATE asc (col 6)
+  // ── 13. ROW 9+ — WEEKLY TASKS TABLE ─────────────────────────────────────────
+  // Build output column array using detected positions.
+  // Falls back to empty string column if a column wasn't found.
+  const outCols = [C.discipline, C.task, C.consultant, C.person,
+                   C.start, C.end, C.status, C.priority, C.notes]
+    .map(letter => letter ? `${Q}!${letter}2:${letter}` : '""');
 
-  const s = `'${SRC}'!`;
+  // SORT indices in the 9-column output: col 8 = PRIORITY, col 6 = END DATE
   const filterFormula =
     `=IFERROR(` +
       `SORT(` +
         `FILTER(` +
-          `{${s}A2:A,${s}C2:C,${s}D2:D,${s}E2:E,${s}G2:G,${s}H2:H,${s}L2:L,${s}M2:M,${s}T2:T},` +
-          `(${s}N2:N=TRUE)+(${s}N2:N="TRUE"),` +   // WEEKLY = true (boolean or text)
-          `${s}L2:L<>"COMPLETED",` +
-          `${s}L2:L<>"CANCELLED",` +
-          `${s}L2:L<>""` +                          // exclude blank/separator rows
+          `{${outCols.join(',')}},` +
+          `(${range(C.weekly, 2)}=TRUE)+(${range(C.weekly, 2)}="TRUE"),` +
+          `${range(C.status, 2)}<>"COMPLETED",` +
+          `${range(C.status, 2)}<>"CANCELLED",` +
+          `${range(C.status, 2)}<>""` +
         `)` +
-      `,8,TRUE,6,TRUE),` +                          // sort: priority asc, end date asc
+      `,8,TRUE,6,TRUE),` +
     `"— No active weekly tasks —")`;
 
   dash.getRange('A9').setFormula(filterFormula);
@@ -207,10 +227,10 @@ function createProjectDashboard() {
   dash.getRange('A9:A400').setFontWeight('bold').setFontColor(NAVY_MID);
   for (let r = 9; r <= 400; r++) dash.setRowHeight(r, 22);
 
-  // ── FREEZE HEADER ROWS ───────────────────────────────────────────────────
+  // ── 14. FREEZE ───────────────────────────────────────────────────────────────
   dash.setFrozenRows(8);
 
-  // ── CONDITIONAL FORMATTING ───────────────────────────────────────────────
+  // ── 15. CONDITIONAL FORMATTING ───────────────────────────────────────────────
   const statusRng   = dash.getRange('G9:G400');
   const priorityRng = dash.getRange('H9:H400');
   const rules = [];
@@ -221,33 +241,35 @@ function createProjectDashboard() {
     ['DOWNSTREAM',   '#E5E7EB', '#374151'],
     ['PENDING',      '#FEF9C3', '#713F12'],
     ['75% COMPLETE', '#D1FAE5', '#064E3B'],
-  ].forEach(([text, bg, font]) =>
-    rules.push(SpreadsheetApp.newConditionalFormatRule()
-      .whenTextEqualTo(text).setBackground(bg).setFontColor(font)
-      .setRanges([statusRng]).build()));
+  ].forEach(([t, bg, font]) => rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo(t).setBackground(bg).setFontColor(font)
+      .setRanges([statusRng]).build()
+  ));
 
   [
     ['1-HIGH',   '#FEE2E2', '#991B1B'],
     ['2-MEDIUM', '#FEF3C7', '#92400E'],
     ['3-LOW',    '#DBEAFE', '#1E3A5F'],
-  ].forEach(([text, bg, font]) =>
-    rules.push(SpreadsheetApp.newConditionalFormatRule()
-      .whenTextEqualTo(text).setBackground(bg).setFontColor(font)
-      .setRanges([priorityRng]).build()));
+  ].forEach(([t, bg, font]) => rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo(t).setBackground(bg).setFontColor(font)
+      .setRanges([priorityRng]).build()
+  ));
 
   dash.setConditionalFormatRules(rules);
 
-  // ── DONE ─────────────────────────────────────────────────────────────────
+  // ── 16. DONE ─────────────────────────────────────────────────────────────────
   ss.setActiveSheet(dash);
   SpreadsheetApp.flush();
   SpreadsheetApp.getUi().alert(
-    '✅  Dashboard created!\n\n' +
-    'The WEEKLY TASKS table updates automatically whenever\n' +
-    '"PROJECT TASK LIST" data changes — no refresh needed.'
+    `✅  Dashboard created!\n\nSource tab: "${SRC_NAME}"\n\n` +
+    'Column positions detected automatically from row 1 headers.\n' +
+    'The table updates whenever the source data changes.'
   );
 
-  // ── LOCAL HELPERS ─────────────────────────────────────────────────────────
-  function mergeSet(sheet, a1, opts) {
+  // ── LOCAL HELPERS ─────────────────────────────────────────────────────────────
+  function put(sheet, a1, opts) {
     const rng = sheet.getRange(a1);
     const parts = a1.split(':');
     if (parts.length === 2 && parts[0] !== parts[1]) rng.merge();
@@ -261,8 +283,5 @@ function createProjectDashboard() {
     if (opts.v)    rng.setVerticalAlignment(opts.v);
   }
 
-  function colLtr(n) { return String.fromCharCode(64 + n); }
+  function ltr(n) { return String.fromCharCode(64 + n); }
 }
-
-// Shared helper (outside both functions so debugDashboard can use it)
-function columnLetter_(n) { return String.fromCharCode(64 + n); }
