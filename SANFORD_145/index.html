@@ -4637,24 +4637,13 @@
     var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwgQ2DRkivBEdbVXkLmlitrhawy1QaVfCwFb28SofjimtlrkhiDqwYIa4ezQlPOK3UJ/exec';
 
     function _loadStoredURL() {
-      // localStorage wins (holds the URL confirmed working in the last session).
-      // Embedded URL is the fallback for first-ever use or a different machine.
-      try {
-        var stored = localStorage.getItem('lacosta_sheets_url');
-        var v = stored || DEFAULT_SHEETS_URL || '';
-        if (v) { sheetsURL = v; _syncDot('ok', 'Connected'); }
-      } catch(e) {
-        if (DEFAULT_SHEETS_URL) { sheetsURL = DEFAULT_SHEETS_URL; _syncDot('ok', 'Connected'); }
-      }
+      // Always use the URL embedded in this file — localStorage is ignored.
+      if (DEFAULT_SHEETS_URL) { sheetsURL = DEFAULT_SHEETS_URL; _syncDot('ok', 'Connected'); }
     }
 
-    // Persist a confirmed-working URL (called after successful load/save, or explicit Setup save).
+    // Update the active URL for this session only — never persisted to localStorage.
     function _storeURL(url) {
       sheetsURL = url;
-      try {
-        if (url) localStorage.setItem('lacosta_sheets_url', url);
-        else      localStorage.removeItem('lacosta_sheets_url');
-      } catch(e) {}
     }
 
     var _depsEditingTaskId = null;
@@ -5231,15 +5220,13 @@
 
     // Wire up the Sheets sync buttons
     function initSheetsSync() {
-      _loadStoredURL();
-      console.log('[GANTT] initSheetsSync — sheetsURL:', sheetsURL || '(empty)');
-
-      // Auto-load — placed before any getElementById calls so nothing can block it
-      if (sheetsURL) {
-        console.log('[GANTT] Auto-load firing…');
-        loadFromSheets();
+      // Always use the embedded DEFAULT_SHEETS_URL — no localStorage, no overrides.
+      if (DEFAULT_SHEETS_URL) {
+        sheetsURL = DEFAULT_SHEETS_URL;
+        _syncDot('ok', 'Connected');
+        loadFromSheets(true); // silent auto-load on every page open
       } else {
-        console.warn('[GANTT] Auto-load skipped — no URL set');
+        _syncDot('', 'Not connected');
       }
 
       document.getElementById('sheets-config-btn').addEventListener('click', openSheetsModal);
