@@ -214,7 +214,7 @@
 
   <!-- Step 1: URL -->
   <div class="field">
-    <label>Step 1 — Apps Script Web App URL</label>
+    <label>Step 1 — Apps Script Web App URL <span class="optional-tag">Optional</span></label>
     <input type="text" id="url-input" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false">
     <div class="hint">Deploy your Apps Script as a Web App (Execute as: Me · Who has access: Anyone) and paste the URL here.</div>
   </div>
@@ -270,8 +270,9 @@
   }
 
   function updateApplyBtn() {
-    document.getElementById('apply-btn').disabled =
-      !isValidUrl(urlInput.value.trim()) || fileHandles.length === 0;
+    var url = urlInput.value.trim();
+    var urlOk = !url || isValidUrl(url);
+    document.getElementById('apply-btn').disabled = !urlOk || fileHandles.length === 0;
   }
 
   // ── File browsing ───────────────────────────────────────────
@@ -356,7 +357,8 @@
     var url      = urlInput.value.trim();
     var tabTitle = titleInput.value.trim();
 
-    if (!isValidUrl(url)) { showStatus('err', 'Please enter a valid Apps Script Web App URL.'); return; }
+    if (!url && !tabTitle) { showStatus('err', 'Enter a URL, a tab name, or both.'); return; }
+    if (url && !isValidUrl(url)) { showStatus('err', 'Please enter a valid Apps Script Web App URL.'); return; }
     if (fileHandles.length === 0) { showStatus('err', 'Please select at least one HTML file.'); return; }
 
     var applyBtn = document.getElementById('apply-btn');
@@ -373,20 +375,21 @@
         var content = await file.text();
         var changed = false;
 
-        // ── Replace DEFAULT_SHEETS_URL ──────────────────────
-        var URL_MARKER = "var DEFAULT_SHEETS_URL = '";
-        var uidx = content.indexOf(URL_MARKER);
-        if (uidx === -1) {
-          URL_MARKER = 'var DEFAULT_SHEETS_URL = "';
-          uidx = content.indexOf(URL_MARKER);
-        }
-
-        if (uidx !== -1) {
-          var uQuote  = URL_MARKER.slice(-1);
-          var uStart  = uidx + URL_MARKER.length;
-          var uEnd    = content.indexOf(uQuote, uStart);
-          content     = content.slice(0, uStart) + url + content.slice(uEnd);
-          changed     = true;
+        // ── Replace DEFAULT_SHEETS_URL (only if URL was provided) ──
+        if (url) {
+          var URL_MARKER = "var DEFAULT_SHEETS_URL = '";
+          var uidx = content.indexOf(URL_MARKER);
+          if (uidx === -1) {
+            URL_MARKER = 'var DEFAULT_SHEETS_URL = "';
+            uidx = content.indexOf(URL_MARKER);
+          }
+          if (uidx !== -1) {
+            var uQuote  = URL_MARKER.slice(-1);
+            var uStart  = uidx + URL_MARKER.length;
+            var uEnd    = content.indexOf(uQuote, uStart);
+            content     = content.slice(0, uStart) + url + content.slice(uEnd);
+            changed     = true;
+          }
         }
 
         // ── Replace <title> ─────────────────────────────────
@@ -428,7 +431,8 @@
     } else if (skipCount > 0 && okCount === 0) {
       showStatus('warn', 'No files were updated. Make sure you selected the correct timeline HTML files.');
     } else {
-      showStatus('ok', parts.join(' · ') + '.<br>Open the file in your browser — it will connect and load automatically.');
+      var connectNote = url ? '<br>Open the file in your browser — it will connect and load automatically.' : '';
+      showStatus('ok', parts.join(' · ') + '.' + connectNote);
     }
   }
 
