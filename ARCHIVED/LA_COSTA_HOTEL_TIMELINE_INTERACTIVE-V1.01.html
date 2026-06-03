@@ -1,0 +1,3416 @@
+<!--
+  ============================================================
+  LA COSTA HOTEL — Interactive Project Timeline
+  File: LA_COSTA_HOTEL_TIMELINE_INTERACTIVE.html
+
+  VERSION HISTORY
+  ───────────────
+  V1.01  2026-05-18
+    • collectSettings() / applySettings() wired to Sheets sync
+    • Chart settings (dark mode, font size, label width, group
+      colours, collapsed state, discipline order, bar text colour,
+      today line, flat mode, show name/phase/note) are now saved
+      to the "GANTT SETTINGS-DO NOT EDIT" tab on every Save and
+      restored automatically on every Load
+    • dashedOutline bar style fully supported in Sheets round-trip
+
+  V1.0   2026-05-18  (baseline — working release)
+    • Two-way Google Sheets sync (PROJECT TASK LIST)
+    • Collapse/expand arrows per discipline group
+    • Per-discipline colour picker → applies to side header + rollup bar
+    • Adjustable label column width (drag)
+    • Resizable task table columns
+    • Bar font size control
+    • Today line toggle
+    • Dark / light theme toggle
+    • Flat mode toggle
+    • Tasks tab (full-page task list, no Gantt toolbar)
+    • Duration (weeks) column — editing recalculates end date
+    • MD save/load as Markdown pipe table
+    • Search filters task table only (chart unaffected)
+    • Bar styles: Solid / Dashed / Dashed Outline
+    • Auto bar text colour with manual override picker
+  ============================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>La Costa Hotel - Interactive Project Schedule</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --bg-alt: #ffffff;
+      --panel: #ffffff;
+      --panel-soft: #f1f5f9;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --accent: #0284c7;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --text-soft: #94a3b8;
+      --danger: #dc2626;
+      --radius-lg: 16px;
+      --radius-sm: 8px;
+      --shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.08);
+      --shadow-card: 0 2px 8px rgba(15, 23, 42, 0.06);
+    }
+    /* ---- Dark theme overrides ---- */
+    body.dark-theme { background: #0a0f1a; }
+    .dark-theme { --bg:#0f172a; --bg-alt:#1e293b; --panel:#1e293b; --panel-soft:#263248; --border:#263248; --border-strong:#334155; --text:#e2e8f0; --text-muted:#94a3b8; --text-soft:#475569; --shadow-soft:0 8px 24px rgba(0,0,0,0.4); --shadow-card:0 2px 8px rgba(0,0,0,0.3); }
+    /* ---- Search + batch bar ---- */
+    .task-search-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+    .task-search-row input[type="text"] { flex:1; max-width:300px; border-radius:999px; font-size:0.8rem; }
+    .batch-bar { display:none; align-items:center; gap:6px; padding:4px 10px; background:var(--panel-soft); border-radius:999px; border:1px solid var(--border-strong); font-size:0.76rem; color:var(--text-muted); }
+    .batch-bar.visible { display:flex; }
+    /* ---- Gantt group-header label style ---- */
+    .gantt-gh-label { font-size:10px; font-weight:800; fill:#0369a1; letter-spacing:0.07em; text-transform:uppercase; }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; padding: 16px; background: #f1f5f9; color: var(--text); }
+    .app-shell { max-width: 1820px; margin: 0 auto; background: var(--panel); border-radius: 22px; padding: 18px 22px 24px; box-shadow: var(--shadow-soft); border: 1px solid var(--border); }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .project-meta { display: flex; flex-direction: column; gap: 2px; min-width: 320px; flex: 1; }
+    .meta-name-row { display: flex; align-items: center; gap: 8px; }
+    .logo-dot { width: 14px; height: 14px; border-radius: 999px; background: radial-gradient(circle at 30% 30%, #bae6fd 0, #0284c7 40%, #075985 100%); box-shadow: 0 0 12px rgba(2, 132, 199, 0.5); flex-shrink: 0; }
+    .meta-input { border: 1px solid transparent; border-radius: 6px; padding: 3px 8px; background: transparent; color: var(--text); outline: none; font-family: inherit; }
+    .meta-input:hover { border-color: var(--border); background: var(--panel-soft); }
+    .meta-input:focus { border-color: var(--accent); background: var(--bg-alt); box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15); }
+    .meta-name { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.04em; width: 100%; }
+    .meta-subtitle { font-size: 0.95rem; color: var(--text-muted); letter-spacing: 0.05em; width: 100%; font-weight: 500; }
+    .meta-updated-wrap { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+    .meta-updated-label { font-size: 0.7rem; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.08em; }
+    .meta-updated { font-size: 0.78rem; color: var(--text-muted); width: 150px; }
+    .meta-note { font-size: 0.8rem; color: var(--text); width: 100%; min-height: 36px; max-height: 80px; resize: vertical; margin-top: 4px; }
+
+    .panel { background: var(--panel); border-radius: var(--radius-lg); border: 1px solid var(--border); padding: 14px 16px 16px; box-shadow: var(--shadow-card); }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
+    .panel-title { font-size: 0.95rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+    .badge { padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; border: 1px solid var(--border-strong); color: var(--text-muted); background: var(--panel-soft); }
+    label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 3px; }
+    input[type="text"], input[type="date"], select, textarea { width: 100%; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--bg-alt); color: var(--text); font-size: 0.82rem; outline: none; font-family: inherit; }
+    input[type="text"]:focus, input[type="date"]:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15); }
+    input[type="color"] { width: 38px; height: 26px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-alt); padding: 2px; cursor: pointer; }
+    button { border-radius: 999px; border: 1px solid var(--border-strong); padding: 5px 11px; font-size: 0.78rem; cursor: pointer; background: var(--bg-alt); color: var(--text); display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, border-color 0.15s, transform 0.1s; }
+    button.primary { background: linear-gradient(180deg, #0ea5e9, #0284c7); border-color: #0284c7; color: #ffffff; font-weight: 600; }
+    button:hover { transform: translateY(-1px); border-color: var(--accent); background: var(--panel-soft); }
+    button.primary:hover { filter: brightness(1.06); background: linear-gradient(180deg, #0ea5e9, #0284c7); }
+    button.secondary { background: var(--bg-alt); }
+    button.danger { border-color: #fca5a5; color: var(--danger); background: #fef2f2; }
+    button.danger:hover { background: #fee2e2; }
+    button:active { transform: translateY(0); }
+
+    .toolbar { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .toolbar-group { display: flex; gap: 6px; align-items: end; flex-wrap: wrap; }
+    .pill-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+    .pill { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-strong); font-size: 0.72rem; color: var(--text-muted); background: var(--panel-soft); }
+    .zoom-controls { display: flex; align-items: center; gap: 4px; background: var(--bg-alt); border: 1px solid var(--border-strong); border-radius: 999px; padding: 2px; }
+    .zoom-btn { width: 28px; height: 28px; padding: 0; font-size: 1rem; font-weight: 700; border: none; background: transparent; color: var(--text); border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; }
+    .zoom-btn:hover { background: var(--panel-soft); transform: none; }
+    .zoom-display { min-width: 50px; text-align: center; font-size: 0.78rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .zoom-slider { width: 130px; accent-color: var(--accent); }
+
+    /* Display options checkboxes */
+    .checkbox-row { display: flex; gap: 12px; align-items: center; padding: 6px 10px; background: var(--bg-alt); border: 1px solid var(--border-strong); border-radius: 999px; }
+    .checkbox-row label { display: flex; gap: 5px; align-items: center; font-size: 0.74rem; color: var(--text); margin: 0; text-transform: none; letter-spacing: normal; cursor: pointer; font-weight: 500; }
+    .checkbox-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+
+    /* GANTT - sticky grid layout */
+    .gantt-container { border-radius: var(--radius-lg); border: 1px solid var(--border-strong); background: var(--bg-alt); overflow: hidden; position: relative; }
+    .gantt-scroll { overflow: auto; max-height: 720px; position: relative; }
+    .gantt-grid { display: grid; grid-template-columns: 240px max-content; grid-template-rows: 60px max-content; width: max-content; }
+    /* Label-column resize handle */
+    .gantt-label-resizer { position: absolute; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 10; background: transparent; transition: background 0.15s; }
+    .gantt-label-resizer:hover, .gantt-label-resizer.resizing { background: rgba(2,132,199,0.2); }
+    .gantt-cell-corner { grid-row: 1; grid-column: 1; position: sticky; top: 0; left: 0; z-index: 5; background: var(--bg-alt); border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+    .gantt-cell-axis   { grid-row: 1; grid-column: 2; position: sticky; top: 0; z-index: 4; background: var(--bg-alt); border-bottom: 1px solid var(--border-strong); }
+    .gantt-cell-side   { grid-row: 2; grid-column: 1; position: sticky; left: 0; z-index: 3; background: var(--panel-soft); border-right: 1px solid var(--border-strong); }
+    .gantt-cell-body   { grid-row: 2; grid-column: 2; background: var(--bg-alt); }
+
+    svg { display: block; user-select: none; }
+    .axis-label { font-size: 11px; fill: #334155; font-weight: 600; letter-spacing: 0.05em; }
+    .axis-label-major { font-size: 12px; fill: #0f172a; font-weight: 700; letter-spacing: 0.06em; }
+    .task-bar { stroke: rgba(15,23,42,0.25); stroke-width: 0.5; cursor: grab; }
+    .task-bar.selected { stroke: #0284c7; stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(2,132,199,0.4)); }
+    .task-bar.dashed { fill: none; stroke-dasharray: 4 3; stroke: #dc2626; stroke-width: 1.5; cursor: grab; }
+    .task-bar.dashed-outline { stroke-dasharray: 5 3; stroke-width: 2; cursor: grab; }
+    .resize-handle { fill: rgba(0,0,0,0.0); stroke: rgba(0,0,0,0.0); cursor: ew-resize; }
+    .resize-handle:hover, .resize-handle.active { fill: rgba(2,132,199,0.25); stroke: rgba(2,132,199,0.8); stroke-width: 1; }
+    .grid-line { stroke: #e2e8f0; stroke-width: 0.5; }
+    .grid-line-month { stroke: #cbd5e1; stroke-width: 0.7; }
+    .grid-line-quarter { stroke: #94a3b8; stroke-width: 0.9; }
+    .grid-line-year { stroke: #64748b; stroke-width: 1.2; }
+    .today-line { stroke: #0284c7; stroke-width: 1.5; stroke-dasharray: 4 3; }
+    .task-label-big { font-weight: 800; fill: #ffffff; letter-spacing: 0.03em; pointer-events: none; }
+    .task-label-sub { font-weight: 600; fill: rgba(255,255,255,0.9); letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; }
+    .task-label-note { font-weight: 600; fill: rgba(255,255,255,0.85); letter-spacing: 0.06em; text-transform: uppercase; pointer-events: none; }
+    .approval-text { font-weight: 800; fill: #fef3c7; letter-spacing: 0.05em; text-transform: uppercase; pointer-events: none; }
+    .vertical-text { font-size: 15px; font-weight: 800; fill: #ffffff; letter-spacing: 0.06em; pointer-events: none; }
+    .row-label { font-size: 10px; fill: #475569; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; pointer-events: none; }
+    .milestone-symbol { pointer-events: none; }
+    .milestone-label { font-size: 11px; font-weight: 700; fill: #0f172a; pointer-events: none; }
+    .milestone-note { font-size: 9px; font-weight: 500; fill: #64748b; pointer-events: none; }
+
+    .status-text { margin-top: 8px; font-size: 0.74rem; color: var(--text-muted); }
+    .status-text strong { color: var(--accent); }
+    .task-list-panel { margin-top: 14px; }
+    .task-table-wrapper { margin-top: 8px; border-radius: 12px; border: 1px solid var(--border-strong); max-height: 420px; overflow: auto; background: var(--bg-alt); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 100%; }
+    th, td { padding: 2px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
+    th { position: sticky; top: 0; background: var(--panel-soft); z-index: 1; text-align: left; font-weight: 600; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-strong); }
+    th[data-sort] { cursor: pointer; user-select: none; }
+    th[data-sort]:hover { background: rgba(2,132,199,0.08); color: var(--text); }
+    .sort-indicator { color: var(--accent); margin-left: 4px; font-size: 11px; }
+    tr:last-child td { border-bottom: none; }
+    tr.selected-row { background: rgba(2,132,199,0.08); }
+    tr:hover { background: rgba(2,132,199,0.04); }
+    tr.dragging { opacity: 0.4; }
+    tr.drop-above td { box-shadow: inset 0 2px 0 0 var(--accent); }
+    tr.drop-below td { box-shadow: inset 0 -2px 0 0 var(--accent); }
+
+    .grip-cell { width: 24px; padding-left: 4px !important; padding-right: 4px !important; }
+    .grip-icon { display: inline-block; width: 16px; cursor: grab; user-select: none; color: #94a3b8; font-weight: 800; line-height: 1; padding: 4px 2px; border-radius: 4px; text-align: center; }
+    .grip-icon:hover { color: var(--accent); background: rgba(2,132,199,0.08); }
+    .grip-icon:active { cursor: grabbing; }
+
+    .row-color { width: 30px; height: 22px; border-radius: 5px; border: 1px solid var(--border-strong); cursor: pointer; background: transparent; padding: 1px; }
+    .row-input { width: 100%; padding: 3px 6px; border-radius: 5px; border: 1px solid transparent; background: transparent; color: var(--text); font-size: 0.78rem; outline: none; font-family: inherit; }
+    .row-input:hover { border-color: var(--border-strong); background: var(--bg-alt); }
+    .row-input:focus { border-color: var(--accent); background: var(--bg-alt); }
+    .row-input.date-input { width: 130px; }
+    .row-input.name-input { min-width: 140px; }
+    .row-input.sub-input { min-width: 90px; }
+    .row-input.note-input { min-width: 160px; }
+    .row-input.symbol-input { width: 50px; text-align: center; font-size: 1rem; }
+    .row-input:disabled { opacity: 0.4; cursor: not-allowed; }
+    select.row-input { appearance: none; -webkit-appearance: none; background-color: transparent; }
+
+    .btn-icon { padding: 3px 7px; font-size: 0.7rem; border-radius: 6px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; padding: 8px 12px; border-radius: 12px; background: var(--panel-soft); border: 1px solid var(--border); }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--text-muted); }
+    .legend-swatch { width: 18px; height: 10px; border-radius: 3px; border: 1px solid rgba(15,23,42,0.2); }
+    .legend-swatch.dashed { background: transparent !important; border: 1.5px dashed #dc2626; }
+    .legend-swatch.diamond { width: 14px; height: 14px; border-radius: 0; transform: rotate(45deg); border: 1px solid rgba(15,23,42,0.4); background: #0284c7; }
+    .legend-swatch.flag { width: 14px; height: 14px; border-radius: 0; background: linear-gradient(135deg, #16a34a 50%, transparent 50%); border: none; position: relative; }
+    .help-text { margin-top: 8px; font-size: 0.72rem; color: var(--text-muted); padding: 8px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; }
+    .help-text strong { color: var(--accent); }
+    .hidden-file-input { display: none; }
+    @media print {
+      body { background: #fff; padding: 0; color: #000; }
+      .app-shell { box-shadow: none; border-radius: 0; background: #fff; border: none; max-width: none; padding: 8px; }
+      .toolbar, button, .task-list-panel, .help-text, .legend, .topbar > div:last-child { display: none !important; }
+      .gantt-scroll { max-height: none; overflow: visible; }
+      .panel { background: #fff; border: none; box-shadow: none; padding: 0; }
+      .meta-input { border: none; }
+    }
+
+    /* ---- Task table: discipline group headings ---- */
+    .disc-group-header { background: var(--panel-soft); cursor: pointer; user-select: none; position: sticky; }
+    .disc-group-header:hover td { background: var(--border-strong); }
+    .disc-group-header td { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.09em; color: var(--text-muted); padding: 4px 10px; text-transform: uppercase; border-bottom: 1px solid var(--border-strong); }
+    .disc-group-toggle { display: inline-block; width: 14px; margin-right: 5px; font-style: normal; transition: transform 0.15s; }
+    .disc-group-toggle.collapsed { transform: rotate(-90deg); }
+    .disc-group-count { font-size: 0.68rem; font-weight: 500; color: var(--text-soft); margin-left: 8px; }
+
+    /* ---- Column resize handles on task table ---- */
+    .col-resizer { position: absolute; top: 0; right: 0; bottom: 0; width: 5px; cursor: col-resize; z-index: 2; background: transparent; border-radius: 0 4px 4px 0; }
+    .col-resizer:hover { background: rgba(2,132,199,0.35); }
+
+    /* ---- App view tabs ---- */
+    .app-tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 2px solid var(--border-strong); }
+    .app-tab-btn { border-radius: 8px 8px 0 0; border: 1px solid var(--border-strong); border-bottom: none; padding: 7px 20px; font-size: 0.82rem; font-weight: 600; background: var(--panel-soft); color: var(--text-muted); cursor: pointer; transition: background 0.15s; margin-bottom: -2px; }
+    .app-tab-btn:hover { background: var(--border); transform: none; color: var(--text); }
+    .app-tab-btn.active { background: var(--panel); color: var(--accent); border-bottom: 2px solid var(--panel); }
+
+    /* ---- Tasks-only fullscreen mode ---- */
+    .tasks-fullscreen .task-table-wrapper { max-height: none !important; overflow: visible !important; }
+    .tasks-fullscreen th { position: static; }   /* sticky headers need a scroll ancestor; disable when page scrolls */
+
+    /* ---- Google Sheets Two-Way Sync ---- */
+    .sync-indicator { display:inline-flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--text-muted); padding:3px 9px; border-radius:999px; background:var(--panel-soft); border:1px solid var(--border); white-space:nowrap; }
+    .sync-dot { width:8px; height:8px; border-radius:50%; background:#94a3b8; flex-shrink:0; transition:background 0.3s; }
+    .sync-dot.ok      { background:#16a34a; }
+    .sync-dot.busy    { background:#f59e0b; animation:syncpulse 0.8s infinite; }
+    .sync-dot.err     { background:#dc2626; }
+    @keyframes syncpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .sheets-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
+    .sheets-overlay.open { display:flex; }
+    .sheets-modal { background:var(--panel); border-radius:18px; padding:28px 28px 22px; width:500px; max-width:93vw; box-shadow:0 24px 64px rgba(15,23,42,0.28); border:1px solid var(--border-strong); }
+    .sheets-modal-title { font-size:1.05rem; font-weight:800; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
+    .sheets-modal-title span { font-size:1.2rem; }
+    .sheets-modal-sub { font-size:0.82rem; color:var(--text-muted); margin:0 0 18px; line-height:1.5; }
+    .sheets-field { margin-bottom:14px; }
+    .sheets-field label { display:block; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:4px; }
+    .sheets-field input[type="url"], .sheets-field input[type="text"] { width:100%; padding:8px 10px; border-radius:9px; border:1px solid var(--border-strong); font-size:0.82rem; outline:none; font-family:inherit; background:var(--bg-alt); color:var(--text); }
+    .sheets-field input:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(2,132,199,0.15); }
+    .sheets-steps { font-size:0.75rem; color:var(--text-muted); background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:11px 14px; margin:14px 0; line-height:1.7; }
+    .sheets-steps strong { color:#0369a1; }
+    .sheets-steps ol { margin:6px 0 0 16px; padding:0; }
+    .sheets-steps li { margin-bottom:1px; }
+    .sheets-modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="project-meta">
+        <div class="meta-name-row">
+          <span class="logo-dot"></span>
+          <input type="text" id="meta-name" class="meta-input meta-name" value="LA COSTA HOTEL" />
+        </div>
+        <input type="text" id="meta-subtitle" class="meta-input meta-subtitle" value="PROJECT SCHEDULE" />
+        <div class="meta-updated-wrap">
+          <span class="meta-updated-label">Updated:</span>
+          <input type="date" id="meta-updated" class="meta-input meta-updated" value="2026-05-14" />
+        </div>
+        <textarea id="meta-note" class="meta-input meta-note" placeholder="Optional project note..."></textarea>
+      </div>
+
+      <div class="toolbar" id="gantt-toolbar">
+        <div class="toolbar-group">
+          <div>
+            <div class="pill-label">View Range</div>
+            <div style="display:flex; gap:6px;">
+              <label style="display:flex; flex-direction:column; gap:2px;">
+                <span class="pill-label">Start</span>
+                <input type="date" id="chart-start" value="2026-01-01" style="width:140px;" />
+              </label>
+              <label style="display:flex; flex-direction:column; gap:2px;">
+                <span class="pill-label">End</span>
+                <input type="date" id="chart-end" value="2027-12-31" style="width:140px;" />
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div class="pill-label">Scale</div>
+            <select id="scale-select" style="width:110px;">
+              <option value="day">Day</option>
+              <option value="week">Week</option>
+              <option value="month" selected>Month</option>
+              <option value="quarter">Quarter</option>
+              <option value="year">Year</option>
+            </select>
+          </div>
+
+          <div>
+            <div class="pill-label">Zoom</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <div class="zoom-controls">
+                <button class="zoom-btn" id="zoom-out-btn" title="Zoom out">&minus;</button>
+                <span class="zoom-display" id="zoom-display">100%</span>
+                <button class="zoom-btn" id="zoom-in-btn" title="Zoom in">+</button>
+              </div>
+              <input type="range" id="zoom-slider" class="zoom-slider" min="30" max="400" value="100" step="5" />
+              <button class="secondary" id="zoom-fit-btn">Fit</button>
+            </div>
+          </div>
+
+          <div>
+            <div class="pill-label">Show on Bars</div>
+            <div class="checkbox-row">
+              <label><input type="checkbox" id="opt-name" checked /> Name</label>
+              <label><input type="checkbox" id="opt-phase" /> Group</label>
+              <label><input type="checkbox" id="opt-note" checked /> Note</label>
+              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-flat-mode" /> Flat</label>
+              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-today" checked /> Today</label>
+              <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Font <input type="number" id="gantt-font-size" value="12" min="6" max="24" style="width:44px;height:22px;padding:2px 4px;border-radius:6px;font-size:0.74rem;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" /></label>
+              <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Text <input type="color" id="gantt-text-color" value="#ffffff" style="width:28px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" /> <input type="checkbox" id="gantt-text-color-auto" checked style="width:13px;height:13px;cursor:pointer;" title="Auto text color based on bar brightness" /> Auto</label>
+            </div>
+          </div>
+
+          <div>
+            <div class="pill-label">Snap</div>
+            <select id="snap-select" style="width:90px;">
+              <option value="1">Day</option>
+              <option value="7" selected>Week</option>
+              <option value="0">None</option>
+            </select>
+          </div>
+
+          <div>
+            <div class="pill-label">File</div>
+            <div style="display:flex; gap:6px;">
+              <button id="save-md-btn" class="secondary">Save MD</button>
+              <button id="load-md-btn" class="secondary">Load MD</button>
+              <input type="file" id="load-md-input" class="hidden-file-input" accept=".md,.txt,.markdown" />
+            </div>
+          </div>
+
+          <div>
+            <div class="pill-label">Actions</div>
+            <div style="display:flex; gap:6px;">
+              <button id="reload-defaults-btn" class="secondary">Defaults</button>
+              <button id="print-btn" class="secondary">Print</button>
+              <button id="export-csv-btn" class="secondary">CSV</button>
+              <button id="export-excel-btn" class="secondary">Excel</button>
+            </div>
+          </div>
+
+          <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px; align-self:flex-end;">
+            <button id="theme-toggle-btn" class="secondary" title="Toggle dark / light theme" style="font-size:0.82rem; padding:6px 12px;">🌙 Dark</button>
+          </div>
+
+          <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px;">
+            <div class="pill-label">Google Sheets Sync</div>
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <span class="sync-indicator" id="sync-indicator">
+                <span class="sync-dot" id="sync-dot"></span>
+                <span id="sync-label">Not connected</span>
+              </span>
+              <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
+              <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
+              <button id="sheets-config-btn" class="secondary" title="Configure Google Sheets connection">⚙ Setup</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-tabs">
+      <button class="app-tab-btn active" id="tab-gantt">📊 Timeline</button>
+      <button class="app-tab-btn" id="tab-tasks">📋 Tasks</button>
+    </div>
+
+    <div class="panel" id="gantt-panel">
+      <div class="panel-header">
+        <div class="panel-title">Project Timeline</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="gantt-expand-all-btn" class="secondary" title="Expand all groups">⊞ Expand</button>
+          <button id="gantt-collapse-all-btn" class="secondary" title="Collapse all groups">⊟ Collapse</button>
+          <div class="badge" id="summary-pill">0 tasks</div>
+        </div>
+      </div>
+
+      <div class="gantt-container">
+        <div class="gantt-label-resizer" id="gantt-label-resizer"></div>
+        <div class="gantt-scroll" id="gantt-scroll">
+          <div class="gantt-grid" id="gantt-grid">
+            <div class="gantt-cell-corner" id="cell-corner"></div>
+            <div class="gantt-cell-axis"   id="cell-axis"></div>
+            <div class="gantt-cell-side"   id="cell-side"></div>
+            <div class="gantt-cell-body"   id="cell-body"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend" id="legend"></div>
+
+      <div class="help-text">
+        <strong>Tips:</strong> Drag bars to move; drag bar edges to resize. Drag table rows by the grip handle to reorder timeline rows. Click a column header to sort. Toggle Show-on-Bars checkboxes to compact bar height. Switch Scale (Day/Week/Month/Quarter/Year), zoom with Ctrl+wheel, and Save/Load your project as MD.
+      </div>
+    </div>
+
+    <div class="panel task-list-panel">
+      <div class="panel-header">
+        <div class="panel-title">Task Properties</div>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <button id="expand-all-btn"   class="secondary" title="Expand all groups">⊞ Expand All</button>
+          <button id="collapse-all-btn" class="secondary" title="Collapse all groups">⊟ Collapse All</button>
+          <button id="hide-tasks-btn"   class="secondary" title="Show / hide task list">▼ Hide Tasks</button>
+          <button id="add-task-btn"     class="primary">+ Add Task</button>
+          <button id="add-milestone-btn" class="secondary">+ Add Milestone</button>
+          <button id="add-flag-btn"     class="secondary">+ Add Flag</button>
+          <button id="clear-tasks-btn"  class="danger">Clear All</button>
+        </div>
+      </div>
+      <div class="task-search-row">
+        <input type="text" id="task-search-input" placeholder="🔍  Search tasks…" />
+        <div class="batch-bar" id="batch-bar">
+          <span id="batch-count" style="font-weight:600;">0 selected</span>
+          <span style="color:var(--border-strong);margin:0 2px;">|</span>
+          <select id="batch-status-sel" style="width:150px;padding:3px 6px;font-size:0.74rem;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);">
+            <option value="">— Status —</option>
+            <option>IN PROGRESS</option><option>UPCOMING</option><option>DOWNSTREAM</option><option>PENDING</option>
+            <option>COMPLETED</option><option>CANCELLED</option><option>75% COMPLETE</option>
+            <option>WAITING ON OTHERS</option><option>WITING ON THE CITY</option>
+            <option>UNDER REVIEW</option><option>URGENT</option><option>ON HOLD</option>
+            <option>STAND BY</option><option>NEEDS ATTENTION</option><option>TBD</option>
+            <option>NOTE</option><option>RECEIVED</option><option>APPROVED</option><option>DECLINED</option>
+          </select>
+          <span style="color:var(--border-strong);margin:0 2px;">|</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.74rem;color:var(--text-muted);text-transform:none;letter-spacing:normal;margin:0;">
+            Color <input type="color" id="batch-color-inp" value="#0284c7" style="width:28px;height:22px;border-radius:4px;border:1px solid var(--border-strong);padding:1px;cursor:pointer;" />
+            <input type="checkbox" id="batch-color-cb" style="width:13px;height:13px;cursor:pointer;" title="Apply color to selection" />
+          </label>
+          <span style="color:var(--border-strong);margin:0 2px;">|</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.74rem;color:var(--text-muted);text-transform:none;letter-spacing:normal;margin:0;">
+            Disc <input type="text" id="batch-disc-inp" placeholder="DISCIPLINE" style="width:100px;padding:2px 5px;font-size:0.74rem;border-radius:5px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" />
+          </label>
+          <button id="batch-apply-btn"  class="primary"    style="font-size:0.74rem;padding:3px 10px;">Apply</button>
+          <button id="batch-delete-btn" class="danger"     style="font-size:0.74rem;padding:3px 9px;">Delete</button>
+          <button id="batch-clear-sel-btn" class="secondary" style="font-size:0.74rem;padding:3px 9px;">Clear</button>
+        </div>
+      </div>
+
+      <div class="task-table-wrapper" id="task-table-wrapper">
+        <table>
+          <thead>
+            <tr id="task-table-head">
+              <th style="width:24px;"><input type="checkbox" id="select-all-cb" style="width:14px;height:14px;cursor:pointer;" title="Select / deselect all" /></th>
+              <th style="width:28px;"></th>
+              <th style="width:18px;"></th>
+              <th data-sort="name">TASK</th>
+              <th data-sort="group">DISCIPLINE</th>
+              <th data-sort="type">TYPE</th>
+              <th data-sort="start">START DATE</th>
+              <th data-sort="end">END DATE</th>
+              <th>DURATION (WKS)</th>
+              <th data-sort="symbol">SYMBOL</th>
+              <th data-sort="note">STATUS</th>
+              <th data-sort="color">COLOR</th>
+              <th>STYLE</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="task-table-body"></tbody>
+        </table>
+      </div>
+
+      <div class="status-text" id="status-text">Loading La Costa Hotel project schedule...</div>
+    </div>
+  </div>
+
+  <!-- ===== Google Sheets Setup Modal ===== -->
+  <div class="sheets-overlay" id="sheets-overlay">
+    <div class="sheets-modal">
+      <p class="sheets-modal-title"><span>☁</span> Google Sheets — Two-Way Sync</p>
+      <p class="sheets-modal-sub">Connect this timeline to a Google Sheet. Team members can load the latest data, drag tasks to new dates, update status, add notes — then save it all back to the sheet instantly.</p>
+
+      <div class="sheets-field">
+        <label>Apps Script Web App URL</label>
+        <input type="url" id="sheets-url-input" placeholder="https://script.google.com/macros/s/AKfy.../exec" autocomplete="off" />
+      </div>
+
+      <div class="sheets-steps">
+        <strong>First-time setup (5 minutes):</strong>
+        <ol>
+          <li>Open (or create) a Google Sheet for this project</li>
+          <li>Go to <strong>Extensions → Apps Script</strong></li>
+          <li>Delete any placeholder code, paste the contents of <code>Google_Apps_Script_Code.js</code></li>
+          <li>Click <strong>Deploy → New deployment → Web app</strong></li>
+          <li>Set <em>Execute as: Me</em> &nbsp;·&nbsp; <em>Who has access: Anyone</em></li>
+          <li>Click <strong>Deploy</strong> — copy the Web App URL</li>
+          <li>Paste the URL in the field above and click <strong>Save & Connect</strong></li>
+        </ol>
+        After setup, every team member who has the timeline URL can Load &amp; Save to the same sheet.
+      </div>
+
+      <div class="sheets-modal-footer">
+        <button id="sheets-modal-cancel" class="secondary">Cancel</button>
+        <button id="sheets-modal-test" class="secondary">Test Connection</button>
+        <button id="sheets-modal-save" class="primary">Save &amp; Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------
+    // ROW LAYOUT
+    // -----------------------------
+    // ROW_LAYOUT is now dynamic — rows are built from DISCIPLINE values in loaded tasks.
+    // The discipline code from the spreadsheet IS the row key and label.
+    var ROW_LAYOUT = []; // kept for compatibility; not used for row definitions
+
+    // -----------------------------
+    // DEFAULT TASKS (organized so groups appear in ROW_LAYOUT order)
+    // -----------------------------
+    var DEFAULT_TASKS = [
+      // UTILITIES
+      { name: "AT&T DROP STATUS",          group: "UTIL",  sub: "UTILITIES",     type: "bar", start: "2026-01-10", end: "2026-01-12", color: "#e8862a", note: "VERIFY DROP" },
+      { name: "SDG&E DISCONNECTS",         group: "UTIL",  sub: "UTILITIES",     type: "bar", start: "2026-01-10", end: "2026-01-31", color: "#e8862a", note: "GAS & ELECTRIC" },
+      { name: "SDG&E SERVICE PACKAGE",     group: "UTIL",  sub: "UTILITIES",     type: "bar", start: "2026-02-01", end: "2026-04-15", color: "#f0a958", note: "LONG-LEAD" },
+      { name: "SDG&E GUY-WIRE RELOCATION", group: "UTIL",  sub: "UTILITIES",     type: "bar", start: "2026-02-28", end: "2026-03-31", color: "#f0a958", note: "PRE-GRADING" },
+
+      // HAZMAT
+      { name: "LEAD/ASBESTOS TESTING",     group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-12", end: "2026-01-14", color: "#a01e2e", note: "ON-SITE" },
+      { name: "LEAD/ASBESTOS REPORT",      group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-16", end: "2026-01-17", color: "#a01e2e", note: "REPORT" },
+      { name: "ABATEMENT BIDDING",         group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-17", end: "2026-01-23", color: "#c43a4a", note: "BIDS OUT" },
+      { name: "ABATEMENT CONTRACTOR",      group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-26", end: "2026-01-27", color: "#a01e2e", note: "SELECTED" },
+      { name: "ABATEMENT & CLEARANCE",     group: "HAZ",   sub: "ENVIRONMENTAL", type: "bar", start: "2026-01-27", end: "2026-02-07", color: "#a01e2e", note: "CLEARANCE LETTERS" },
+
+      // DEMO
+      { name: "DEMO PERMIT SUBMITTED",     group: "DEMO",  sub: "PERMITTING",    type: "bar", start: "2026-01-05", end: "2026-01-07", color: "#8b5cf6", note: "INITIAL" },
+      { name: "WASTE MGMT PLAN",           group: "DEMO",  sub: "PERMITTING",    type: "bar", start: "2026-02-08", end: "2026-02-10", color: "#8b5cf6", note: "COMPLETED" },
+      { name: "DEMO PERMIT RESUBMITTED",   group: "DEMO",  sub: "PERMITTING",    type: "bar", start: "2026-02-12", end: "2026-02-14", color: "#8b5cf6", note: "RESUBMIT" },
+
+      // CIVIL
+      { name: "ENGINEERING COMMENTS",      group: "CIVIL", sub: "CIVIL",         type: "bar", start: "2026-01-06", end: "2026-01-08", color: "#d9c34a", note: "RECEIVED" },
+      { name: "COORDINATE W/ JESSE",       group: "CIVIL", sub: "CIVIL",         type: "bar", start: "2026-01-07", end: "2026-01-09", color: "#d9c34a", note: "CIVIL ENGR" },
+      { name: "ROW + HOLD-HARMLESS",       group: "CIVIL", sub: "CIVIL",         type: "bar", start: "2026-01-08", end: "2026-02-28", color: "#d9c34a", note: "ROW / DRAINAGE" },
+
+      // SITE
+      { name: "DEMOLITION",                group: "SITE",  sub: "SITEWORK",      type: "bar", start: "2026-03-10", end: "2026-03-14", color: "#5d8a3a", note: "" },
+      { name: "GRADING & EARTHWORK",       group: "SITE",  sub: "SITEWORK",      type: "bar", start: "2026-03-16", end: "2026-03-27", color: "#5d8a3a", note: "" },
+      { name: "WET UTILITIES",             group: "SITE",  sub: "SITEWORK",      type: "bar", start: "2026-04-01", end: "2026-04-30", color: "#5d8a3a", note: "SEWER/STORM/WATER" },
+      { name: "DRY UTILITIES",             group: "SITE",  sub: "SITEWORK",      type: "bar", start: "2026-04-16", end: "2026-04-30", color: "#7eb04a", note: "ELEC/COMM" },
+
+      // RGP
+      { name: "RGP SUB1",                  group: "RGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-06-15", end: "2026-08-07", color: "#e8862a", note: "REVIEW" },
+      { name: "RGP ISSUANCE & BONDING",    group: "RGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-08-17", end: "2026-09-11", color: "#f0a958", note: "APPROVAL" },
+
+      // PGP
+      { name: "PGP SUB4",                  group: "PGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-05-04", end: "2026-07-17", color: "#e8862a", note: "REVIEW" },
+      { name: "PGP SUB5",                  group: "PGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-08-07", end: "2026-09-18", color: "#e8862a", note: "REVIEW" },
+      { name: "PGP ISSUANCE & BONDING",    group: "PGP",   sub: "CDP DESIGN",    type: "bar", start: "2026-09-18", end: "2026-10-30", color: "#f0a958", note: "APPROVAL" },
+
+      // GCPC
+      { name: "GCPC SUB1",                 group: "GCPC",  sub: "NEW DESIGN",    type: "bar", start: "2026-11-02", end: "2026-12-15", color: "#e8862a", note: "GRADING ONLY & BUILDING PADS" },
+      { name: "GCPC SUB2",                 group: "GCPC",  sub: "NEW DESIGN",    type: "bar", start: "2027-02-01", end: "2027-03-31", color: "#e8862a", note: "APPROVAL" },
+
+      // BP
+      { name: "BP SUB1",                   group: "BP",    sub: "CDP DESIGN",    type: "bar", start: "2026-05-04", end: "2026-06-19", color: "#5d8a3a", note: "REVIEW" },
+      { name: "BP SUB2",                   group: "BP",    sub: "CDP DESIGN",    type: "bar", start: "2026-07-10", end: "2026-08-21", color: "#5d8a3a", note: "REVIEW" },
+      { name: "BP SUB3",                   group: "BP",    sub: "CDP DESIGN",    type: "bar", start: "2026-09-14", end: "2026-11-13", color: "#5d8a3a", note: "REVIEW" },
+      { name: "BP SUB4",                   group: "BP",    sub: "NEW DESIGN",    type: "bar", start: "2026-12-14", end: "2027-03-19", color: "#5d8a3a", note: "GRADING ONLY & BUILDING PADS" },
+      { name: "BP APPROVAL",               group: "BP",    sub: "NEW DESIGN",    type: "bar", start: "2027-03-19", end: "2027-04-09", color: "#4a6e2c", note: "APPROVAL" },
+
+      // BCPC
+      { name: "BCPC SUB1",                 group: "BCPC",  sub: "NEW DESIGN",    type: "bar", start: "2027-04-06", end: "2027-07-03", color: "#5d8a3a", note: "REVIEW" },
+      { name: "BCPC APPROVAL",             group: "BCPC",  sub: "NEW DESIGN",    type: "bar", start: "2027-07-03", end: "2027-07-20", color: "#4a6e2c", note: "APPROVAL" },
+
+      // SUBC
+      { name: "SUBC SUB1",                 group: "SUBC",  sub: "SUB-C DESIGN",  type: "bar", start: "2026-11-13", end: "2026-12-18", color: "#6878a8", note: "GRADING ONLY & BUILDING PADS" },
+      { name: "SUBC SUB2",                 group: "SUBC",  sub: "NEW DESIGN",    type: "bar", start: "2027-04-06", end: "2027-07-03", color: "#6878a8", note: "INTERIOR FLOOR PLAN / EXT MATERIALS" },
+      { name: "SUBC APPROVAL",             group: "SUBC",  sub: "SUB-C DESIGN",  type: "bar", start: "2027-07-03", end: "2027-09-11", color: "#8a98c4", note: "APPROVAL" },
+
+      // GRADE
+      { name: "ROUGH GRADING",             group: "GRADE", sub: "CDP DESIGN",    type: "bar", start: "2026-09-14", end: "2026-11-13", color: "#d9c34a", note: "" },
+      { name: "PRECISE GRADING",           group: "GRADE", sub: "CDP DESIGN",    type: "bar", start: "2026-11-13", end: "2027-04-06", color: "#d9c34a", note: "" },
+
+      // VERT
+      { name: "VERTICAL CONSTRUCTION",     group: "VERT",  sub: "24 MONTHS",     type: "bar", start: "2027-04-06", end: "2029-04-06", color: "#4a1c2e", note: "24 MONTHS" },
+
+      // CDP
+      { name: "CDP EXTENSION 1",           group: "CDP",   sub: "CDP EXT",       type: "bar", start: "2026-05-04", end: "2026-05-25", color: "#a01e2e", note: "", dashed: true },
+      { name: "CDP EXTENSION 2",           group: "CDP",   sub: "CDP EXT",       type: "bar", start: "2027-04-01", end: "2027-04-22", color: "#a01e2e", note: "", dashed: true },
+
+      // MILESTONES & FLAGS
+      { name: "PROJECT KICKOFF",           group: "MILE",  sub: "MILESTONE",     type: "milestone", start: "2026-01-05", end: "2026-01-05", color: "#0284c7", note: "Project start", symbol: "*" },
+      { name: "DEMO PERMIT ISSUED",        group: "MILE",  sub: "MILESTONE",     type: "milestone", start: "2026-02-20", end: "2026-02-20", color: "#8b5cf6", note: "Demo permit issued", symbol: "*" },
+      { name: "GRADING PERMIT ISSUED",     group: "MILE",  sub: "MILESTONE",     type: "milestone", start: "2026-03-05", end: "2026-03-05", color: "#d9c34a", note: "Grading permit issued", symbol: "*" },
+      { name: "GROUNDBREAKING",            group: "MILE",  sub: "FLAG",          type: "flag",      start: "2026-03-10", end: "2026-03-10", color: "#16a34a", note: "Demo begins", symbol: "G" },
+      { name: "VERTICAL START",            group: "MILE",  sub: "FLAG",          type: "flag",      start: "2027-04-06", end: "2027-04-06", color: "#dc2626", note: "Construction begins", symbol: "V" }
+    ];
+
+    var DEFAULT_META = {
+      name: "LA COSTA HOTEL",
+      subtitle: "PROJECT SCHEDULE",
+      updated: "2026-05-14",
+      note: "Master construction schedule - permitting sequence and vertical build."
+    };
+
+    // -----------------------------
+    // State
+    // -----------------------------
+    var tasks = [];
+    var taskIdCounter = 1;
+    var selectedTaskId = null;
+    var projectMeta = { name: "", subtitle: "", updated: "", note: "" };
+    var sortState = { column: null, direction: 1 }; // 1=asc, -1=desc
+
+    // Status values — exact match to spreadsheet STATUS dropdown
+    var STATUS_OPTIONS = [
+      '', 'IN PROGRESS', 'UPCOMING', 'DOWNSTREAM', 'PENDING', 'COMPLETED',
+      'CANCELLED', '75% COMPLETE', 'WAITING ON OTHERS', 'WITING ON THE CITY',
+      'UNDER REVIEW', 'URGENT', 'ON HOLD', 'STAND BY', 'NEEDS ATTENTION',
+      'TBD', 'NOTE', 'RECEIVED', 'APPROVED', 'DECLINED'
+    ];
+
+    var displayOptions = {
+      showName: true,
+      showPhase: false,  // "Group" label on bars — off by default to keep bars clean
+      showNote: true
+    };
+    var flatMode = false;
+    var userLabelWidth = 240;  // user-adjustable label column width
+    var ganttBarFontSize = 12; // user-adjustable bar label font size
+    var showTodayLine = true;  // whether to draw the Today vertical line
+    var barTextColor  = null;  // null = auto (contrast), hex string = manual override
+    var groupColors  = {};     // { disciplineKey: '#rrggbb' } — header / rollup bar tint per group
+    var currentTab   = 'gantt'; // 'gantt' | 'tasks'
+    var collapsedGroups  = {};   // { 'DISCIPLINE-KEY': true } when collapsed
+    var disciplineOrder  = [];   // user-controlled order of discipline groups
+    var taskTableVisible = true;
+    var searchFilter    = '';
+    var selectedTaskIds = {};
+    var dragType        = null;   // 'task' | 'group'
+    var darkMode        = false;
+
+    var BASE_TICK_WIDTH = { day: 24, week: 48, month: 80, quarter: 140, year: 200 };
+    var zoomLevel = 100;
+    var currentScale = "month";
+
+    var geom = { minDate: null, maxDate: null, leftLabelWidth: 240, topAxisHeight: 60, rowHeight: 48, rowGap: 2, bodyWidth: 0, bodyHeight: 0, displayedRows: [], unitWidth: 0, ticks: [] };
+
+    // DOM refs
+    var chartStartInput, chartEndInput, scaleSelect, snapSelect;
+    var addTaskBtn, addMilestoneBtn, addFlagBtn, clearTasksBtn, reloadDefaultsBtn;
+    var printBtn, exportCsvBtn, exportExcelBtn;
+    var taskTableBody, summaryPill, statusText, ganttScroll;
+    var zoomInBtn, zoomOutBtn, zoomSlider, zoomDisplay, zoomFitBtn;
+    var metaName, metaSubtitle, metaUpdated, metaNote;
+    var saveMdBtn, loadMdBtn, loadMdInput;
+    var cellCorner, cellAxis, cellSide, cellBody;
+    var optName, optPhase, optNote;
+
+    function getUnitWidth() {
+      var base = BASE_TICK_WIDTH[currentScale] || 80;
+      return Math.max(8, Math.round(base * (zoomLevel / 100)));
+    }
+
+    // -----------------------------
+    // Date helpers
+    // -----------------------------
+    function parseDate(value) {
+      if (!value) return null;
+      var d = new Date(value + 'T00:00:00');
+      return isNaN(d.getTime()) ? null : d;
+    }
+    function formatDate(d) {
+      if (!(d instanceof Date)) return '';
+      var y = d.getFullYear();
+      var m = String(d.getMonth() + 1).padStart(2, '0');
+      var day = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + day;
+    }
+    function addDays(d, days) {
+      var nd = new Date(d.getTime());
+      nd.setDate(nd.getDate() + days);
+      return nd;
+    }
+    function daysBetween(a, b) { return Math.round((b - a) / (1000 * 60 * 60 * 24)); }
+    function snapDate(d) {
+      var snap = parseInt(snapSelect.value, 10);
+      if (!snap || snap <= 1) return d;
+      var base = geom.minDate || d;
+      var diff = daysBetween(base, d);
+      var snapped = Math.round(diff / snap) * snap;
+      return addDays(base, snapped);
+    }
+
+    // -----------------------------
+    // Project meta
+    // -----------------------------
+    function syncMetaInputs() {
+      metaName.value = projectMeta.name;
+      metaSubtitle.value = projectMeta.subtitle;
+      metaUpdated.value = projectMeta.updated;
+      metaNote.value = projectMeta.note;
+    }
+    function captureMetaFromInputs() {
+      projectMeta.name = metaName.value;
+      projectMeta.subtitle = metaSubtitle.value;
+      projectMeta.updated = metaUpdated.value;
+      projectMeta.note = metaNote.value;
+    }
+
+    // -----------------------------
+    // Display options (bar height)
+    // -----------------------------
+    function captureDisplayOptions() {
+      displayOptions.showName  = optName.checked;
+      displayOptions.showPhase = optPhase.checked;
+      displayOptions.showNote  = optNote.checked;
+    }
+
+    function getEffectiveRowHeight() {
+      var visible = (displayOptions.showName ? 1 : 0) +
+                    (displayOptions.showPhase ? 1 : 0) +
+                    (displayOptions.showNote ? 1 : 0);
+      if (visible === 0) return 22;
+      if (visible === 1) return 30;
+      if (visible === 2) return 38;
+      return 48;
+    }
+
+    function getDisplayedRows() {
+      // NOTE: search filter is intentionally NOT applied here — chart always shows all tasks.
+      // Search only filters the task table (handled in refreshTaskTable).
+      var groupMap = {}, seenG = {}, orderedDiscs = [];
+      for (var j = 0; j < disciplineOrder.length; j++) {
+        var dk = disciplineOrder[j];
+        if (!seenG[dk]) { orderedDiscs.push(dk); seenG[dk] = true; }
+      }
+      for (var i = 0; i < tasks.length; i++) {
+        var kg = tasks[i].group;
+        if (!kg) continue;
+        if (!seenG[kg]) { orderedDiscs.push(kg); disciplineOrder.push(kg); seenG[kg] = true; }
+        if (!groupMap[kg]) groupMap[kg] = [];
+        groupMap[kg].push(tasks[i]);
+      }
+
+      if (flatMode) {
+        var flat = [];
+        for (var fi = 0; fi < orderedDiscs.length; fi++) {
+          var disc = orderedDiscs[fi];
+          var ftasks = groupMap[disc] || [];
+          if (!ftasks.length) continue;
+          flat.push({ type:'disc', key:'disc_'+disc, label:disc, discipline:disc });
+        }
+        return flat;
+      }
+
+      // Hierarchical: group-header + task rows
+      var result = [];
+      for (var g = 0; g < orderedDiscs.length; g++) {
+        var disc   = orderedDiscs[g];
+        var gtasks = groupMap[disc] || [];
+        if (!gtasks.length) continue;
+        result.push({ type:'gh', key:'gh_'+disc, label:disc, discipline:disc });
+        if (!collapsedGroups[disc]) {
+          for (var t2 = 0; t2 < gtasks.length; t2++) {
+            result.push({ type:'task', key:'task_'+gtasks[t2].id, label:gtasks[t2].name, taskId:gtasks[t2].id });
+          }
+        }
+      }
+      return result;
+    }
+
+    // -----------------------------
+    // Zoom
+    // -----------------------------
+    function setZoom(level, opts) {
+      opts = opts || {};
+      level = Math.max(30, Math.min(400, Math.round(level)));
+      zoomLevel = level;
+      if (zoomSlider) zoomSlider.value = level;
+      if (zoomDisplay) zoomDisplay.textContent = level + '%';
+
+      var anchorRatio = opts.anchorRatio;
+      if (anchorRatio == null && ganttScroll && ganttScroll.scrollWidth > 0) {
+        anchorRatio = (ganttScroll.scrollLeft + ganttScroll.clientWidth / 2) / ganttScroll.scrollWidth;
+      }
+      renderGantt();
+      if (ganttScroll && anchorRatio != null) {
+        var newCenter = anchorRatio * ganttScroll.scrollWidth;
+        ganttScroll.scrollLeft = Math.max(0, newCenter - ganttScroll.clientWidth / 2);
+      }
+    }
+
+    function zoomFit() {
+      if (!ganttScroll) return;
+      var userStart = parseDate(chartStartInput.value);
+      var userEnd   = parseDate(chartEndInput.value);
+      if (!userStart || !userEnd) return;
+      var ticks = buildTicks(userStart, userEnd, currentScale);
+      var available = ganttScroll.clientWidth - geom.leftLabelWidth - 24;
+      if (available <= 0 || ticks.length === 0) return;
+      var idealUnit = available / ticks.length;
+      var newZoom = Math.round((idealUnit / (BASE_TICK_WIDTH[currentScale] || 80)) * 100);
+      setZoom(newZoom);
+    }
+
+    // -----------------------------
+    // Load / add / clear / delete
+    // -----------------------------
+    function normalizeTask(t, id) {
+      var type = t.type || (t.milestone ? 'milestone' : (t.flag ? 'flag' : 'bar'));
+      if (type !== 'bar' && type !== 'milestone' && type !== 'flag') type = 'bar';
+      return {
+        id: id,
+        name: t.name || '',
+        group: t.group || 'BP',
+        sub: t.sub || '',
+        note: t.note || '',
+        dashed: !!t.dashed,
+        dashedOutline: !!t.dashedOutline,
+        type: type,
+        symbol: t.symbol || '',
+        start: parseDate(t.start) || new Date(),
+        end: type !== 'bar' ? (parseDate(t.start) || new Date()) : (parseDate(t.end) || parseDate(t.start) || new Date()),
+        color: t.color || '#0284c7'
+      };
+    }
+
+    function loadDefaults() {
+      tasks = [];
+      taskIdCounter = 1;
+      for (var i = 0; i < DEFAULT_TASKS.length; i++) {
+        tasks.push(normalizeTask(DEFAULT_TASKS[i], taskIdCounter++));
+      }
+      projectMeta = {
+        name: DEFAULT_META.name,
+        subtitle: DEFAULT_META.subtitle,
+        updated: DEFAULT_META.updated,
+        note: DEFAULT_META.note
+      };
+      syncMetaInputs();
+      selectedTaskId = null;
+      sortState = { column: null, direction: 1 };
+      refreshTaskTable();
+      updateStatusText();
+      autoSetDateRange();
+      renderGantt();
+    }
+
+    function addTask(asType) {
+      var chartStart = parseDate(chartStartInput.value);
+      var defaultStart = chartStart;
+      if (!defaultStart && tasks.length > 0) defaultStart = tasks[0].start;
+      if (!defaultStart) defaultStart = new Date();
+
+      var t = asType || 'bar';
+      var newTask = {
+        id: taskIdCounter++,
+        name: t === 'milestone' ? ("MILESTONE " + taskIdCounter) :
+              t === 'flag' ? ("FLAG " + taskIdCounter) :
+              ("NEW TASK " + taskIdCounter),
+        group: (t === 'milestone' || t === 'flag') ? "MILE" : "BP",
+        sub: t === 'milestone' ? "MILESTONE" : (t === 'flag' ? "FLAG" : "CDP DESIGN"),
+        note: "",
+        dashed: false,
+        type: t,
+        symbol: t === 'milestone' ? "*" : (t === 'flag' ? "F" : ""),
+        start: new Date(defaultStart.getTime()),
+        end: t !== 'bar' ? new Date(defaultStart.getTime()) : addDays(defaultStart, 30),
+        color: t === 'milestone' ? "#0284c7" : (t === 'flag' ? "#16a34a" : "#0284c7")
+      };
+      tasks.push(newTask);
+      selectedTaskId = newTask.id;
+      sortState = { column: null, direction: 1 };
+      refreshTaskTable();
+      updateStatusText();
+      renderGantt();
+      setTimeout(function() {
+        var row = taskTableBody.querySelector('tr[data-task-id="' + newTask.id + '"]');
+        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    }
+
+    function clearTasks() {
+      if (!tasks.length) return;
+      if (!confirm('Clear all tasks?')) return;
+      tasks = [];
+      selectedTaskId = null;
+      refreshTaskTable();
+      updateStatusText();
+      renderGantt();
+    }
+
+    function deleteTask(id) {
+      tasks = tasks.filter(function(t) { return t.id !== id; });
+      if (selectedTaskId === id) selectedTaskId = null;
+      refreshTaskTable();
+      updateStatusText();
+      renderGantt();
+    }
+
+    // -----------------------------
+    // Sort
+    // -----------------------------
+    function applySort() {
+      if (!sortState.column) return;
+      var col = sortState.column;
+      var dir = sortState.direction;
+      tasks.sort(function(a, b) {
+        var av = a[col], bv = b[col];
+        if (av instanceof Date && bv instanceof Date) return (av.getTime() - bv.getTime()) * dir;
+        av = (av == null ? '' : av).toString().toLowerCase();
+        bv = (bv == null ? '' : bv).toString().toLowerCase();
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    }
+
+    function toggleSort(col) {
+      if (sortState.column === col) {
+        if (sortState.direction === 1) sortState.direction = -1;
+        else { sortState.column = null; sortState.direction = 1; }
+      } else {
+        sortState.column = col;
+        sortState.direction = 1;
+      }
+      applySort();
+      refreshTaskTable();
+      renderGantt();
+      updateSortIndicators();
+    }
+
+    function updateSortIndicators() {
+      var headers = document.querySelectorAll('#task-table-head th[data-sort]');
+      headers.forEach(function(th) {
+        var existing = th.querySelector('.sort-indicator');
+        if (existing) existing.remove();
+        if (sortState.column === th.dataset.sort) {
+          var ind = document.createElement('span');
+          ind.className = 'sort-indicator';
+          ind.textContent = sortState.direction === 1 ? ' ↑' : ' ↓';
+          th.appendChild(ind);
+        }
+      });
+    }
+
+    // -----------------------------
+    // Task table - drag-drop reorder
+    // -----------------------------
+    function moveTask(srcId, targetId, after) {
+      if (srcId === targetId) return;
+      var srcIdx = -1, tgtIdx = -1;
+      for (var i = 0; i < tasks.length; i++) {
+        if (tasks[i].id === srcId) srcIdx = i;
+        if (tasks[i].id === targetId) tgtIdx = i;
+      }
+      if (srcIdx < 0 || tgtIdx < 0) return;
+      var src = tasks.splice(srcIdx, 1)[0];
+      // Recompute target index after splice
+      tgtIdx = -1;
+      for (var j = 0; j < tasks.length; j++) if (tasks[j].id === targetId) { tgtIdx = j; break; }
+      if (tgtIdx < 0) { tasks.push(src); }
+      else if (after) tasks.splice(tgtIdx + 1, 0, src);
+      else tasks.splice(tgtIdx, 0, src);
+      // Manual reorder clears sort
+      sortState = { column: null, direction: 1 };
+      updateSortIndicators();
+      refreshTaskTable();
+      renderGantt();
+    }
+
+    function updateBatchBar() {
+      var ids = Object.keys(selectedTaskIds);
+      var bar = document.getElementById('batch-bar');
+      var cnt = document.getElementById('batch-count');
+      if (!bar) return;
+      if (ids.length > 0) { bar.classList.add('visible'); if (cnt) cnt.textContent = ids.length + ' selected'; }
+      else { bar.classList.remove('visible'); }
+    }
+
+    function setupRowDragDrop(tr, grip, task) {
+      grip.draggable = true;
+      grip.addEventListener('dragstart', function(e) {
+        e.stopPropagation();
+        dragType = 'task';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(task.id));
+        setTimeout(function() { tr.classList.add('dragging'); }, 0);
+      });
+      grip.addEventListener('dragend', function() {
+        dragType = null;
+        document.querySelectorAll('.dragging,.drop-above,.drop-below').forEach(function(el) {
+          el.classList.remove('dragging', 'drop-above', 'drop-below');
+        });
+      });
+      tr.addEventListener('dragover', function(e) {
+        if (dragType !== 'task') return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        var rect = tr.getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) { tr.classList.add('drop-above'); tr.classList.remove('drop-below'); }
+        else { tr.classList.add('drop-below'); tr.classList.remove('drop-above'); }
+      });
+      tr.addEventListener('dragleave', function(e) {
+        if (!tr.contains(e.relatedTarget)) tr.classList.remove('drop-above', 'drop-below');
+      });
+      tr.addEventListener('drop', function(e) {
+        if (dragType !== 'task') return;
+        e.preventDefault();
+        var srcId = parseInt(e.dataTransfer.getData('text/plain'), 10);
+        var below = tr.classList.contains('drop-below');
+        tr.classList.remove('drop-above', 'drop-below');
+        if (srcId && srcId !== task.id) moveTask(srcId, task.id, below);
+      });
+    }
+
+    // -----------------------------
+    // Task table - render
+    // -----------------------------
+    function refreshTaskTable() {
+      taskTableBody.innerHTML = '';
+
+      // Build ordered list of discipline groups + tasks within each
+      // Search filter applies HERE (task table only — chart is unaffected)
+      var sf = searchFilter.trim().toLowerCase();
+      var groupOrder = [];
+      var groupMap   = {};
+      for (var gi = 0; gi < tasks.length; gi++) {
+        var t0 = tasks[gi];
+        var gkey = t0.group || '(no discipline)';
+        if (!groupMap[gkey]) { groupMap[gkey] = []; groupOrder.push(gkey); }
+        var matches = !sf ||
+          (t0.name  || '').toLowerCase().indexOf(sf) >= 0 ||
+          (t0.group || '').toLowerCase().indexOf(sf) >= 0 ||
+          (t0.note  || '').toLowerCase().indexOf(sf) >= 0;
+        if (matches) groupMap[gkey].push(t0);
+      }
+
+      var TOTAL_COLS = 14; // number of <th> columns in the header row
+
+      for (var gi2 = 0; gi2 < groupOrder.length; gi2++) {
+        (function(discipline, groupTasks) {
+          var isCollapsed = !!collapsedGroups[discipline];
+
+          // --- Discipline heading row --- (always shown, even in flat mode)
+          var headTr = document.createElement('tr');
+          headTr.className = 'disc-group-header';
+          headTr.dataset.discipline = discipline;
+          headTr.draggable = true;
+
+          var headTd = document.createElement('td');
+          headTd.colSpan = TOTAL_COLS;
+
+          // Grip icon for drag-reorder of groups
+          var headGrip = document.createElement('span');
+          headGrip.className = 'grip-icon';
+          headGrip.style.cursor = 'grab';
+          headGrip.style.marginRight = '6px';
+          headGrip.innerHTML = '&#x22EE;&#x22EE;';
+          headGrip.title = 'Drag to reorder group';
+
+          var toggle = document.createElement('span');
+          toggle.className = 'disc-group-toggle' + (isCollapsed ? ' collapsed' : '');
+          toggle.textContent = '▾';
+
+          var countSpan = document.createElement('span');
+          countSpan.className = 'disc-group-count';
+          countSpan.textContent = '(' + groupTasks.length + ' task' + (groupTasks.length !== 1 ? 's' : '') + ')';
+
+          // Group header color picker — tints Gantt side header + rollup bar
+          var gcPicker = document.createElement('input');
+          gcPicker.type = 'color';
+          gcPicker.title = 'Section color — applied to header background and rollup bar';
+          gcPicker.style.cssText = 'width:22px;height:18px;padding:1px;margin-left:10px;vertical-align:middle;cursor:pointer;border-radius:4px;border:1px solid var(--border-strong);flex-shrink:0;';
+          var initColor = groupColors[discipline] || (groupTasks[0] ? groupTasks[0].color : '#0284c7');
+          if (!groupColors[discipline]) groupColors[discipline] = initColor;
+          gcPicker.value = initColor;
+          gcPicker.addEventListener('input', function(e) {
+            e.stopPropagation();
+            groupColors[discipline] = gcPicker.value;
+            renderGantt();
+          });
+          gcPicker.addEventListener('click', function(e) { e.stopPropagation(); });
+
+          headTd.appendChild(headGrip);
+          headTd.appendChild(toggle);
+          headTd.appendChild(document.createTextNode(discipline));
+          headTd.appendChild(countSpan);
+          headTd.appendChild(gcPicker);
+          headTr.appendChild(headTd);
+
+          // Collapse toggle — only when clicking arrow or text, not the grip
+          headTr.addEventListener('click', function(e) {
+            if (e.target === headGrip) return;
+            collapsedGroups[discipline] = !collapsedGroups[discipline];
+            refreshTaskTable();
+          });
+
+          // Group drag-drop to reorder disciplines
+          headTr.addEventListener('dragstart', function(e) {
+            dragType = 'group';
+            e.dataTransfer.setData('text/plain', 'grp:' + discipline);
+            headTr.style.opacity = '0.5';
+          });
+          headTr.addEventListener('dragend', function() { dragType = null; headTr.style.opacity = ''; });
+          headTr.addEventListener('dragover', function(e) {
+            if (dragType !== 'group') return;
+            e.preventDefault();
+            headTr.style.borderTop = '2px solid var(--accent)';
+          });
+          headTr.addEventListener('dragleave', function() { headTr.style.borderTop = ''; });
+          headTr.addEventListener('drop', function(e) {
+            if (dragType !== 'group') return;
+            e.preventDefault();
+            headTr.style.borderTop = '';
+            var raw = e.dataTransfer.getData('text/plain') || '';
+            if (raw.indexOf('grp:') !== 0) return;
+            var srcDisc = raw.substring(4);
+            if (!srcDisc || srcDisc === discipline) return;
+            var srcIdx = disciplineOrder.indexOf(srcDisc);
+            var tgtIdx = disciplineOrder.indexOf(discipline);
+            if (srcIdx < 0 || tgtIdx < 0) return;
+            disciplineOrder.splice(srcIdx, 1);
+            disciplineOrder.splice(tgtIdx, 0, srcDisc);
+            refreshTaskTable();
+            renderGantt();
+          });
+
+          taskTableBody.appendChild(headTr);
+
+          // --- Task rows for this discipline ---
+          if (!isCollapsed) {
+            for (var ti = 0; ti < groupTasks.length; ti++) {
+              (function(task) {
+                var tr = document.createElement('tr');
+                tr.dataset.taskId = task.id;
+          if (task.id === selectedTaskId) tr.classList.add('selected-row');
+          tr.addEventListener('click', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+            if (e.target.classList && e.target.classList.contains('grip-icon')) return;
+            selectTask(task.id);
+          });
+
+                buildTaskRow(tr, task);
+                taskTableBody.appendChild(tr);
+              })(groupTasks[ti]);
+            }
+          }
+        })(groupOrder[gi2], groupMap[groupOrder[gi2]]);
+      }
+      updateSortIndicators();
+    }
+
+    // Build all <td> cells for a task row (shared by grouped + flat modes)
+    function buildTaskRow(tr, task) {
+      // Batch-select checkbox
+      var tdCb  = document.createElement('td');
+      var rowCb = document.createElement('input');
+      rowCb.type = 'checkbox';
+      rowCb.style.cssText = 'width:14px;height:14px;cursor:pointer;margin:0;display:block;';
+      rowCb.checked = !!selectedTaskIds[task.id];
+      (function(t, cb) {
+        cb.addEventListener('change', function() {
+          if (cb.checked) selectedTaskIds[t.id] = true; else delete selectedTaskIds[t.id];
+          updateBatchBar();
+        });
+      })(task, rowCb);
+      tdCb.appendChild(rowCb);
+      tr.appendChild(tdCb);
+
+      // Grip handle
+      var tdGrip = document.createElement('td');
+      tdGrip.className = 'grip-cell';
+      var grip = document.createElement('span');
+      grip.className = 'grip-icon';
+      grip.title = 'Drag to reorder';
+      grip.innerHTML = '&#x22EE;&#x22EE;';
+      tdGrip.appendChild(grip);
+      tr.appendChild(tdGrip);
+
+      // Color/shape dot
+      var tdDot = document.createElement('td');
+      tdDot.style.width = '18px';
+      var dot = document.createElement('span');
+      dot.style.display = 'inline-block';
+      dot.style.width = '10px';
+      dot.style.height = '10px';
+      dot.style.backgroundColor = task.color;
+      if (task.type === 'milestone') {
+        dot.style.borderRadius = '0'; dot.style.transform = 'rotate(45deg)';
+      } else if (task.type === 'flag') {
+        dot.style.borderRadius = '0'; dot.style.clipPath = 'polygon(0 0, 100% 25%, 0 50%)';
+      } else {
+        dot.style.borderRadius = '999px';
+      }
+      if (task.dashed) { dot.style.background = 'transparent'; dot.style.border = '1.5px dashed ' + task.color; }
+      else if (task.dashedOutline) { dot.style.border = '1.5px dashed rgba(15,23,42,0.7)'; }
+      tdDot.appendChild(dot);
+      tr.appendChild(tdDot);
+
+      tr.appendChild(makeInputCell(task, 'name', 'text', 'name-input'));
+
+      // Discipline input
+      var tdGroup = document.createElement('td');
+      var dlId = 'disc-list-' + task.id;
+      var groupInp = document.createElement('input');
+      groupInp.type = 'text'; groupInp.className = 'row-input';
+      groupInp.value = task.group || '';
+      groupInp.setAttribute('list', dlId);
+      groupInp.placeholder = 'DISCIPLINE';
+      var dl = document.createElement('datalist'); dl.id = dlId;
+      var seen = {};
+      for (var j = 0; j < tasks.length; j++) {
+        if (tasks[j].group && !seen[tasks[j].group]) {
+          var dopt = document.createElement('option'); dopt.value = tasks[j].group; dl.appendChild(dopt);
+          seen[tasks[j].group] = true;
+        }
+      }
+      groupInp.addEventListener('change', function() { task.group = groupInp.value.trim().toUpperCase(); renderGantt(); });
+      tdGroup.appendChild(dl); tdGroup.appendChild(groupInp);
+      tr.appendChild(tdGroup);
+
+      // Type
+      var tdType = document.createElement('td');
+      var typeSelect = document.createElement('select');
+      typeSelect.className = 'row-input';
+      typeSelect.innerHTML = '<option value="bar">Bar</option><option value="milestone">Milestone</option><option value="flag">Flag</option>';
+      typeSelect.value = task.type || 'bar';
+      typeSelect.addEventListener('change', function() {
+        task.type = typeSelect.value;
+        if (task.type !== 'bar') { task.end = new Date(task.start.getTime()); if (!task.symbol) task.symbol = task.type === 'milestone' ? '*' : 'F'; }
+        refreshTaskTable(); renderGantt();
+      });
+      tdType.appendChild(typeSelect); tr.appendChild(tdType);
+
+      tr.appendChild(makeDateCell(task, 'start'));
+
+      var endCell = makeDateCell(task, 'end');
+      if (task.type !== 'bar') { var endInp = endCell.querySelector('input'); endInp.disabled = true; }
+      tr.appendChild(endCell);
+
+      // Duration (weeks) — editing recalculates end date
+      var tdDur = document.createElement('td');
+      var durInp = document.createElement('input');
+      durInp.type = 'number';
+      durInp.className = 'row-input';
+      durInp.style.width = '68px';
+      durInp.step = '0.1';
+      durInp.min = '0';
+      if (task.type !== 'bar') {
+        durInp.value = '0';
+        durInp.disabled = true;
+      } else {
+        durInp.value = Math.round(daysBetween(task.start, task.end) / 7 * 10) / 10;
+      }
+      durInp.addEventListener('change', function() {
+        var wks = parseFloat(durInp.value);
+        if (isNaN(wks) || wks < 0) { durInp.value = Math.round(daysBetween(task.start, task.end) / 7 * 10) / 10; return; }
+        var newEnd = addDays(task.start, Math.round(wks * 7));
+        if (newEnd <= task.start) newEnd = addDays(task.start, 1);
+        task.end = newEnd;
+        refreshTaskTable();
+        renderGantt();
+        updateStatusText();
+      });
+      tdDur.appendChild(durInp);
+      tr.appendChild(tdDur);
+
+      // Symbol
+      var tdSymbol = document.createElement('td');
+      var symInp = document.createElement('input');
+      symInp.type = 'text'; symInp.className = 'row-input symbol-input';
+      symInp.value = task.symbol || ''; symInp.maxLength = 4;
+      symInp.placeholder = task.type === 'flag' ? 'F' : '*';
+      if (task.type === 'bar') symInp.disabled = true;
+      symInp.addEventListener('input', function() { task.symbol = symInp.value; renderGantt(); });
+      tdSymbol.appendChild(symInp); tr.appendChild(tdSymbol);
+
+      // Status dropdown
+      var tdStatus = document.createElement('td');
+      var statusSel = document.createElement('select'); statusSel.className = 'row-input';
+      var currentStatus = (task.note || '').split('·')[0].trim().toUpperCase();
+      STATUS_OPTIONS.forEach(function(opt) {
+        var o = document.createElement('option'); o.value = opt; o.textContent = opt || '(none)';
+        if (currentStatus === opt) o.selected = true; statusSel.appendChild(o);
+      });
+      statusSel.addEventListener('change', function() {
+        var parts = (task.note || '').split('·');
+        var person = parts.length > 1 ? parts[1].trim() : '';
+        task.note = statusSel.value + (person ? ' · ' + person : '');
+        var COLOR_MAP = {'IN PROGRESS':'#16a34a','UPCOMING':'#f59e0b','DOWNSTREAM':'#8b5cf6','PENDING':'#d9c34a','COMPLETED':'#94a3b8','CANCELLED':'#dc2626','75% COMPLETE':'#22c55e','WAITING ON OTHERS':'#f97316','WITING ON THE CITY':'#f97316','UNDER REVIEW':'#06b6d4','URGENT':'#dc2626','ON HOLD':'#94a3b8','STAND BY':'#94a3b8','NEEDS ATTENTION':'#f97316','TBD':'#94a3b8','NOTE':'#60a5fa','RECEIVED':'#22c55e','APPROVED':'#16a34a','DECLINED':'#dc2626'};
+        if (COLOR_MAP[statusSel.value]) { task.color = COLOR_MAP[statusSel.value]; renderGantt(); } else renderGantt();
+      });
+      tdStatus.appendChild(statusSel); tr.appendChild(tdStatus);
+
+      // Color
+      var tdColor = document.createElement('td');
+      var colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.className = 'row-color';
+      colorIn.value = task.color;
+      colorIn.addEventListener('input', function() { task.color = colorIn.value; dot.style.backgroundColor = task.color; renderGantt(); });
+      tdColor.appendChild(colorIn); tr.appendChild(tdColor);
+
+      // Style
+      var tdStyle = document.createElement('td');
+      var styleSelect = document.createElement('select'); styleSelect.className = 'row-input';
+      styleSelect.innerHTML = '<option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dashed-outline">Dashed Outline</option>';
+      styleSelect.value = task.dashed ? 'dashed' : (task.dashedOutline ? 'dashed-outline' : 'solid');
+      styleSelect.addEventListener('change', function() {
+        task.dashed = styleSelect.value === 'dashed';
+        task.dashedOutline = styleSelect.value === 'dashed-outline';
+        refreshTaskTable(); renderGantt();
+      });
+      tdStyle.appendChild(styleSelect); tr.appendChild(tdStyle);
+
+      // Delete
+      var tdAct = document.createElement('td');
+      var delBtn = document.createElement('button'); delBtn.className = 'btn-icon danger'; delBtn.textContent = 'X'; delBtn.title = 'Delete task';
+      delBtn.addEventListener('click', function(e) { e.stopPropagation(); deleteTask(task.id); });
+      tdAct.appendChild(delBtn); tr.appendChild(tdAct);
+
+      setupRowDragDrop(tr, grip, task);
+    }
+
+    function makeInputCell(task, field, type, cls) {
+      var td = document.createElement('td');
+      var inp = document.createElement('input');
+      inp.type = type;
+      inp.className = 'row-input ' + (cls || '');
+      inp.value = task[field] || '';
+      inp.addEventListener('input', function() {
+        task[field] = inp.value;
+        if (field === 'name' || field === 'sub' || field === 'note') renderGantt();
+      });
+      td.appendChild(inp);
+      return td;
+    }
+
+    function makeDateCell(task, field) {
+      var td = document.createElement('td');
+      var inp = document.createElement('input');
+      inp.type = 'date';
+      inp.className = 'row-input date-input';
+      inp.value = formatDate(task[field]);
+      inp.addEventListener('change', function() {
+        var newD = parseDate(inp.value);
+        if (newD) {
+          task[field] = newD;
+          if (task.type !== 'bar') task.end = new Date(task.start.getTime());
+          else if (task.end < task.start) {
+            if (field === 'start') task.end = addDays(task.start, 1);
+            else task.start = addDays(task.end, -1);
+          }
+          refreshTaskTable();
+          renderGantt();
+          updateStatusText();
+        }
+      });
+      td.appendChild(inp);
+      return td;
+    }
+
+    function selectTask(id) {
+      selectedTaskId = id;
+      refreshTaskTable();
+      renderGantt();
+      var row = taskTableBody.querySelector('tr[data-task-id="' + id + '"]');
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function updateStatusText() {
+      if (!tasks.length) {
+        statusText.textContent = 'No tasks. Click + Add Task or Defaults.';
+        summaryPill.textContent = '0 tasks';
+        return;
+      }
+      var startMin = tasks[0].start;
+      var endMax = tasks[0].end;
+      var ms = 0, fl = 0;
+      for (var i = 0; i < tasks.length; i++) {
+        if (tasks[i].type === 'milestone') ms++;
+        if (tasks[i].type === 'flag') fl++;
+        if (tasks[i].start < startMin) startMin = tasks[i].start;
+        if (tasks[i].end > endMax) endMax = tasks[i].end;
+      }
+      var days = daysBetween(startMin, endMax) + 1;
+      statusText.textContent = tasks.length + ' tasks (' + ms + ' milestones, ' + fl + ' flags) - Range: ' + formatDate(startMin) + ' to ' + formatDate(endMax) + ' (' + days + ' days)';
+      summaryPill.textContent = tasks.length + ' tasks - ' + ms + ' milestones - ' + fl + ' flags';
+    }
+
+    // -----------------------------
+    // Auto date range — set chart-start / chart-end from task data
+    // -----------------------------
+    function autoSetDateRange() {
+      if (!tasks.length || !chartStartInput || !chartEndInput) return;
+      var minD = tasks[0].start;
+      var maxD = tasks[0].end;
+      for (var i = 1; i < tasks.length; i++) {
+        if (tasks[i].start < minD) minD = tasks[i].start;
+        if (tasks[i].end   > maxD) maxD = tasks[i].end;
+      }
+      chartStartInput.value = formatDate(minD);
+      chartEndInput.value   = formatDate(maxD);
+    }
+
+    // -----------------------------
+    // Dynamic legend — built from actual loaded tasks
+    // -----------------------------
+    function renderLegend() {
+      var el = document.getElementById('legend');
+      if (!el) return;
+      el.innerHTML = '';
+
+      // Collect unique disciplines in the order they appear in disciplineOrder / tasks
+      var seen = {};
+      var discList = []; // [{ label, color }]
+
+      // Walk disciplineOrder first (preserves user-sorted order), then fall back to tasks array
+      var orderRef = disciplineOrder.length ? disciplineOrder : [];
+      var extraDiscs = [];
+      for (var i = 0; i < tasks.length; i++) {
+        var g = tasks[i].group;
+        if (g && !seen[g]) { seen[g] = true; extraDiscs.push(g); }
+      }
+      // Merge: order from disciplineOrder, then anything not already listed
+      var combined = [];
+      var inOrder = {};
+      for (var oi = 0; oi < orderRef.length; oi++) {
+        if (seen[orderRef[oi]] && !inOrder[orderRef[oi]]) {
+          combined.push(orderRef[oi]); inOrder[orderRef[oi]] = true;
+        }
+      }
+      for (var ei = 0; ei < extraDiscs.length; ei++) {
+        if (!inOrder[extraDiscs[ei]]) combined.push(extraDiscs[ei]);
+      }
+
+      // For each discipline, pick the most-used color among its bar tasks
+      for (var di = 0; di < combined.length; di++) {
+        var disc = combined[di];
+        var colorCount = {};
+        var bestColor = '#64748b';
+        for (var ti = 0; ti < tasks.length; ti++) {
+          if (tasks[ti].group !== disc || tasks[ti].type !== 'bar' || tasks[ti].dashed) continue;
+          var c = tasks[ti].color || '#64748b';
+          colorCount[c] = (colorCount[c] || 0) + 1;
+          if (!colorCount[bestColor] || colorCount[c] > colorCount[bestColor]) bestColor = c;
+        }
+        discList.push({ label: disc, color: bestColor });
+      }
+
+      // Render discipline swatches
+      for (var li = 0; li < discList.length; li++) {
+        var item = document.createElement('div');
+        item.className = 'legend-item';
+        var swatch = document.createElement('span');
+        swatch.className = 'legend-swatch';
+        swatch.style.background = discList[li].color;
+        item.appendChild(swatch);
+        item.appendChild(document.createTextNode(' ' + discList[li].label));
+        el.appendChild(item);
+      }
+
+      // Fixed special types — only shown if tasks of that type exist
+      var hasDashed    = tasks.some(function(t) { return t.dashed; });
+      var hasMilestone = tasks.some(function(t) { return t.type === 'milestone'; });
+      var hasFlag      = tasks.some(function(t) { return t.type === 'flag'; });
+
+      if (hasDashed) {
+        var di2 = document.createElement('div'); di2.className = 'legend-item';
+        di2.innerHTML = '<span class="legend-swatch dashed"></span> Dashed / Extension';
+        el.appendChild(di2);
+      }
+      if (hasMilestone) {
+        var mi = document.createElement('div'); mi.className = 'legend-item';
+        mi.innerHTML = '<span class="legend-swatch diamond"></span> Milestone';
+        el.appendChild(mi);
+      }
+      if (hasFlag) {
+        var fi2 = document.createElement('div'); fi2.className = 'legend-item';
+        fi2.innerHTML = '<span class="legend-swatch flag"></span> Flag';
+        el.appendChild(fi2);
+      }
+
+      // If nothing at all, hide the legend bar
+      el.style.display = (discList.length || hasDashed || hasMilestone || hasFlag) ? '' : 'none';
+    }
+
+    // -----------------------------
+    // Tick generation
+    // -----------------------------
+    function buildTicks(start, end, scale) {
+      var ticks = [];
+      var d;
+      if (scale === 'day') {
+        d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        while (d <= end) { ticks.push(new Date(d.getTime())); d.setDate(d.getDate() + 1); }
+      } else if (scale === 'week') {
+        d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        var dow = d.getDay();
+        var diff = (dow === 0 ? -6 : 1 - dow);
+        d.setDate(d.getDate() + diff);
+        while (d <= end) { ticks.push(new Date(d.getTime())); d.setDate(d.getDate() + 7); }
+      } else if (scale === 'month') {
+        d = new Date(start.getFullYear(), start.getMonth(), 1);
+        while (d <= end) { ticks.push(new Date(d.getTime())); d.setMonth(d.getMonth() + 1); }
+      } else if (scale === 'quarter') {
+        var qm = Math.floor(start.getMonth() / 3) * 3;
+        d = new Date(start.getFullYear(), qm, 1);
+        while (d <= end) { ticks.push(new Date(d.getTime())); d.setMonth(d.getMonth() + 3); }
+      } else if (scale === 'year') {
+        d = new Date(start.getFullYear(), 0, 1);
+        while (d <= end) { ticks.push(new Date(d.getTime())); d.setFullYear(d.getFullYear() + 1); }
+      }
+      return ticks;
+    }
+
+    function nextTickDate(date, scale) {
+      var d = new Date(date.getTime());
+      if (scale === 'day') d.setDate(d.getDate() + 1);
+      else if (scale === 'week') d.setDate(d.getDate() + 7);
+      else if (scale === 'month') d.setMonth(d.getMonth() + 1);
+      else if (scale === 'quarter') d.setMonth(d.getMonth() + 3);
+      else if (scale === 'year') d.setFullYear(d.getFullYear() + 1);
+      return d;
+    }
+
+    var MONTHS_SHORT = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+    function tickLabel(date, scale) {
+      var m = date.getMonth();
+      var y = date.getFullYear();
+      var dy = date.getDate();
+      if (scale === 'day') return (m + 1) + '/' + dy;
+      if (scale === 'week') return MONTHS_SHORT[m] + ' ' + dy;
+      if (scale === 'month') return MONTHS_SHORT[m];
+      if (scale === 'quarter') return 'Q' + (Math.floor(m / 3) + 1);
+      if (scale === 'year') return '' + y;
+      return '';
+    }
+
+    function shouldLabelTick(idx, ticks, scale, unitWidth) {
+      if (scale === 'day') {
+        if (unitWidth >= 30) return true;
+        if (unitWidth >= 15) return idx % 2 === 0;
+        if (unitWidth >= 8)  return idx % 7 === 0;
+        return idx % 14 === 0;
+      }
+      if (scale === 'week') {
+        if (unitWidth >= 50) return true;
+        if (unitWidth >= 25) return idx % 2 === 0;
+        return idx % 4 === 0;
+      }
+      if (scale === 'month') {
+        if (unitWidth >= 60) return true;
+        if (unitWidth >= 30) return idx % 2 === 0;
+        return idx % 3 === 0;
+      }
+      return true;
+    }
+
+    function dateToX(date) {
+      var totalMs = geom.maxDate - geom.minDate || 1;
+      var msFromStart = date - geom.minDate;
+      var ratio = msFromStart / totalMs;
+      return ratio * geom.bodyWidth;
+    }
+
+    // -----------------------------
+    // Gantt rendering
+    // -----------------------------
+    var svgNS = 'http://www.w3.org/2000/svg';
+
+    function clearCells() {
+      cellCorner.innerHTML = '';
+      cellAxis.innerHTML = '';
+      cellSide.innerHTML = '';
+      cellBody.innerHTML = '';
+    }
+
+    function renderGantt() {
+      clearCells();
+      if (!tasks.length) return;
+
+      var userStart = parseDate(chartStartInput.value);
+      var userEnd   = parseDate(chartEndInput.value);
+      var minDate = userStart;
+      var maxDate = userEnd;
+      if (!minDate) {
+        minDate = tasks[0].start;
+        for (var i = 1; i < tasks.length; i++) if (tasks[i].start < minDate) minDate = tasks[i].start;
+      }
+      if (!maxDate) {
+        maxDate = tasks[0].end;
+        for (var i = 1; i < tasks.length; i++) if (tasks[i].end > maxDate) maxDate = tasks[i].end;
+      }
+
+      var ticks = buildTicks(minDate, maxDate, currentScale);
+      if (ticks.length === 0) return;
+      var unitWidth = getUnitWidth();
+      var firstTick = ticks[0];
+      var lastTickEnd = nextTickDate(ticks[ticks.length - 1], currentScale);
+
+      var leftLabelWidth = userLabelWidth;
+      // Update CSS grid column width
+      var ganttGrid = document.getElementById('gantt-grid');
+      if (ganttGrid) ganttGrid.style.gridTemplateColumns = leftLabelWidth + 'px max-content';
+      // Update resizer handle position
+      var resizerEl = document.getElementById('gantt-label-resizer');
+      if (resizerEl) resizerEl.style.left = (leftLabelWidth - 4) + 'px';
+      var topAxisHeight = 60;
+      var rowHeight = getEffectiveRowHeight();
+      var rowGap = 2;
+      var displayedRows = getDisplayedRows();
+      var bodyWidth = ticks.length * unitWidth;
+      var bodyHeight = displayedRows.length * (rowHeight + rowGap);
+
+      geom = {
+        minDate: firstTick, maxDate: lastTickEnd,
+        leftLabelWidth: leftLabelWidth, topAxisHeight: topAxisHeight,
+        rowHeight: rowHeight, rowGap: rowGap,
+        bodyWidth: bodyWidth, bodyHeight: bodyHeight,
+        unitWidth: unitWidth, ticks: ticks,
+        displayedRows: displayedRows
+      };
+
+      renderCornerSvg();
+      renderAxisSvg();
+      renderSideSvg();
+      renderBodySvg();
+      renderLegend();
+    }
+
+    function renderCornerSvg() {
+      if (!cellCorner) return;
+      cellCorner.innerHTML = '';
+      var w = geom.leftLabelWidth || 240, h = geom.topAxisHeight || 60;
+      var svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('width', w);
+      svg.setAttribute('height', h);
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+
+      var bgFill    = darkMode ? '#1e293b' : '#ffffff';
+      var textFill  = darkMode ? '#e2e8f0' : '#0f172a';
+      var mutedFill = darkMode ? '#94a3b8' : '#64748b';
+      var softFill  = darkMode ? '#64748b' : '#475569';
+
+      var bg = document.createElementNS(svgNS, 'rect');
+      bg.setAttribute('x', 0); bg.setAttribute('y', 0);
+      bg.setAttribute('width', w); bg.setAttribute('height', h);
+      bg.setAttribute('fill', bgFill);
+      svg.appendChild(bg);
+
+      var title = document.createElementNS(svgNS, 'text');
+      title.setAttribute('x', 12); title.setAttribute('y', 22);
+      title.setAttribute('font-size', '14'); title.setAttribute('font-weight', '800');
+      title.setAttribute('fill', textFill); title.setAttribute('letter-spacing', '0.06em');
+      title.textContent = (projectMeta.name || '').toUpperCase();
+      svg.appendChild(title);
+
+      var sub = document.createElementNS(svgNS, 'text');
+      sub.setAttribute('x', 12); sub.setAttribute('y', 38);
+      sub.setAttribute('font-size', '10'); sub.setAttribute('font-weight', '600');
+      sub.setAttribute('fill', mutedFill); sub.setAttribute('letter-spacing', '0.1em');
+      sub.textContent = (projectMeta.subtitle || '').toUpperCase();
+      svg.appendChild(sub);
+
+      var upd = document.createElementNS(svgNS, 'text');
+      upd.setAttribute('x', 12); upd.setAttribute('y', 52);
+      upd.setAttribute('font-size', '9'); upd.setAttribute('font-weight', '500');
+      upd.setAttribute('fill', softFill); upd.setAttribute('letter-spacing', '0.06em');
+      upd.textContent = 'UPDATED: ' + (projectMeta.updated || '');
+      svg.appendChild(upd);
+
+      cellCorner.appendChild(svg);
+    }
+
+    function renderAxisSvg() {
+      var w = geom.bodyWidth, h = geom.topAxisHeight;
+      var svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('width', w);
+      svg.setAttribute('height', h);
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+
+      var bg = document.createElementNS(svgNS, 'rect');
+      bg.setAttribute('x', 0); bg.setAttribute('y', 0);
+      bg.setAttribute('width', w); bg.setAttribute('height', h);
+      bg.setAttribute('fill', darkMode ? '#1e293b' : '#ffffff');
+      svg.appendChild(bg);
+
+      var yearSegments = computeYearSegments();
+      for (var k = 0; k < yearSegments.length; k++) {
+        var seg = yearSegments[k];
+        var stripe = document.createElementNS(svgNS, 'rect');
+        stripe.setAttribute('x', seg.x);
+        stripe.setAttribute('y', 0);
+        stripe.setAttribute('width', seg.width);
+        stripe.setAttribute('height', 22);
+        stripe.setAttribute('fill', k % 2 === 0 ? '#f1f5f9' : '#e2e8f0');
+        svg.appendChild(stripe);
+
+        var yLab = document.createElementNS(svgNS, 'text');
+        var labelX = Math.max(seg.x + 6, Math.min(seg.x + seg.width / 2, seg.x + seg.width - 4));
+        yLab.setAttribute('x', labelX);
+        yLab.setAttribute('y', 16);
+        yLab.setAttribute('class', 'axis-label-major');
+        yLab.setAttribute('text-anchor', 'middle');
+        yLab.textContent = seg.year;
+        svg.appendChild(yLab);
+
+        if (k > 0) {
+          var yLine = document.createElementNS(svgNS, 'line');
+          yLine.setAttribute('x1', seg.x); yLine.setAttribute('y1', 0);
+          yLine.setAttribute('x2', seg.x); yLine.setAttribute('y2', h);
+          yLine.setAttribute('class', 'grid-line-year');
+          svg.appendChild(yLine);
+        }
+      }
+
+      var divider = document.createElementNS(svgNS, 'line');
+      divider.setAttribute('x1', 0); divider.setAttribute('y1', 22);
+      divider.setAttribute('x2', w); divider.setAttribute('y2', 22);
+      divider.setAttribute('stroke', '#cbd5e1'); divider.setAttribute('stroke-width', 0.7);
+      svg.appendChild(divider);
+
+      var ticks = geom.ticks;
+      for (var t = 0; t < ticks.length; t++) {
+        var x = t * geom.unitWidth;
+        var emphasis = tickEmphasis(ticks[t], currentScale);
+        var mark = document.createElementNS(svgNS, 'line');
+        mark.setAttribute('x1', x); mark.setAttribute('y1', 22);
+        mark.setAttribute('x2', x); mark.setAttribute('y2', h);
+        mark.setAttribute('class', emphasis === 'year' ? 'grid-line-year' : (emphasis === 'quarter' ? 'grid-line-quarter' : (emphasis === 'month' ? 'grid-line-month' : 'grid-line')));
+        svg.appendChild(mark);
+
+        if (shouldLabelTick(t, ticks, currentScale, geom.unitWidth)) {
+          var label = document.createElementNS(svgNS, 'text');
+          var labelX2 = x + Math.min(geom.unitWidth / 2, 30);
+          label.setAttribute('x', labelX2);
+          label.setAttribute('y', 40);
+          label.setAttribute('class', 'axis-label');
+          label.setAttribute('text-anchor', 'middle');
+          label.textContent = tickLabel(ticks[t], currentScale);
+          svg.appendChild(label);
+        }
+      }
+
+      cellAxis.appendChild(svg);
+    }
+
+    function renderSideSvg() {
+      var w = geom.leftLabelWidth, h = geom.bodyHeight;
+      var svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('width', w); svg.setAttribute('height', h);
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+
+      var bg = document.createElementNS(svgNS, 'rect');
+      bg.setAttribute('x', 0); bg.setAttribute('y', 0);
+      bg.setAttribute('width', w); bg.setAttribute('height', h);
+      bg.setAttribute('fill', darkMode ? '#1e293b' : '#f1f5f9');
+      svg.appendChild(bg);
+
+      for (var r = 0; r < geom.displayedRows.length; r++) {
+        var row  = geom.displayedRows[r];
+        var isGH = (row.type === 'gh' || row.type === 'disc');
+        var yTop = r * (geom.rowHeight + geom.rowGap);
+
+        if (isGH) {
+          var ghBg = document.createElementNS(svgNS, 'rect');
+          ghBg.setAttribute('x', 0); ghBg.setAttribute('y', yTop);
+          ghBg.setAttribute('width', w); ghBg.setAttribute('height', geom.rowHeight);
+          var ghBaseFill = darkMode ? '#0f172a' : '#dbeafe';
+          if (row.discipline && groupColors[row.discipline]) {
+            ghBaseFill = groupColors[row.discipline] + (darkMode ? '55' : '33');
+          }
+          ghBg.setAttribute('fill', ghBaseFill);
+          svg.appendChild(ghBg);
+        } else if (r % 2 === 0) {
+          var stripe = document.createElementNS(svgNS, 'rect');
+          stripe.setAttribute('x', 0); stripe.setAttribute('y', yTop);
+          stripe.setAttribute('width', w); stripe.setAttribute('height', geom.rowHeight);
+          stripe.setAttribute('fill', darkMode ? '#263248' : '#e2e8f0');
+          stripe.setAttribute('opacity', '0.5');
+          svg.appendChild(stripe);
+        }
+
+        var label = document.createElementNS(svgNS, 'text');
+        var lbl   = (row.label || '');
+        var maxCh = isGH ? 24 : 28;
+        label.textContent = lbl.length > maxCh ? lbl.substring(0, maxCh) + '…' : lbl;
+        label.setAttribute('x', isGH ? 22 : 20);
+        label.setAttribute('y', yTop + geom.rowHeight / 2 + 4);
+        label.setAttribute('class', isGH ? 'gantt-gh-label' : 'row-label');
+        svg.appendChild(label);
+
+        // Collapse arrow for group-header rows (hierarchical mode only)
+        if (row.type === 'gh') {
+          (function(disc, collapsed, rowYTop) {
+            var arrow = document.createElementNS(svgNS, 'text');
+            arrow.textContent = collapsed ? '▶' : '▼';
+            arrow.setAttribute('x', 5);
+            arrow.setAttribute('y', rowYTop + geom.rowHeight / 2 + 4);
+            arrow.setAttribute('font-size', '9');
+            arrow.setAttribute('fill', '#0369a1');
+            arrow.style.cursor = 'pointer';
+            arrow.style.userSelect = 'none';
+            svg.appendChild(arrow);
+
+            var hit = document.createElementNS(svgNS, 'rect');
+            hit.setAttribute('x', 0);
+            hit.setAttribute('y', rowYTop);
+            hit.setAttribute('width', w);
+            hit.setAttribute('height', geom.rowHeight);
+            hit.setAttribute('fill', 'transparent');
+            hit.style.cursor = 'pointer';
+            hit.addEventListener('click', function() {
+              if (collapsedGroups[disc]) { delete collapsedGroups[disc]; }
+              else { collapsedGroups[disc] = true; }
+              refreshTaskTable();
+              renderGantt();
+            });
+            svg.appendChild(hit);
+          })(row.discipline, !!collapsedGroups[row.discipline], yTop);
+        }
+
+        var sep = document.createElementNS(svgNS, 'line');
+        sep.setAttribute('x1', 0); sep.setAttribute('y1', yTop + geom.rowHeight);
+        sep.setAttribute('x2', w); sep.setAttribute('y2', yTop + geom.rowHeight);
+        sep.setAttribute('stroke', isGH ? (darkMode ? '#334155' : '#93c5fd') : (darkMode ? '#263248' : '#e2e8f0'));
+        sep.setAttribute('stroke-width', isGH ? 1 : 0.5);
+        svg.appendChild(sep);
+      }
+      cellSide.appendChild(svg);
+    }
+
+    function renderBodySvg() {
+      var w = geom.bodyWidth, h = geom.bodyHeight;
+      var svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('width', w);
+      svg.setAttribute('height', h);
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      svg.id = 'gantt-body-svg';
+
+      var bg = document.createElementNS(svgNS, 'rect');
+      bg.setAttribute('x', 0); bg.setAttribute('y', 0);
+      bg.setAttribute('width', w); bg.setAttribute('height', h);
+      bg.setAttribute('fill', darkMode ? '#0f172a' : '#ffffff');
+      bg.addEventListener('mousedown', function() { selectedTaskId = null; refreshTaskTable(); renderGantt(); });
+      svg.appendChild(bg);
+
+      for (var r = 0; r < geom.displayedRows.length; r++) {
+        if (r % 2 === 0) {
+          var yTop = r * (geom.rowHeight + geom.rowGap);
+          var stripe = document.createElementNS(svgNS, 'rect');
+          stripe.setAttribute('x', 0); stripe.setAttribute('y', yTop);
+          stripe.setAttribute('width', w); stripe.setAttribute('height', geom.rowHeight);
+          stripe.setAttribute('fill', darkMode ? '#1e293b' : '#f8fafc');
+          svg.appendChild(stripe);
+        }
+        var sep = document.createElementNS(svgNS, 'line');
+        sep.setAttribute('x1', 0); sep.setAttribute('y1', r * (geom.rowHeight + geom.rowGap) + geom.rowHeight);
+        sep.setAttribute('x2', w); sep.setAttribute('y2', r * (geom.rowHeight + geom.rowGap) + geom.rowHeight);
+        sep.setAttribute('stroke', darkMode ? '#263248' : '#f1f5f9'); sep.setAttribute('stroke-width', 0.5);
+        svg.appendChild(sep);
+      }
+
+      var ticks = geom.ticks;
+      for (var t = 0; t < ticks.length; t++) {
+        var x = t * geom.unitWidth;
+        var emphasis = tickEmphasis(ticks[t], currentScale);
+        var line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', x); line.setAttribute('y1', 0);
+        line.setAttribute('x2', x); line.setAttribute('y2', h);
+        line.setAttribute('class', emphasis === 'year' ? 'grid-line-year' : (emphasis === 'quarter' ? 'grid-line-quarter' : (emphasis === 'month' ? 'grid-line-month' : 'grid-line')));
+        svg.appendChild(line);
+      }
+
+      var rEdge = document.createElementNS(svgNS, 'line');
+      rEdge.setAttribute('x1', w); rEdge.setAttribute('y1', 0);
+      rEdge.setAttribute('x2', w); rEdge.setAttribute('y2', h);
+      rEdge.setAttribute('class', 'grid-line-month');
+      svg.appendChild(rEdge);
+
+      // For day/week scales, also show month boundary lines
+      if (currentScale === 'day' || currentScale === 'week') {
+        var d = new Date(geom.minDate.getTime());
+        d.setDate(1);
+        if (d < geom.minDate) d.setMonth(d.getMonth() + 1);
+        while (d <= geom.maxDate) {
+          var mx = dateToX(d);
+          var ml = document.createElementNS(svgNS, 'line');
+          ml.setAttribute('x1', mx); ml.setAttribute('y1', 0);
+          ml.setAttribute('x2', mx); ml.setAttribute('y2', h);
+          ml.setAttribute('class', d.getMonth() === 0 ? 'grid-line-year' : 'grid-line-month');
+          svg.appendChild(ml);
+          d.setMonth(d.getMonth() + 1);
+        }
+      }
+      if (currentScale === 'month' || currentScale === 'quarter') {
+        var d2 = new Date(geom.minDate.getFullYear(), 0, 1);
+        if (d2 < geom.minDate) d2.setFullYear(d2.getFullYear() + 1);
+        while (d2 <= geom.maxDate) {
+          var yx = dateToX(d2);
+          var yl = document.createElementNS(svgNS, 'line');
+          yl.setAttribute('x1', yx); yl.setAttribute('y1', 0);
+          yl.setAttribute('x2', yx); yl.setAttribute('y2', h);
+          yl.setAttribute('class', 'grid-line-year');
+          svg.appendChild(yl);
+          d2.setFullYear(d2.getFullYear() + 1);
+        }
+      }
+
+      // Today line
+      if (showTodayLine) {
+        var today = new Date(); today.setHours(0,0,0,0);
+        if (today >= geom.minDate && today <= geom.maxDate) {
+          var tx = dateToX(today);
+          var tline = document.createElementNS(svgNS, 'line');
+          tline.setAttribute('x1', tx); tline.setAttribute('y1', 0);
+          tline.setAttribute('x2', tx); tline.setAttribute('y2', h);
+          tline.setAttribute('class', 'today-line');
+          svg.appendChild(tline);
+        }
+      }
+
+      // Pre-compute date ranges per discipline (used by both normal rollup bars and flat mode)
+      var grpRanges = {};
+      for (var gb = 0; gb < tasks.length; gb++) {
+        var gbt = tasks[gb];
+        if (!gbt.group || !gbt.start || !gbt.end) continue;
+        if (!grpRanges[gbt.group]) grpRanges[gbt.group] = { start: gbt.start, end: gbt.end, color: gbt.color, count: 0 };
+        if (gbt.start < grpRanges[gbt.group].start) grpRanges[gbt.group].start = gbt.start;
+        if (gbt.end   > grpRanges[gbt.group].end)   grpRanges[gbt.group].end   = gbt.end;
+        grpRanges[gbt.group].count++;
+      }
+
+      if (flatMode) {
+        // ── FLAT MODE: all individual bars rendered overlapping within their discipline row ──
+        for (var k = 0; k < tasks.length; k++) if (tasks[k].type === 'bar') renderTaskBar(svg, tasks[k]);
+        for (var k2 = 0; k2 < tasks.length; k2++) if (tasks[k2].type === 'milestone') renderMilestone(svg, tasks[k2]);
+        for (var k3 = 0; k3 < tasks.length; k3++) if (tasks[k3].type === 'flag') renderFlag(svg, tasks[k3]);
+      } else {
+        // ── NORMAL MODE: group-header rollup bars (ghost) + individual task bars ──
+        for (var gr2 = 0; gr2 < geom.displayedRows.length; gr2++) {
+          var ghRow = geom.displayedRows[gr2];
+          if (ghRow.type !== 'gh') continue;
+          var rng = grpRanges[ghRow.discipline];
+          if (!rng) continue;
+          var grx1  = dateToX(rng.start), grx2 = dateToX(rng.end);
+          var gryT  = gr2 * (geom.rowHeight + geom.rowGap);
+          var rollH = Math.max(10, geom.rowHeight - 14);
+          var rollY = gryT + (geom.rowHeight - rollH) / 2;
+          var rollup = document.createElementNS(svgNS, 'rect');
+          rollup.setAttribute('x', Math.min(grx1, grx2));
+          rollup.setAttribute('y', rollY);
+          rollup.setAttribute('width', Math.max(6, Math.abs(grx2 - grx1)));
+          rollup.setAttribute('height', rollH);
+          rollup.setAttribute('rx', 3);
+          var rollColor = (groupColors[ghRow.discipline]) || (rng.color) || '#0284c7';
+          rollup.setAttribute('fill', rollColor);
+          rollup.setAttribute('opacity', darkMode ? '0.45' : '0.28');
+          svg.appendChild(rollup);
+          [grx1, grx2].forEach(function(cx) {
+            var tick = document.createElementNS(svgNS, 'line');
+            tick.setAttribute('x1', cx); tick.setAttribute('y1', gryT + 3);
+            tick.setAttribute('x2', cx); tick.setAttribute('y2', gryT + geom.rowHeight - 3);
+            tick.setAttribute('stroke', rollColor); tick.setAttribute('stroke-width', 2);
+            svg.appendChild(tick);
+          });
+        }
+
+        // Individual task bars
+        for (var k4 = 0; k4 < tasks.length; k4++) if (tasks[k4].type === 'bar') renderTaskBar(svg, tasks[k4]);
+        for (var k5 = 0; k5 < tasks.length; k5++) if (tasks[k5].type === 'milestone') renderMilestone(svg, tasks[k5]);
+        for (var k6 = 0; k6 < tasks.length; k6++) if (tasks[k6].type === 'flag') renderFlag(svg, tasks[k6]);
+      }
+
+      cellBody.appendChild(svg);
+    }
+
+    function tickEmphasis(date, scale) {
+      var m = date.getMonth();
+      var d = date.getDate();
+      if (scale === 'year') return 'year';
+      if (m === 0 && d === 1) return 'year';
+      if (scale === 'quarter') return 'quarter';
+      if (m % 3 === 0 && d === 1) return 'quarter';
+      if (scale === 'month') return 'month';
+      if (d === 1) return 'month';
+      return 'normal';
+    }
+
+    function computeYearSegments() {
+      var segments = [];
+      var d = new Date(geom.minDate.getTime());
+      while (d < geom.maxDate) {
+        var year = d.getFullYear();
+        var yearStart = (d.getTime() === geom.minDate.getTime()) ? d : new Date(year, 0, 1);
+        var nextYearStart = new Date(year + 1, 0, 1);
+        var segEnd = nextYearStart < geom.maxDate ? nextYearStart : geom.maxDate;
+        var segStart = yearStart > geom.minDate ? yearStart : geom.minDate;
+        var x1 = dateToX(segStart);
+        var x2 = dateToX(segEnd);
+        segments.push({ year: year, x: x1, width: x2 - x1 });
+        d = nextYearStart;
+      }
+      return segments;
+    }
+
+    function isLightColor(hex) {
+      if (!hex || hex[0] !== '#') return false;
+      var h = hex.replace('#','');
+      if (h.length === 3) h = h.split('').map(function(c){return c+c;}).join('');
+      if (h.length !== 6) return false;
+      var r = parseInt(h.substr(0,2),16);
+      var g = parseInt(h.substr(2,2),16);
+      var b = parseInt(h.substr(4,2),16);
+      return (0.299 * r + 0.587 * g + 0.114 * b) > 170;
+    }
+
+    // Renders one solid aggregated bar for a whole discipline (used in flat mode)
+    function renderDiscBar(svg, row, rowIdx, grpRanges) {
+      var disc = row.discipline;
+      var rng  = grpRanges[disc];
+      if (!rng) return;
+
+      var x1   = dateToX(rng.start), x2 = dateToX(rng.end);
+      var barX = Math.min(x1, x2);
+      var barW = Math.max(8, Math.abs(x2 - x1));
+      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
+      var barH = geom.rowHeight - 8;
+      var barY = yTop + 4;
+
+      var rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', barX); rect.setAttribute('y', barY);
+      rect.setAttribute('width', barW); rect.setAttribute('height', barH);
+      rect.setAttribute('rx', 3);
+      rect.setAttribute('fill', rng.color || '#0284c7');
+      rect.setAttribute('opacity', '0.88');
+      svg.appendChild(rect);
+
+      // End-cap tick marks
+      [x1, x2].forEach(function(cx) {
+        var tick = document.createElementNS(svgNS, 'line');
+        tick.setAttribute('x1', cx); tick.setAttribute('y1', barY + 2);
+        tick.setAttribute('x2', cx); tick.setAttribute('y2', barY + barH - 2);
+        tick.setAttribute('stroke', 'rgba(0,0,0,0.3)'); tick.setAttribute('stroke-width', '1.5');
+        svg.appendChild(tick);
+      });
+
+      // Label: discipline name + task count
+      if (displayOptions.showName && barW > 20) {
+        var lbl = document.createElementNS(svgNS, 'text');
+        lbl.setAttribute('x', barX + 7);
+        lbl.setAttribute('y', barY + barH / 2 + 4);
+        lbl.setAttribute('font-size', '11');
+        lbl.setAttribute('font-weight', '700');
+        lbl.setAttribute('fill', '#ffffff');
+        lbl.setAttribute('paint-order', 'stroke');
+        lbl.setAttribute('stroke', 'rgba(0,0,0,0.6)');
+        lbl.setAttribute('stroke-width', '2.5');
+        lbl.setAttribute('stroke-linejoin', 'round');
+        lbl.style.pointerEvents = 'none';
+        lbl.textContent = disc + ' (' + rng.count + ')';
+        svg.appendChild(lbl);
+      }
+    }
+
+    function findRowIdx(task) {
+      if (flatMode) {
+        // In flat mode every task maps to its discipline's aggregated row
+        var discKey = 'disc_' + task.group;
+        for (var i = 0; i < geom.displayedRows.length; i++) {
+          if (geom.displayedRows[i].key === discKey) return i;
+        }
+        return -1;
+      }
+      var key = 'task_' + task.id;
+      for (var i = 0; i < geom.displayedRows.length; i++) {
+        if (geom.displayedRows[i].key === key) return i;
+      }
+      return -1;
+    }
+
+    function renderTaskBar(svg, task) {
+      var rowIdx = findRowIdx(task);
+      if (rowIdx < 0) return;
+
+      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
+      var x1 = dateToX(task.start);
+      var x2 = dateToX(task.end);
+      var barX = Math.min(x1, x2);
+      var barW = Math.max(8, Math.abs(x2 - x1));
+      var barH = geom.rowHeight - 8;
+      var barY = yTop + 4;
+
+      var g = document.createElementNS(svgNS, 'g');
+      g.dataset.taskId = task.id;
+
+      var rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', barX);
+      rect.setAttribute('y', barY);
+      rect.setAttribute('width', barW);
+      rect.setAttribute('height', barH);
+      rect.setAttribute('rx', 3);
+      if (task.dashed) {
+        rect.setAttribute('class', 'task-bar dashed' + (task.id === selectedTaskId ? ' selected' : ''));
+      } else if (task.dashedOutline) {
+        rect.setAttribute('fill', task.color);
+        rect.setAttribute('stroke', 'rgba(15,23,42,0.7)');
+        rect.setAttribute('class', 'task-bar dashed-outline' + (task.id === selectedTaskId ? ' selected' : ''));
+      } else {
+        rect.setAttribute('fill', task.color);
+        rect.setAttribute('class', 'task-bar' + (task.id === selectedTaskId ? ' selected' : ''));
+      }
+      rect.dataset.taskId = task.id;
+      rect.dataset.role = 'body';
+      g.appendChild(rect);
+
+      var darkText = isLightColor(task.color);
+
+      // Compute label slots based on what's visible
+      var labelsToShow = [];
+      if (displayOptions.showName) labelsToShow.push({ kind: 'name', text: task.name });
+      var phaseText = task.sub || task.group || '';
+      if (displayOptions.showPhase && phaseText) labelsToShow.push({ kind: 'sub', text: phaseText });
+      if (displayOptions.showNote && task.note) labelsToShow.push({ kind: 'note', text: task.note });
+
+      var fontSizes = { name: ganttBarFontSize, sub: Math.max(6, ganttBarFontSize - 3), note: Math.max(6, ganttBarFontSize - 4) };
+      var startY = barY + (labelsToShow.length === 1 ? barH/2 + 4 : 12);
+      var lineGap = barH > 24 ? 12 : 10;
+      var currentY = barY + 4;
+
+      // Position labels vertically
+      if (labelsToShow.length === 1) {
+        currentY = barY + barH/2 + 4;
+      } else if (labelsToShow.length === 2) {
+        currentY = barY + barH/2 - 3;
+      } else {
+        currentY = barY + 12;
+      }
+
+      for (var li = 0; li < labelsToShow.length; li++) {
+        var lbl = labelsToShow[li];
+        if (barW < 30 && lbl.kind !== 'name') continue;
+        var t = document.createElementNS(svgNS, 'text');
+        t.setAttribute('x', barX + 5);
+        t.setAttribute('y', currentY);
+        t.setAttribute('font-size', fontSizes[lbl.kind]);
+        t.setAttribute('class', lbl.kind === 'name' ? 'task-label-big' : (lbl.kind === 'sub' ? 'task-label-sub' : (lbl.text === 'APPROVAL' ? 'approval-text' : 'task-label-note')));
+        // Determine fill colour — manual override takes precedence over auto
+        var textFillColor;
+        if (barTextColor !== null) {
+          textFillColor = barTextColor;
+        } else if (task.dashed) {
+          textFillColor = '#dc2626';
+        } else if (darkText) {
+          if (lbl.kind === 'name') textFillColor = '#1c1917';
+          else if (lbl.kind === 'sub') textFillColor = 'rgba(28,25,23,0.9)';
+          else textFillColor = lbl.text === 'APPROVAL' ? '#b45309' : 'rgba(28,25,23,0.8)';
+        } else {
+          textFillColor = '#ffffff';
+        }
+        t.setAttribute('fill', textFillColor);
+        t.style.pointerEvents = 'none';
+        t.textContent = lbl.text;
+        g.appendChild(t);
+        currentY += lineGap;
+      }
+
+      // 24 MONTHS overlay for vertical construction
+      if (task.name === 'VERTICAL CONSTRUCTION' && barH > 30) {
+        var visibleRight = Math.min(barX + barW, geom.bodyWidth - 8);
+        var monthsLabel = document.createElementNS(svgNS, 'text');
+        monthsLabel.setAttribute('x', visibleRight - 90);
+        monthsLabel.setAttribute('y', barY + barH/2 + 5);
+        monthsLabel.setAttribute('class', 'vertical-text');
+        monthsLabel.style.pointerEvents = 'none';
+        monthsLabel.textContent = '24 MONTHS';
+        g.appendChild(monthsLabel);
+      }
+
+      // Resize handles
+      var handleW = 8;
+      var leftHandle = document.createElementNS(svgNS, 'rect');
+      leftHandle.setAttribute('x', barX - 1);
+      leftHandle.setAttribute('y', barY);
+      leftHandle.setAttribute('width', handleW);
+      leftHandle.setAttribute('height', barH);
+      leftHandle.setAttribute('class', 'resize-handle');
+      leftHandle.dataset.taskId = task.id;
+      leftHandle.dataset.role = 'left';
+      g.appendChild(leftHandle);
+
+      var rightHandle = document.createElementNS(svgNS, 'rect');
+      rightHandle.setAttribute('x', barX + barW - handleW + 1);
+      rightHandle.setAttribute('y', barY);
+      rightHandle.setAttribute('width', handleW);
+      rightHandle.setAttribute('height', barH);
+      rightHandle.setAttribute('class', 'resize-handle');
+      rightHandle.dataset.taskId = task.id;
+      rightHandle.dataset.role = 'right';
+      g.appendChild(rightHandle);
+
+      g.addEventListener('mousedown', onBarMouseDown);
+      svg.appendChild(g);
+    }
+
+    function renderMilestone(svg, task) {
+      var rowIdx = findRowIdx(task);
+      if (rowIdx < 0) return;
+      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
+      var yMid = yTop + geom.rowHeight / 2;
+      var x = dateToX(task.start);
+      var s = Math.min(10, geom.rowHeight / 2 - 2);
+
+      var g = document.createElementNS(svgNS, 'g');
+      g.dataset.taskId = task.id;
+
+      var poly = document.createElementNS(svgNS, 'polygon');
+      poly.setAttribute('points',
+        x + ',' + (yMid - s) + ' ' +
+        (x + s) + ',' + yMid + ' ' +
+        x + ',' + (yMid + s) + ' ' +
+        (x - s) + ',' + yMid
+      );
+      poly.setAttribute('fill', task.color);
+      poly.setAttribute('class', 'task-bar' + (task.id === selectedTaskId ? ' selected' : ''));
+      poly.setAttribute('stroke', task.id === selectedTaskId ? '#0284c7' : 'rgba(15,23,42,0.4)');
+      poly.setAttribute('stroke-width', task.id === selectedTaskId ? 2.5 : 1);
+      poly.dataset.taskId = task.id;
+      poly.dataset.role = 'body';
+      g.appendChild(poly);
+
+      if (task.symbol) {
+        var sym = document.createElementNS(svgNS, 'text');
+        sym.setAttribute('x', x);
+        sym.setAttribute('y', yMid + 4);
+        sym.setAttribute('text-anchor', 'middle');
+        sym.setAttribute('class', 'milestone-symbol');
+        sym.setAttribute('fill', isLightColor(task.color) ? '#1c1917' : '#ffffff');
+        sym.setAttribute('font-size', '11');
+        sym.setAttribute('font-weight', '800');
+        sym.textContent = task.symbol;
+        g.appendChild(sym);
+      }
+
+      var labelX = x + s + 5;
+      if (displayOptions.showName) {
+        var nameLabel = document.createElementNS(svgNS, 'text');
+        nameLabel.setAttribute('x', labelX);
+        nameLabel.setAttribute('y', yMid - 2);
+        nameLabel.setAttribute('class', 'milestone-label');
+        nameLabel.textContent = task.name;
+        g.appendChild(nameLabel);
+      }
+
+      if (task.note && displayOptions.showNote) {
+        var noteLabel = document.createElementNS(svgNS, 'text');
+        noteLabel.setAttribute('x', labelX);
+        noteLabel.setAttribute('y', yMid + 11);
+        noteLabel.setAttribute('class', 'milestone-note');
+        noteLabel.textContent = task.note;
+        g.appendChild(noteLabel);
+      }
+
+      g.addEventListener('mousedown', onBarMouseDown);
+      svg.appendChild(g);
+    }
+
+    function renderFlag(svg, task) {
+      var rowIdx = findRowIdx(task);
+      if (rowIdx < 0) return;
+      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
+      var yMid = yTop + geom.rowHeight / 2;
+      var x = dateToX(task.start);
+      var poleH = Math.min(22, geom.rowHeight - 6);
+      var topY = yMid - poleH / 2;
+      var bottomY = yMid + poleH / 2;
+      var flagH = Math.min(11, poleH * 0.55);
+
+      var g = document.createElementNS(svgNS, 'g');
+      g.dataset.taskId = task.id;
+
+      // Pole
+      var pole = document.createElementNS(svgNS, 'line');
+      pole.setAttribute('x1', x); pole.setAttribute('y1', topY);
+      pole.setAttribute('x2', x); pole.setAttribute('y2', bottomY);
+      pole.setAttribute('stroke', '#374151');
+      pole.setAttribute('stroke-width', task.id === selectedTaskId ? 2 : 1.5);
+      g.appendChild(pole);
+
+      // Flag (triangle pointing right)
+      var flag = document.createElementNS(svgNS, 'polygon');
+      flag.setAttribute('points',
+        x + ',' + topY + ' ' +
+        (x + 18) + ',' + (topY + flagH / 2) + ' ' +
+        x + ',' + (topY + flagH)
+      );
+      flag.setAttribute('fill', task.color);
+      flag.setAttribute('stroke', task.id === selectedTaskId ? '#0284c7' : 'rgba(15,23,42,0.4)');
+      flag.setAttribute('stroke-width', task.id === selectedTaskId ? 2 : 0.8);
+      flag.setAttribute('class', 'task-bar' + (task.id === selectedTaskId ? ' selected' : ''));
+      flag.dataset.taskId = task.id;
+      flag.dataset.role = 'body';
+      g.appendChild(flag);
+
+      // Hit area covering pole+flag
+      var hit = document.createElementNS(svgNS, 'rect');
+      hit.setAttribute('x', x - 4);
+      hit.setAttribute('y', topY);
+      hit.setAttribute('width', 22);
+      hit.setAttribute('height', poleH);
+      hit.setAttribute('fill', 'rgba(0,0,0,0)');
+      hit.style.cursor = 'grab';
+      hit.dataset.taskId = task.id;
+      hit.dataset.role = 'body';
+      g.appendChild(hit);
+
+      // Symbol on flag
+      if (task.symbol) {
+        var sym = document.createElementNS(svgNS, 'text');
+        sym.setAttribute('x', x + 4);
+        sym.setAttribute('y', topY + flagH / 2 + 3);
+        sym.setAttribute('font-size', Math.max(7, Math.min(9, flagH * 0.7)));
+        sym.setAttribute('font-weight', '800');
+        sym.setAttribute('fill', isLightColor(task.color) ? '#000000' : '#ffffff');
+        sym.style.pointerEvents = 'none';
+        sym.textContent = task.symbol;
+        g.appendChild(sym);
+      }
+
+      var labelX = x + 22;
+      if (displayOptions.showName) {
+        var nameLabel = document.createElementNS(svgNS, 'text');
+        nameLabel.setAttribute('x', labelX);
+        nameLabel.setAttribute('y', yMid - 2);
+        nameLabel.setAttribute('class', 'milestone-label');
+        nameLabel.textContent = task.name;
+        g.appendChild(nameLabel);
+      }
+      if (task.note && displayOptions.showNote) {
+        var noteLabel = document.createElementNS(svgNS, 'text');
+        noteLabel.setAttribute('x', labelX);
+        noteLabel.setAttribute('y', yMid + 11);
+        noteLabel.setAttribute('class', 'milestone-note');
+        noteLabel.textContent = task.note;
+        g.appendChild(noteLabel);
+      }
+
+      g.addEventListener('mousedown', onBarMouseDown);
+      svg.appendChild(g);
+    }
+
+    // -----------------------------
+    // Drag / resize bars
+    // -----------------------------
+    var drag = null;
+
+    function onBarMouseDown(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var target = e.target;
+      var taskId = parseInt(target.dataset.taskId, 10);
+      var role = target.dataset.role || 'body';
+      var task = null;
+      for (var i = 0; i < tasks.length; i++) if (tasks[i].id === taskId) { task = tasks[i]; break; }
+      if (!task) return;
+
+      selectedTaskId = taskId;
+      var svg = document.getElementById('gantt-body-svg');
+      var startPt = clientToSvg(svg, e.clientX, e.clientY);
+      drag = {
+        taskId: taskId,
+        role: role,
+        startX: startPt.x,
+        origStart: new Date(task.start.getTime()),
+        origEnd: new Date(task.end.getTime())
+      };
+      document.body.style.cursor = role === 'body' ? 'grabbing' : 'ew-resize';
+      renderGantt();
+      var rows = taskTableBody.querySelectorAll('tr');
+      for (var r = 0; r < rows.length; r++) {
+        rows[r].classList.toggle('selected-row', parseInt(rows[r].dataset.taskId, 10) === selectedTaskId);
+      }
+    }
+
+    function onMouseMove(e) {
+      if (!drag) return;
+      e.preventDefault();
+      var svg = document.getElementById('gantt-body-svg');
+      if (!svg) return;
+      var pt = clientToSvg(svg, e.clientX, e.clientY);
+      var dxPx = pt.x - drag.startX;
+      var totalPx = geom.bodyWidth;
+      var totalMs = geom.maxDate - geom.minDate;
+      var dxMs = (dxPx / totalPx) * totalMs;
+      var dxDays = Math.round(dxMs / (1000 * 60 * 60 * 24));
+
+      var task = null;
+      for (var i = 0; i < tasks.length; i++) if (tasks[i].id === drag.taskId) { task = tasks[i]; break; }
+      if (!task) return;
+
+      if (task.type !== 'bar') {
+        // Markers only move (no resize)
+        task.start = addDays(drag.origStart, dxDays);
+        task.end = new Date(task.start.getTime());
+      } else if (drag.role === 'body') {
+        task.start = addDays(drag.origStart, dxDays);
+        task.end   = addDays(drag.origEnd, dxDays);
+      } else if (drag.role === 'left') {
+        var newStart = addDays(drag.origStart, dxDays);
+        if (newStart >= task.end) newStart = addDays(task.end, -1);
+        task.start = newStart;
+      } else if (drag.role === 'right') {
+        var newEnd = addDays(drag.origEnd, dxDays);
+        if (newEnd <= task.start) newEnd = addDays(task.start, 1);
+        task.end = newEnd;
+      }
+
+      var snap = parseInt(snapSelect.value, 10);
+      if (snap && snap > 1) {
+        if (drag.role !== 'right') task.start = snapDate(task.start);
+        if (drag.role !== 'left' && task.type === 'bar') task.end = snapDate(task.end);
+        if (task.type !== 'bar') task.end = new Date(task.start.getTime());
+        else if (task.end <= task.start) task.end = addDays(task.start, snap);
+      }
+
+      renderGantt();
+      var row = taskTableBody.querySelector('tr[data-task-id="' + task.id + '"]');
+      if (row) {
+        var dateInputs = row.querySelectorAll('input.date-input');
+        if (dateInputs[0]) dateInputs[0].value = formatDate(task.start);
+        if (dateInputs[1]) dateInputs[1].value = formatDate(task.end);
+      }
+      updateStatusText();
+    }
+
+    function onMouseUp() {
+      if (drag) {
+        drag = null;
+        document.body.style.cursor = '';
+        refreshTaskTable();
+      }
+    }
+
+    function clientToSvg(svg, clientX, clientY) {
+      var pt = svg.createSVGPoint();
+      pt.x = clientX; pt.y = clientY;
+      var ctm = svg.getScreenCTM();
+      if (!ctm) return { x: clientX, y: clientY };
+      return pt.matrixTransform(ctm.inverse());
+    }
+
+    // -----------------------------
+    // Save / Load MD
+    // -----------------------------
+    function escapeMdValue(s) {
+      if (s === undefined || s === null) return '';
+      s = String(s);
+      if (/[;"\s]/.test(s) || s === '') return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+      return s;
+    }
+
+    function escapeMdCell(s) {
+      if (s === undefined || s === null) return '';
+      return String(s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+    }
+
+    var MD_COLS = ['NAME', 'TYPE', 'DISCIPLINE', 'PHASE', 'START', 'END', 'DURATION (WKS)', 'STATUS', 'COLOR', 'STYLE', 'SYMBOL'];
+
+    function tasksToMd() {
+      captureMetaFromInputs();
+      var lines = ['---'];
+      lines.push('project: ' + (projectMeta.name || ''));
+      lines.push('subtitle: ' + (projectMeta.subtitle || ''));
+      lines.push('updated: ' + (projectMeta.updated || ''));
+      if (projectMeta.note) {
+        var noteLines = projectMeta.note.split(/\r?\n/);
+        if (noteLines.length === 1) lines.push('note: ' + projectMeta.note);
+        else { lines.push('note: |'); noteLines.forEach(function(ln) { lines.push('  ' + ln); }); }
+      }
+      lines.push('---', '', '## Tasks', '');
+
+      // Header row
+      lines.push('| ' + MD_COLS.join(' | ') + ' |');
+      // Separator row — width matches each column header
+      lines.push('|' + MD_COLS.map(function(c) { return ' ' + '-'.repeat(Math.max(3, c.length)) + ' |'; }).join(''));
+
+      // Data rows
+      tasks.forEach(function(t) {
+        var dur = t.type === 'bar' ? (Math.round(daysBetween(t.start, t.end) / 7 * 10) / 10) : 0;
+        var row = [
+          escapeMdCell(t.name),
+          t.type || 'bar',
+          escapeMdCell(t.group),
+          escapeMdCell(t.sub),
+          formatDate(t.start),
+          formatDate(t.end),
+          dur,
+          escapeMdCell(t.note),
+          t.color || '',
+          t.dashed ? 'dashed' : (t.dashedOutline ? 'dashed-outline' : 'solid'),
+          escapeMdCell(t.symbol)
+        ];
+        lines.push('| ' + row.join(' | ') + ' |');
+      });
+
+      lines.push('');
+      return lines.join('\n');
+    }
+
+    function parsePairs(line) {
+      var s = line.replace(/^-\s*/, '');
+      var pairs = {};
+      var i = 0;
+      while (i < s.length) {
+        while (i < s.length && /[\s;]/.test(s[i])) i++;
+        if (i >= s.length) break;
+        var keyStart = i;
+        while (i < s.length && s[i] !== '=') i++;
+        if (i >= s.length) break;
+        var key = s.substring(keyStart, i).trim();
+        i++;
+        var value = '';
+        if (s[i] === '"') {
+          i++;
+          var v = '';
+          while (i < s.length) {
+            if (s[i] === '\\' && i + 1 < s.length) { v += s[i+1]; i += 2; continue; }
+            if (s[i] === '"') break;
+            v += s[i]; i++;
+          }
+          value = v;
+          if (s[i] === '"') i++;
+        } else {
+          var valStart = i;
+          while (i < s.length && s[i] !== ';') i++;
+          value = s.substring(valStart, i).trim();
+        }
+        pairs[key] = value;
+      }
+      return pairs;
+    }
+
+    function mdToProject(md) {
+      var lines = md.split(/\r?\n/);
+      var meta = {};
+      var newTasks = [];
+      var inFrontmatter = false;
+      var frontmatterDone = false;
+      var pendingMultilineKey = null;
+      var pendingLines = null;
+      var localCounter = 1;
+      var tableHeaders = null; // set once we see the | header row
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.trim() === '---') {
+          if (!frontmatterDone) {
+            if (!inFrontmatter) inFrontmatter = true;
+            else { inFrontmatter = false; frontmatterDone = true; }
+          }
+          continue;
+        }
+        if (inFrontmatter) {
+          if (pendingMultilineKey) {
+            if (/^\s{2,}/.test(line)) { pendingLines.push(line.replace(/^\s{2,}/, '')); continue; }
+            else { meta[pendingMultilineKey] = pendingLines.join('\n'); pendingMultilineKey = null; pendingLines = null; }
+          }
+          var m = line.match(/^(\w+):\s*(.*)$/);
+          if (m) {
+            var k = m[1], v = m[2].trim();
+            if (v === '|') { pendingMultilineKey = k; pendingLines = []; }
+            else meta[k] = v;
+          }
+          continue;
+        }
+
+        // ── Table format (new) ──
+        if (/^\|/.test(line.trim())) {
+          var rawCells = line.trim().split('|');
+          rawCells = rawCells.slice(1, rawCells.length - 1).map(function(c) { return c.trim().replace(/\\\|/g, '|'); });
+          if (!tableHeaders) {
+            // First pipe line = column headers
+            tableHeaders = rawCells.map(function(c) { return c.toUpperCase(); });
+            continue;
+          }
+          // Separator row (all dashes/colons)
+          if (rawCells.every(function(c) { return /^[-:\s]+$/.test(c); })) continue;
+          // Data row
+          var td = {};
+          tableHeaders.forEach(function(h, idx) { td[h] = rawCells[idx] !== undefined ? rawCells[idx] : ''; });
+          var tname = td['NAME'] || '';
+          if (tname) {
+            var tobj = {
+              name: tname,
+              group: td['DISCIPLINE'] || 'BP',
+              sub: td['PHASE'] || '',
+              note: td['STATUS'] || '',
+              dashed: (td['STYLE'] || '') === 'dashed',
+              dashedOutline: (td['STYLE'] || '') === 'dashed-outline',
+              type: td['TYPE'] || 'bar',
+              symbol: td['SYMBOL'] || '',
+              start: td['START'] || '',
+              end: td['END'] || '',
+              color: td['COLOR'] || '#0284c7'
+            };
+            newTasks.push(normalizeTask(tobj, localCounter++));
+          }
+          continue;
+        }
+
+        // ── Legacy bullet format (old files): - name=X; type=Y; ... ──
+        if (/^\s*-\s+/.test(line)) {
+          var pairs = parsePairs(line.trim());
+          if (pairs.name) {
+            newTasks.push(normalizeTask({
+              name: pairs.name,
+              group: pairs.group || 'BP',
+              sub: pairs.phase || '',
+              note: pairs.note || '',
+              dashed: pairs.style === 'dashed',
+              dashedOutline: pairs.style === 'dashed-outline',
+              type: pairs.type || 'bar',
+              symbol: pairs.symbol || '',
+              start: pairs.start,
+              end: pairs.end,
+              color: pairs.color || '#0284c7'
+            }, localCounter++));
+          }
+        }
+      }
+      if (pendingMultilineKey) meta[pendingMultilineKey] = pendingLines.join('\n');
+      return { meta: meta, tasks: newTasks };
+    }
+
+    function handleSaveMd() {
+      var md = tasksToMd();
+      var blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      var fileName = (projectMeta.name || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'project';
+      a.href = url;
+      a.download = fileName + '_schedule.md';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function handleLoadMd() { loadMdInput.value = ''; loadMdInput.click(); }
+
+    function onLoadFileSelected(e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          var parsed = mdToProject(ev.target.result);
+          if (parsed.tasks.length === 0 && Object.keys(parsed.meta).length === 0) {
+            alert('No tasks or metadata found in this file.');
+            return;
+          }
+          if (parsed.meta.project)  projectMeta.name = parsed.meta.project;
+          if (parsed.meta.subtitle) projectMeta.subtitle = parsed.meta.subtitle;
+          if (parsed.meta.updated)  projectMeta.updated = parsed.meta.updated;
+          if (parsed.meta.note !== undefined) projectMeta.note = parsed.meta.note;
+          syncMetaInputs();
+          tasks = parsed.tasks;
+          taskIdCounter = tasks.length + 1;
+          for (var i = 0; i < tasks.length; i++) tasks[i].id = i + 1;
+          selectedTaskId = null;
+          sortState = { column: null, direction: 1 };
+          refreshTaskTable();
+          updateStatusText();
+          autoSetDateRange();
+          renderGantt();
+          alert('Loaded ' + tasks.length + ' tasks from ' + file.name);
+        } catch (err) {
+          alert('Failed to parse MD file: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // -----------------------------
+    // Export / Print
+    // -----------------------------
+    function exportToCSV() {
+      if (!tasks.length) { alert('No tasks to export.'); return; }
+      var header = ['ID','Name','Group','Phase','Type','Start','End','Symbol','Note','Color','Style'];
+      var rows = tasks.map(function(t) {
+        return [t.id, '"' + (t.name||'').replace(/"/g,'""') + '"', t.group||'', '"' + (t.sub||'').replace(/"/g,'""') + '"',
+                t.type || 'bar',
+                formatDate(t.start), formatDate(t.end),
+                t.symbol || '', '"' + (t.note||'').replace(/"/g,'""') + '"', t.color, t.dashed ? 'dashed' : 'solid'];
+      });
+      var csv = [header.join(',')].concat(rows.map(function(r){ return r.join(','); })).join('\r\n');
+      var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'project_schedule.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    function exportToExcel() {
+      if (!tasks.length) { alert('No tasks to export.'); return; }
+      var data = [['ID','Name','Group','Phase','Type','Start','End','Symbol','Note','Color','Style']];
+      tasks.forEach(function(t) {
+        data.push([t.id, t.name, t.group||'', t.sub||'', t.type || 'bar',
+                   formatDate(t.start), formatDate(t.end), t.symbol || '', t.note||'', t.color, t.dashed ? 'dashed' : 'solid']);
+      });
+      var ws = XLSX.utils.aoa_to_sheet(data);
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Schedule');
+      XLSX.writeFile(wb, 'project_schedule.xlsx');
+    }
+    function doPrint() { window.print(); }
+
+    // -----------------------------
+    // Wheel zoom
+    // -----------------------------
+    function onWheelZoom(e) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      var rect = ganttScroll.getBoundingClientRect();
+      var cursorX = e.clientX - rect.left + ganttScroll.scrollLeft;
+      var anchorRatio = cursorX / Math.max(1, ganttScroll.scrollWidth);
+      var delta = e.deltaY < 0 ? 15 : -15;
+      setZoom(zoomLevel + delta, { anchorRatio: anchorRatio });
+    }
+
+    // -----------------------------
+    // Column resize for task table
+    // -----------------------------
+    function initTableColResize() {
+      var headRow = document.getElementById('task-table-head');
+      if (!headRow) return;
+      var ths = headRow.querySelectorAll('th');
+      for (var ci = 0; ci < ths.length; ci++) {
+        if (ci < 3) continue; // skip checkbox, grip, type-icon columns
+        var thEl = ths[ci];
+        var handle = document.createElement('div');
+        handle.className = 'col-resizer';
+        thEl.appendChild(handle);
+        (function(th) {
+          handle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var startX = e.clientX;
+            var startW = th.offsetWidth;
+            document.body.style.cursor = 'col-resize';
+            function onMove(ev) {
+              var newW = Math.max(40, startW + ev.clientX - startX);
+              th.style.width = newW + 'px';
+              th.style.minWidth = newW + 'px';
+            }
+            function onUp() {
+              document.body.style.cursor = '';
+              document.removeEventListener('mousemove', onMove);
+              document.removeEventListener('mouseup', onUp);
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+          });
+        })(thEl);
+      }
+    }
+
+    // -----------------------------
+    // Boot
+    // -----------------------------
+    function init() {
+      chartStartInput = document.getElementById('chart-start');
+      chartEndInput   = document.getElementById('chart-end');
+      scaleSelect     = document.getElementById('scale-select');
+      snapSelect      = document.getElementById('snap-select');
+      addTaskBtn      = document.getElementById('add-task-btn');
+      addMilestoneBtn = document.getElementById('add-milestone-btn');
+      addFlagBtn      = document.getElementById('add-flag-btn');
+      clearTasksBtn   = document.getElementById('clear-tasks-btn');
+      reloadDefaultsBtn = document.getElementById('reload-defaults-btn');
+      printBtn        = document.getElementById('print-btn');
+      exportCsvBtn    = document.getElementById('export-csv-btn');
+      exportExcelBtn  = document.getElementById('export-excel-btn');
+      taskTableBody   = document.getElementById('task-table-body');
+      summaryPill     = document.getElementById('summary-pill');
+      statusText      = document.getElementById('status-text');
+      ganttScroll     = document.getElementById('gantt-scroll');
+
+      zoomInBtn  = document.getElementById('zoom-in-btn');
+      zoomOutBtn = document.getElementById('zoom-out-btn');
+      zoomSlider = document.getElementById('zoom-slider');
+      zoomDisplay = document.getElementById('zoom-display');
+      zoomFitBtn = document.getElementById('zoom-fit-btn');
+
+      metaName = document.getElementById('meta-name');
+      metaSubtitle = document.getElementById('meta-subtitle');
+      metaUpdated = document.getElementById('meta-updated');
+      metaNote = document.getElementById('meta-note');
+
+      saveMdBtn = document.getElementById('save-md-btn');
+      loadMdBtn = document.getElementById('load-md-btn');
+      loadMdInput = document.getElementById('load-md-input');
+
+      cellCorner = document.getElementById('cell-corner');
+      cellAxis   = document.getElementById('cell-axis');
+      cellSide   = document.getElementById('cell-side');
+      cellBody   = document.getElementById('cell-body');
+
+      optName = document.getElementById('opt-name');
+      optPhase = document.getElementById('opt-phase');
+      optNote = document.getElementById('opt-note');
+
+      var optFlatMode = document.getElementById('opt-flat-mode');
+      if (optFlatMode) {
+        optFlatMode.addEventListener('change', function() {
+          flatMode = this.checked;
+          refreshTaskTable();
+          renderGantt();
+        });
+      }
+
+      // Hide / show task table
+      var hideTasksBtn = document.getElementById('hide-tasks-btn');
+      var taskTableWrapper = document.getElementById('task-table-wrapper');
+      var statusTextEl    = document.getElementById('status-text');
+      if (hideTasksBtn) {
+        hideTasksBtn.addEventListener('click', function() {
+          taskTableVisible = !taskTableVisible;
+          taskTableWrapper.style.display = taskTableVisible ? '' : 'none';
+          if (statusTextEl) statusTextEl.style.display = taskTableVisible ? '' : 'none';
+          hideTasksBtn.textContent = taskTableVisible ? '▼ Hide Tasks' : '▲ Show Tasks';
+        });
+      }
+
+      addTaskBtn.addEventListener('click', function() { addTask('bar'); });
+      addMilestoneBtn.addEventListener('click', function() { addTask('milestone'); });
+      addFlagBtn.addEventListener('click', function() { addTask('flag'); });
+      clearTasksBtn.addEventListener('click', clearTasks);
+      reloadDefaultsBtn.addEventListener('click', loadDefaults);
+      printBtn.addEventListener('click', doPrint);
+      exportCsvBtn.addEventListener('click', exportToCSV);
+      exportExcelBtn.addEventListener('click', exportToExcel);
+      chartStartInput.addEventListener('change', renderGantt);
+      chartEndInput.addEventListener('change', renderGantt);
+      scaleSelect.addEventListener('change', function() { currentScale = scaleSelect.value; setZoom(100); });
+
+      zoomInBtn.addEventListener('click', function() { setZoom(zoomLevel + 20); });
+      zoomOutBtn.addEventListener('click', function() { setZoom(zoomLevel - 20); });
+      zoomSlider.addEventListener('input', function() { setZoom(parseInt(zoomSlider.value, 10)); });
+      zoomFitBtn.addEventListener('click', zoomFit);
+
+      ganttScroll.addEventListener('wheel', onWheelZoom, { passive: false });
+
+      // Display options checkboxes
+      [optName, optPhase, optNote].forEach(function(el) {
+        if (el) el.addEventListener('change', function() { captureDisplayOptions(); renderGantt(); });
+      });
+
+      // Today line toggle
+      var optTodayEl = document.getElementById('opt-today');
+      if (optTodayEl) optTodayEl.addEventListener('change', function() {
+        showTodayLine = this.checked;
+        renderGantt();
+      });
+
+      // Bar text color control
+      var ganttTextColorEl    = document.getElementById('gantt-text-color');
+      var ganttTextColorAutoEl = document.getElementById('gantt-text-color-auto');
+      if (ganttTextColorAutoEl) {
+        ganttTextColorAutoEl.addEventListener('change', function() {
+          barTextColor = this.checked ? null : (ganttTextColorEl ? ganttTextColorEl.value : '#ffffff');
+          renderGantt();
+        });
+      }
+      if (ganttTextColorEl) {
+        ganttTextColorEl.addEventListener('input', function() {
+          if (ganttTextColorAutoEl && !ganttTextColorAutoEl.checked) {
+            barTextColor = this.value;
+            renderGantt();
+          }
+        });
+      }
+
+      // Bar font size control
+      var ganttFontSizeEl = document.getElementById('gantt-font-size');
+      if (ganttFontSizeEl) {
+        ganttFontSizeEl.addEventListener('input', function() {
+          var v = parseInt(this.value, 10);
+          if (!isNaN(v) && v >= 6 && v <= 24) { ganttBarFontSize = v; renderGantt(); }
+        });
+        ganttFontSizeEl.addEventListener('change', function() {
+          ganttBarFontSize = Math.max(6, Math.min(24, parseInt(this.value, 10) || 12));
+          this.value = ganttBarFontSize;
+          renderGantt();
+        });
+      }
+
+      // Gantt panel: Expand All / Collapse All
+      var ganttExpandAllBtn  = document.getElementById('gantt-expand-all-btn');
+      var ganttCollapseAllBtn = document.getElementById('gantt-collapse-all-btn');
+      if (ganttExpandAllBtn) ganttExpandAllBtn.addEventListener('click', function() {
+        collapsedGroups = {};
+        refreshTaskTable(); renderGantt();
+      });
+      if (ganttCollapseAllBtn) ganttCollapseAllBtn.addEventListener('click', function() {
+        var seen = {};
+        for (var i = 0; i < tasks.length; i++) {
+          if (tasks[i].group && !seen[tasks[i].group]) {
+            collapsedGroups[tasks[i].group] = true;
+            seen[tasks[i].group] = true;
+          }
+        }
+        refreshTaskTable(); renderGantt();
+      });
+
+      // Gantt label-column resize handle
+      var labelResizer = document.getElementById('gantt-label-resizer');
+      if (labelResizer) {
+        labelResizer.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          var startX = e.clientX;
+          var startW = userLabelWidth;
+          labelResizer.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+          function onResizerMove(ev) {
+            var newW = Math.max(120, Math.min(600, startW + ev.clientX - startX));
+            userLabelWidth = newW;
+            var gg = document.getElementById('gantt-grid');
+            if (gg) gg.style.gridTemplateColumns = newW + 'px max-content';
+            labelResizer.style.left = (newW - 4) + 'px';
+            renderGantt();
+          }
+          function onResizerUp() {
+            labelResizer.classList.remove('resizing');
+            document.body.style.cursor = '';
+            document.removeEventListener('mousemove', onResizerMove);
+            document.removeEventListener('mouseup', onResizerUp);
+          }
+          document.addEventListener('mousemove', onResizerMove);
+          document.addEventListener('mouseup', onResizerUp);
+        });
+      }
+
+      // Theme toggle
+      var themeBtn = document.getElementById('theme-toggle-btn');
+      if (themeBtn) {
+        themeBtn.addEventListener('click', function() {
+          darkMode = !darkMode;
+          document.body.classList.toggle('dark-theme', darkMode);
+          themeBtn.textContent = darkMode ? '☀ Light' : '🌙 Dark';
+          themeBtn.title = darkMode ? 'Switch to light theme' : 'Switch to dark theme';
+          renderGantt();
+        });
+      }
+
+      // Expand / collapse all groups
+      var expandAllBtn  = document.getElementById('expand-all-btn');
+      var collapseAllBtn = document.getElementById('collapse-all-btn');
+      if (expandAllBtn)  expandAllBtn.addEventListener('click', function() { collapsedGroups = {}; refreshTaskTable(); renderGantt(); });
+      if (collapseAllBtn) collapseAllBtn.addEventListener('click', function() {
+        var rows = getDisplayedRows();
+        rows.forEach(function(r) { if (r.type === 'gh') collapsedGroups[r.discipline] = true; });
+        refreshTaskTable(); renderGantt();
+      });
+
+      // Live search
+      var searchInp = document.getElementById('task-search-input');
+      if (searchInp) {
+        searchInp.addEventListener('input', function() {
+          searchFilter = searchInp.value;
+          refreshTaskTable(); // chart is unaffected by search
+        });
+      }
+
+      // Select-all checkbox
+      var selAllCb = document.getElementById('select-all-cb');
+      if (selAllCb) {
+        selAllCb.addEventListener('change', function() {
+          selectedTaskIds = {};
+          if (selAllCb.checked) tasks.forEach(function(t) { selectedTaskIds[t.id] = true; });
+          refreshTaskTable();
+          updateBatchBar();
+        });
+      }
+
+      // Batch controls
+      var batchApply   = document.getElementById('batch-apply-btn');
+      var batchDelete  = document.getElementById('batch-delete-btn');
+      var batchClear   = document.getElementById('batch-clear-sel-btn');
+      var batchSel     = document.getElementById('batch-status-sel');
+      var batchColorIn = document.getElementById('batch-color-inp');
+      var batchColorCb = document.getElementById('batch-color-cb');
+      var batchDiscIn  = document.getElementById('batch-disc-inp');
+      if (batchApply) {
+        batchApply.addEventListener('click', function() {
+          var newStatus = batchSel ? batchSel.value : '';
+          var applyColor = batchColorCb && batchColorCb.checked;
+          var newColor   = batchColorIn ? batchColorIn.value : '';
+          var newDisc    = batchDiscIn ? batchDiscIn.value.trim().toUpperCase() : '';
+          var hasAction  = newStatus || applyColor || newDisc;
+          if (!hasAction) return;
+          var COLOR_MAP = {'IN PROGRESS':'#16a34a','UPCOMING':'#f59e0b','DOWNSTREAM':'#8b5cf6','PENDING':'#d9c34a','COMPLETED':'#94a3b8','CANCELLED':'#dc2626','75% COMPLETE':'#22c55e','WAITING ON OTHERS':'#f97316','WITING ON THE CITY':'#f97316','UNDER REVIEW':'#06b6d4','URGENT':'#dc2626','ON HOLD':'#94a3b8','STAND BY':'#94a3b8','NEEDS ATTENTION':'#f97316','TBD':'#94a3b8','NOTE':'#60a5fa','RECEIVED':'#22c55e','APPROVED':'#16a34a','DECLINED':'#dc2626'};
+          tasks.forEach(function(t) {
+            if (!selectedTaskIds[t.id]) return;
+            if (newStatus) {
+              var parts = (t.note || '').split('·');
+              var person = parts.length > 1 ? parts[1].trim() : '';
+              t.note = newStatus + (person ? ' · ' + person : '');
+              if (COLOR_MAP[newStatus]) t.color = COLOR_MAP[newStatus];
+            }
+            if (applyColor && newColor) t.color = newColor;
+            if (newDisc) t.group = newDisc;
+          });
+          refreshTaskTable(); renderGantt();
+        });
+      }
+      if (batchDelete) {
+        batchDelete.addEventListener('click', function() {
+          tasks = tasks.filter(function(t) { return !selectedTaskIds[t.id]; });
+          selectedTaskIds = {};
+          refreshTaskTable(); renderGantt(); updateBatchBar();
+        });
+      }
+      if (batchClear) {
+        batchClear.addEventListener('click', function() {
+          selectedTaskIds = {};
+          refreshTaskTable(); updateBatchBar();
+        });
+      }
+
+      // Project meta — listen on both 'input' and 'change' (date fields only fire 'change')
+      [metaName, metaSubtitle, metaNote].forEach(function(el) {
+        el.addEventListener('input', function() { captureMetaFromInputs(); renderCornerSvg(); });
+      });
+      metaUpdated.addEventListener('change', function() { captureMetaFromInputs(); renderCornerSvg(); });
+
+      // Save / Load MD
+      saveMdBtn.addEventListener('click', handleSaveMd);
+      loadMdBtn.addEventListener('click', handleLoadMd);
+      loadMdInput.addEventListener('change', onLoadFileSelected);
+
+      // Sort headers
+      var sortHeaders = document.querySelectorAll('#task-table-head th[data-sort]');
+      sortHeaders.forEach(function(th) {
+        th.addEventListener('click', function() { toggleSort(th.dataset.sort); });
+      });
+
+      // Keyboard
+      document.addEventListener('keydown', function(e) {
+        var inField = (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT');
+        if ((e.ctrlKey || e.metaKey)) {
+          if (e.key === '=' || e.key === '+') { e.preventDefault(); setZoom(zoomLevel + 20); }
+          else if (e.key === '-' || e.key === '_') { e.preventDefault(); setZoom(zoomLevel - 20); }
+          else if (e.key === '0') { e.preventDefault(); setZoom(100); }
+          else if (e.key === 's' && !inField) { e.preventDefault(); handleSaveMd(); }
+        }
+      });
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+
+      // Tab switching
+      var tabGanttBtn = document.getElementById('tab-gantt');
+      var tabTasksBtn = document.getElementById('tab-tasks');
+      var ganttPanelEl  = document.getElementById('gantt-panel');
+      var tasksPanelEl  = document.querySelector('.task-list-panel');
+      var ganttToolbarEl = document.getElementById('gantt-toolbar');
+
+      function switchTab(tab) {
+        currentTab = tab;
+        if (tab === 'gantt') {
+          if (ganttPanelEl)   ganttPanelEl.style.display   = '';
+          if (ganttToolbarEl) ganttToolbarEl.style.display  = '';
+          if (tasksPanelEl)   tasksPanelEl.classList.remove('tasks-fullscreen');
+          if (tabGanttBtn)    tabGanttBtn.classList.add('active');
+          if (tabTasksBtn)    tabTasksBtn.classList.remove('active');
+        } else {
+          if (ganttPanelEl)   ganttPanelEl.style.display   = 'none';
+          if (ganttToolbarEl) ganttToolbarEl.style.display  = 'none';
+          if (tasksPanelEl)   tasksPanelEl.classList.add('tasks-fullscreen');
+          if (tabGanttBtn)    tabGanttBtn.classList.remove('active');
+          if (tabTasksBtn)    tabTasksBtn.classList.add('active');
+        }
+      }
+      if (tabGanttBtn) tabGanttBtn.addEventListener('click', function() { switchTab('gantt'); });
+      if (tabTasksBtn) tabTasksBtn.addEventListener('click', function() { switchTab('tasks'); });
+
+      // Column resize handles on task table headers
+      initTableColResize();
+
+      // Start blank — no tasks loaded until user connects a sheet
+      tasks = [];
+      taskIdCounter = 1;
+      projectMeta = { name: '', subtitle: '', updated: '', note: '' };
+      syncMetaInputs();
+      refreshTaskTable();
+      updateStatusText();
+      renderGantt();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+
+    // =========================================================
+    //  GOOGLE SHEETS TWO-WAY SYNC
+    // =========================================================
+    var sheetsURL = '';
+
+    function _syncDot(state, label) {
+      var dot = document.getElementById('sync-dot');
+      var lbl = document.getElementById('sync-label');
+      if (!dot || !lbl) return;
+      dot.className = 'sync-dot' + (state ? ' ' + state : '');
+      lbl.textContent = label;
+    }
+
+    // Default URL embedded in file — works across all browsers/computers without setup
+    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzvUEF1Tf7JeG75y1zDvpvYYLbA63k9WJzndvsy4IvFzhvQ9249FznLjU2kCTvw5yAd/exec';
+
+    function _loadStoredURL() {
+      try {
+        var v = localStorage.getItem('lacosta_sheets_url') || DEFAULT_SHEETS_URL;
+        if (v) { sheetsURL = v; _syncDot('ok', 'Connected'); }
+      } catch(e) {
+        if (DEFAULT_SHEETS_URL) { sheetsURL = DEFAULT_SHEETS_URL; _syncDot('ok', 'Connected'); }
+      }
+    }
+
+    function _storeURL(url) {
+      sheetsURL = url;
+      try {
+        if (url) localStorage.setItem('lacosta_sheets_url', url);
+        else      localStorage.removeItem('lacosta_sheets_url');
+      } catch(e) {}
+    }
+
+    function openSheetsModal() {
+      var el = document.getElementById('sheets-url-input');
+      if (el) el.value = sheetsURL || '';
+      document.getElementById('sheets-overlay').classList.add('open');
+    }
+
+    function closeSheetsModal() {
+      document.getElementById('sheets-overlay').classList.remove('open');
+    }
+
+    // Test connection — tries a GET and checks shape of response
+    async function testSheetsCon(url) {
+      if (!url) { alert('Please enter the Apps Script Web App URL first.'); return; }
+      _syncDot('busy', 'Testing…');
+      try {
+        var resp = await fetch(url, { method: 'GET' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        if (data && data.tasks !== undefined) {
+          _syncDot('ok', 'Connected ✓');
+          alert('✓ Connection successful!\nThe sheet is responding and has ' + data.tasks.length + ' task(s).');
+        } else {
+          throw new Error('Unexpected response — make sure the script is deployed correctly.');
+        }
+      } catch(err) {
+        _syncDot('err', 'Failed');
+        alert('✗ Connection failed:\n' + err.message + '\n\nCheck that the URL is correct and the script is deployed with "Anyone" access.');
+      }
+    }
+
+    // ── Gantt settings helpers ─────────────────────────────────
+    // Collect all current UI settings into a flat key/value object.
+    function collectSettings() {
+      captureDisplayOptions();
+      return {
+        userLabelWidth:      userLabelWidth,
+        ganttBarFontSize:    ganttBarFontSize,
+        showTodayLine:       showTodayLine ? 'true' : 'false',
+        darkMode:            darkMode      ? 'true' : 'false',
+        flatMode:            flatMode      ? 'true' : 'false',
+        barTextColor:        barTextColor  !== null ? barTextColor : '',
+        groupColors:         JSON.stringify(groupColors),
+        collapsedGroups:     JSON.stringify(collapsedGroups),
+        disciplineOrder:     JSON.stringify(disciplineOrder),
+        showName:            displayOptions.showName  ? 'true' : 'false',
+        showPhase:           displayOptions.showPhase ? 'true' : 'false',
+        showNote:            displayOptions.showNote  ? 'true' : 'false'
+      };
+    }
+
+    // Apply a flat key/value settings object to all UI state variables.
+    function applySettings(s) {
+      if (!s) return;
+      var toBool = function(v) { return v === 'true' || v === true; };
+
+      if (s.userLabelWidth    !== undefined) { userLabelWidth    = parseFloat(s.userLabelWidth)    || userLabelWidth; }
+      if (s.ganttBarFontSize  !== undefined) { ganttBarFontSize  = parseFloat(s.ganttBarFontSize)  || ganttBarFontSize; }
+      if (s.showTodayLine     !== undefined) { showTodayLine     = toBool(s.showTodayLine); }
+      if (s.flatMode          !== undefined) { flatMode          = toBool(s.flatMode); }
+      if (s.darkMode          !== undefined) {
+        darkMode = toBool(s.darkMode);
+        document.body.classList.toggle('dark', darkMode);
+        var dmBtn = document.getElementById('dark-mode-toggle');
+        if (dmBtn) dmBtn.textContent = darkMode ? '☀' : '🌙';
+      }
+      if (s.barTextColor !== undefined) {
+        barTextColor = s.barTextColor === '' ? null : s.barTextColor;
+        var tcEl = document.getElementById('gantt-text-color');
+        var tcAutoEl = document.getElementById('gantt-text-color-auto');
+        if (tcAutoEl) tcAutoEl.checked = (barTextColor === null);
+        if (tcEl && barTextColor !== null) tcEl.value = barTextColor;
+      }
+      try { if (s.groupColors     !== undefined) groupColors     = JSON.parse(s.groupColors)     || {}; } catch(e) {}
+      try { if (s.collapsedGroups !== undefined) collapsedGroups = JSON.parse(s.collapsedGroups) || {}; } catch(e) {}
+      try { if (s.disciplineOrder !== undefined) disciplineOrder = JSON.parse(s.disciplineOrder) || []; } catch(e) {}
+
+      if (s.showName  !== undefined) { displayOptions.showName  = toBool(s.showName);  if (optName)  optName.checked  = displayOptions.showName; }
+      if (s.showPhase !== undefined) { displayOptions.showPhase = toBool(s.showPhase); if (optPhase) optPhase.checked = displayOptions.showPhase; }
+      if (s.showNote  !== undefined) { displayOptions.showNote  = toBool(s.showNote);  if (optNote)  optNote.checked  = displayOptions.showNote; }
+
+      // Sync font size input
+      var fsEl = document.getElementById('gantt-font-size');
+      if (fsEl) fsEl.value = ganttBarFontSize;
+
+      // Sync today line checkbox
+      var tlEl = document.getElementById('opt-today');
+      if (tlEl) tlEl.checked = showTodayLine;
+
+      // Sync flat mode checkbox
+      var fmEl = document.getElementById('opt-flat-mode');
+      if (fmEl) fmEl.checked = flatMode;
+    }
+    // ─────────────────────────────────────────────────────────────
+
+    // Load tasks FROM Google Sheets → timeline
+    async function loadFromSheets() {
+      if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
+      _syncDot('busy', 'Loading…');
+      try {
+        var resp = await fetch(sheetsURL, { method: 'GET' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+
+        if (!data.success && data.error) throw new Error(data.error);
+
+        // Load tasks
+        var loaded = [];
+        if (data.tasks && Array.isArray(data.tasks)) {
+          data.tasks.forEach(function(t, idx) {
+            var s = parseDate(t.start);
+            var e = parseDate(t.end);
+            if (!s || !e) return;
+            loaded.push({
+              id:           idx + 1,
+              name:         t.name    || '',
+              group:        t.group   || 'UTIL',
+              sub:          t.sub     || '',
+              type:         t.type    || 'bar',
+              start:        s,
+              end:          e,
+              color:        t.color   || '#0284c7',
+              note:         t.note    || '',
+              dashed:       t.dashed         === 'true' || t.dashed         === true,
+              dashedOutline: t.dashedOutline === 'true' || t.dashedOutline === true,
+              symbol:       t.symbol  || ''
+            });
+          });
+        }
+
+        // Load meta
+        if (data.meta) {
+          if (data.meta.name)            projectMeta.name     = data.meta.name;
+          if (data.meta.subtitle)        projectMeta.subtitle = data.meta.subtitle;
+          if (data.meta.updated)         projectMeta.updated  = data.meta.updated;
+          if (data.meta.note !== undefined) projectMeta.note  = data.meta.note;
+          syncMetaInputs();
+        }
+
+        // Apply saved settings first (before render so they take effect visually)
+        if (data.settings) applySettings(data.settings);
+
+        if (loaded.length > 0) {
+          tasks = loaded;
+          taskIdCounter = tasks.length + 1;
+          selectedTaskId = null;
+          sortState = { column: null, direction: 1 };
+          // Only reset discipline order/collapsed state if NOT restored from settings
+          if (!data.settings || !data.settings.disciplineOrder) disciplineOrder = [];
+          if (!data.settings || !data.settings.collapsedGroups) collapsedGroups = {};
+          refreshTaskTable();
+          updateStatusText();
+          autoSetDateRange();
+          renderGantt();
+          _syncDot('ok', 'Loaded ' + loaded.length + ' tasks');
+          if (statusText) statusText.textContent = '☁ Loaded ' + loaded.length + ' tasks from Google Sheets at ' + new Date().toLocaleTimeString();
+        } else {
+          _syncDot('ok', 'Sheet empty — use Save to push data');
+          if (statusText) statusText.textContent = 'Google Sheet has no tasks yet. Make edits here, then click ⬆ Save.';
+        }
+      } catch(err) {
+        _syncDot('err', 'Load failed');
+        alert('Failed to load from Google Sheets:\n' + err.message);
+      }
+    }
+
+    // Save tasks TO Google Sheets ← timeline
+    async function saveToSheets() {
+      if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
+      if (!tasks.length) { alert('No tasks to save.'); return; }
+      captureMetaFromInputs();
+      _syncDot('busy', 'Saving…');
+
+      var payload = {
+        tasks: tasks.map(function(t) {
+          return {
+            id:           t.id,
+            name:         t.name    || '',
+            group:        t.group   || '',
+            sub:          t.sub     || '',
+            type:         t.type    || 'bar',
+            start:        formatDate(t.start),
+            end:          formatDate(t.end),
+            color:        t.color   || '#0284c7',
+            note:         t.note    || '',
+            dashed:       t.dashed         ? 'true' : 'false',
+            dashedOutline: t.dashedOutline ? 'true' : 'false',
+            symbol:       t.symbol  || ''
+          };
+        }),
+        meta: {
+          name:     projectMeta.name     || '',
+          subtitle: projectMeta.subtitle || '',
+          updated:  projectMeta.updated  || '',
+          note:     projectMeta.note     || ''
+        },
+        settings: collectSettings()
+      };
+
+      // Use text/plain content-type — avoids CORS preflight that Apps Script can't handle.
+      // The body is still JSON; Apps Script reads it via e.postData.contents regardless.
+      try {
+        var resp = await fetch(sheetsURL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body:    JSON.stringify(payload)
+        });
+        var result = await resp.json();
+        if (result.success) {
+          _syncDot('ok', 'Saved ' + tasks.length + ' tasks');
+          if (statusText) statusText.textContent = '☁ Saved ' + tasks.length + ' tasks to Google Sheets at ' + new Date().toLocaleTimeString();
+        } else {
+          throw new Error(result.error || 'Unknown error from script');
+        }
+      } catch(corsErr) {
+        // Final fallback: fire-and-forget no-cors
+        try {
+          await fetch(sheetsURL, {
+            method: 'POST',
+            mode:   'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body:   JSON.stringify(payload)
+          });
+          _syncDot('ok', 'Save sent ✓');
+          if (statusText) statusText.textContent = '☁ Save request sent to Google Sheets at ' + new Date().toLocaleTimeString() + ' (open the sheet to confirm).';
+        } catch(err2) {
+          _syncDot('err', 'Save failed');
+          alert('Could not save to Google Sheets:\n' + corsErr.message + '\n\nMake sure the Apps Script is deployed with "Anyone" access.');
+        }
+      }
+    }
+
+    // Wire up the Sheets sync buttons
+    function initSheetsSync() {
+      _loadStoredURL();
+
+      // Auto-load on first open if a URL is available
+      if (sheetsURL) setTimeout(function() { loadFromSheets(); }, 300);
+
+      document.getElementById('sheets-config-btn').addEventListener('click', openSheetsModal);
+      document.getElementById('sheets-load-btn').addEventListener('click', loadFromSheets);
+      document.getElementById('sheets-save-btn').addEventListener('click', saveToSheets);
+      document.getElementById('sheets-modal-cancel').addEventListener('click', closeSheetsModal);
+
+      document.getElementById('sheets-modal-test').addEventListener('click', function() {
+        var url = document.getElementById('sheets-url-input').value.trim();
+        testSheetsCon(url);
+      });
+
+      document.getElementById('sheets-modal-save').addEventListener('click', function() {
+        var url = document.getElementById('sheets-url-input').value.trim();
+        _storeURL(url);
+        _syncDot(url ? 'ok' : '', url ? 'Connected' : 'Not connected');
+        closeSheetsModal();
+        if (url) { if (statusText) statusText.textContent = '☁ Google Sheets connected. Click ⬇ Load to pull data or ⬆ Save to push data.'; }
+      });
+
+      // Click outside modal to close
+      document.getElementById('sheets-overlay').addEventListener('click', function(e) {
+        if (e.target === this) closeSheetsModal();
+      });
+
+      // Ctrl+Shift+S = Save to Sheets
+      document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
+          e.preventDefault();
+          saveToSheets();
+        }
+      });
+    }
+
+    // Boot sync after DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSheetsSync);
+    } else {
+      initSheetsSync();
+    }
+  </script>
+</body>
+</html>

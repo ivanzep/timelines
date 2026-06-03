@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>La Costa Hotel — Project Schedule</title>
+  <!-- SheetJS for Excel export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --bg-alt: #020617;
+      --panel: #020617;
+      --panel-soft: #020617;
+      --border: #1e293b;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.15);
+      --text: #e5e7eb;
+      --text-muted: #9ca3af;
+      --danger: #f97373;
+      --radius-lg: 16px;
+      --radius-sm: 8px;
+      --shadow-soft: 0 24px 50px rgba(15, 23, 42, 0.5);
+
+      /* La Costa palette matching PDF */
+      --lc-orange: #e8862a;
+      --lc-orange-light: #f0a958;
+      --lc-green: #5d8a3a;
+      --lc-green-dark: #4a6e2c;
+      --lc-blue: #6878a8;
+      --lc-blue-light: #8a98c4;
+      --lc-yellow: #d9c34a;
+      --lc-maroon: #4a1c2e;
+      --lc-red: #a01e2e;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                   "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: radial-gradient(circle at top, #1f2937 0, #020617 55%, #000 100%);
+      color: var(--text);
+    }
+
+    .app-shell {
+      max-width: 1480px;
+      margin: 0 auto;
+      background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,23,42,0.98));
+      border-radius: 28px;
+      padding: 24px 28px 32px;
+      box-shadow: var(--shadow-soft);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      letter-spacing: 0.04em;
+      margin: 0 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h1 span.logo-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: radial-gradient(circle at 30% 30%, #e0f2fe 0, #38bdf8 40%, #0ea5e9 100%);
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.7);
+    }
+
+    .subtitle {
+      margin-bottom: 18px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .panel {
+      background: radial-gradient(circle at top left, #0b1220 0, #020617 45%);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      padding: 16px 16px 18px;
+      box-shadow: 0 18px 40px rgba(15,23,42,0.7);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .panel-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      color: var(--text-muted);
+    }
+
+    label {
+      display: block;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    select {
+      width: 100%;
+      padding: 7px 9px;
+      border-radius: var(--radius-sm);
+      border: 1px solid #1f2937;
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text);
+      font-size: 0.82rem;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    input[type="text"]:focus,
+    input[type="date"]:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.5);
+      background: #020617;
+    }
+
+    input[type="color"] {
+      width: 44px;
+      height: 32px;
+      border-radius: 999px;
+      border: 1px solid #1f2937;
+      background: #020617;
+      padding: 3px;
+      cursor: pointer;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .form-row-3 {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+      gap: 10px;
+      margin-bottom: 8px;
+      align-items: end;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    button {
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      background: rgba(15,23,42,0.95);
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+
+    button.primary {
+      background: radial-gradient(circle at 20% 0, #38bdf8 0, #0ea5e9 45%, #0369a1 100%);
+      border-color: rgba(56, 189, 248, 0.75);
+      color: #0b1120;
+      font-weight: 600;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(148, 163, 184, 0.9);
+    }
+
+    button.primary:hover {
+      filter: brightness(1.06);
+    }
+
+    button.secondary {
+      background: rgba(15,23,42,1);
+    }
+
+    button.danger {
+      border-color: rgba(248, 113, 113, 0.7);
+      color: #fecaca;
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .divider {
+      border-top: 1px dashed rgba(148, 163, 184, 0.35);
+      margin: 10px 0;
+    }
+
+    .task-table-wrapper {
+      margin-top: 8px;
+      border-radius: 12px;
+      border: 1px solid rgba(31, 41, 55, 0.9);
+      max-height: 360px;
+      overflow: auto;
+      background: radial-gradient(circle at top, rgba(15,23,42,0.9), rgba(15,23,42,0.98));
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+      min-width: 100%;
+    }
+
+    th, td {
+      padding: 5px 7px;
+      border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #020617;
+      z-index: 1;
+      text-align: left;
+      font-weight: 500;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .task-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .task-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .task-name.subtask {
+      padding-left: 12px;
+    }
+
+    .task-type-pill {
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.5);
+      padding: 1px 6px;
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .gantt-container {
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(31,41,55,0.9);
+      background: radial-gradient(circle at top, #020617 0, #020617 55%, #020617 100%);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .gantt-scroll {
+      overflow: auto;
+      max-height: 720px;
+    }
+
+    .gantt-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+      align-items: end;
+    }
+
+    .gantt-toolbar-group {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+
+    .pill-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.4);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    svg {
+      display: block;
+    }
+
+    .axis-label {
+      font-size: 11px;
+      fill: #cbd5e1;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .task-bar {
+      stroke: rgba(0,0,0,0.6);
+      stroke-width: 0.5;
+    }
+
+    .task-bar.dashed {
+      fill: none;
+      stroke-dasharray: 4 3;
+      stroke: rgba(248, 113, 113, 0.85);
+      stroke-width: 1.4;
+    }
+
+    .grid-line {
+      stroke: rgba(148,163,184,0.18);
+      stroke-width: 0.5;
+    }
+
+    .month-line {
+      stroke: rgba(148,163,184,0.35);
+      stroke-width: 0.6;
+    }
+
+    .today-line {
+      stroke: rgba(248, 250, 252, 0.85);
+      stroke-width: 1.2;
+      stroke-dasharray: 4 3;
+    }
+
+    .task-label-big {
+      font-size: 14px;
+      font-weight: 800;
+      fill: #ffffff;
+      letter-spacing: 0.04em;
+    }
+
+    .task-label-sub {
+      font-size: 9px;
+      font-weight: 600;
+      fill: #cbd5e1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .task-label-note {
+      font-size: 8px;
+      font-weight: 600;
+      fill: #94a3b8;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .task-label-review {
+      font-size: 8.5px;
+      fill: #94a3b8;
+      font-style: italic;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .approval-text {
+      font-size: 10px;
+      font-weight: 800;
+      fill: #f87171;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .vertical-text {
+      font-size: 15px;
+      font-weight: 800;
+      fill: #ffffff;
+      letter-spacing: 0.06em;
+    }
+
+    .row-label {
+      font-size: 11px;
+      fill: #9ca3af;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .empty-state {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      padding: 24px;
+      text-align: center;
+    }
+
+    .empty-state span {
+      display: block;
+      margin-top: 6px;
+      font-size: 0.8rem;
+    }
+
+    .status-text {
+      margin-top: 8px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .status-text strong {
+      color: var(--accent);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(15,23,42,0.6);
+      border: 1px solid rgba(31,41,55,0.9);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .legend-swatch {
+      width: 18px;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid rgba(0,0,0,0.4);
+    }
+
+    .legend-swatch.dashed {
+      background: transparent !important;
+      border: 1.5px dashed #f87171;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+        padding: 0;
+        color: #000;
+      }
+      .app-shell {
+        box-shadow: none;
+        border-radius: 0;
+        background: #fff;
+        border: none;
+        max-width: none;
+      }
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .panel:nth-child(1),
+      .panel-header .badge,
+      .gantt-toolbar,
+      button {
+        display: none !important;
+      }
+      .gantt-scroll {
+        max-height: none;
+        overflow: visible;
+      }
+      .panel {
+        background: #fff;
+        border: none;
+        box-shadow: none;
+      }
+      .panel-title {
+        color: #000;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <h1>
+      <span class="logo-dot"></span>
+      La Costa Hotel — Project Schedule
+    </h1>
+    <div class="subtitle">
+      Recreated from PDF (Updated: May 14, 2026). Permitting sequence — CDP design, new design, sub-C design, grading, and vertical construction tracks.
+    </div>
+
+    <div class="layout">
+      <!-- LEFT: Task & Settings -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Task &amp; Structure</div>
+          <div class="badge">Editor</div>
+        </div>
+
+        <!-- Task Entry -->
+        <div class="form-row-3">
+          <div>
+            <label for="task-name">Task Name</label>
+            <input type="text" id="task-name" placeholder="e.g. Design Development" />
+          </div>
+          <div>
+            <label for="parent-task">Parent Task (optional)</label>
+            <select id="parent-task">
+              <option value="">(None — main task)</option>
+            </select>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center;">
+            <label for="task-color">Color</label>
+            <input type="color" id="task-color" value="#e8862a" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label for="task-start">Start Date</label>
+            <input type="date" id="task-start" />
+          </div>
+          <div>
+            <label for="task-end">End Date</label>
+            <input type="date" id="task-end" />
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="primary" id="add-task-btn">+ Add Task / Subtask</button>
+          <button class="secondary" id="clear-tasks-btn">Clear All Tasks</button>
+          <button class="secondary" id="reload-defaults-btn">↺ Reload Defaults</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Chart Settings -->
+        <div class="form-row">
+          <div>
+            <label for="chart-start">Chart Start</label>
+            <input type="date" id="chart-start" value="2026-05-01" />
+          </div>
+          <div>
+            <label for="chart-end">Chart End</label>
+            <input type="date" id="chart-end" value="2027-09-30" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label for="scale">Scale</label>
+            <select id="scale">
+              <option value="days">Days</option>
+              <option value="weeks">Weeks</option>
+              <option value="months" selected>Months</option>
+              <option value="quarters">Quarters</option>
+              <option value="years">Years</option>
+            </select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button class="secondary" id="render-btn" style="width:100%;">↻ Refresh Gantt</button>
+          </div>
+        </div>
+
+        <!-- Task List -->
+        <div class="task-table-wrapper" id="task-table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Type</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Color</th>
+              </tr>
+            </thead>
+            <tbody id="task-table-body">
+              <!-- Filled by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="status-text" id="status-text">
+          Loading La Costa Hotel project schedule…
+        </div>
+      </div>
+
+      <!-- RIGHT: Gantt -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">La Costa Hotel — Project Schedule</div>
+          <div class="badge">Updated: May 14, 2026</div>
+        </div>
+
+        <div class="gantt-toolbar">
+          <div class="gantt-toolbar-group">
+            <div>
+              <div class="pill-label">Print</div>
+              <button id="print-btn" class="secondary">
+                🖨 Print / PDF
+              </button>
+            </div>
+            <div>
+              <div class="pill-label">Export</div>
+              <div class="btn-row" style="margin:0;">
+                <button id="export-csv-btn" class="secondary">⇩ CSV</button>
+                <button id="export-excel-btn" class="secondary">⇩ Excel</button>
+              </div>
+            </div>
+          </div>
+          <div class="gantt-toolbar-group">
+            <div>
+              <div class="pill-label">Summary</div>
+              <div class="pill" id="summary-pill">0 tasks • 0 days range</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gantt-container">
+          <div class="gantt-scroll" id="gantt-scroll">
+            <!-- SVG injected here -->
+          </div>
+          <div class="empty-state" id="empty-state" style="display:none;">
+            No data yet.
+            <span>Add tasks on the left, then click "Refresh Gantt".</span>
+          </div>
+        </div>
+
+        <div class="legend">
+          <div class="legend-item"><span class="legend-swatch" style="background:#e8862a"></span> RGP / PGP / GCPC (Grading + Coastal)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#5d8a3a"></span> BP / BCPC (Building)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#6878a8"></span> SUB-C (Sub-Coastal)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#d9c34a"></span> Grading (Rough / Precise)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#4a1c2e"></span> Vertical Construction</div>
+          <div class="legend-item"><span class="legend-swatch dashed"></span> CDP Extension / Revisions</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------
+    // La Costa Hotel — pre-populated tasks (from PDF)
+    // -----------------------------
+    const DEFAULT_TASKS = [
+      // ---------- RGP — Rough Grading Permit (Orange) ----------
+      { name: "RGP SUB1",                  group: "RGP",   sub: "CDP DESIGN", start: "2026-06-15", end: "2026-08-07", color: "#e8862a", note: "REVIEW" },
+      { name: "RGP ISSUANCE & BONDING",    group: "RGP",   sub: "CDP DESIGN", start: "2026-08-17", end: "2026-09-11", color: "#f0a958", note: "APPROVAL" },
+
+      // ---------- PGP — Precise Grading Permit (Orange) ----------
+      { name: "PGP SUB4",                  group: "PGP",   sub: "CDP DESIGN", start: "2026-05-04", end: "2026-07-17", color: "#e8862a", note: "REVIEW" },
+      { name: "PGP SUB5",                  group: "PGP",   sub: "CDP DESIGN", start: "2026-08-07", end: "2026-09-18", color: "#e8862a", note: "REVIEW" },
+      { name: "PGP ISSUANCE & BONDING",    group: "PGP",   sub: "CDP DESIGN", start: "2026-09-18", end: "2026-10-30", color: "#f0a958", note: "APPROVAL" },
+
+      // ---------- GCPC — Greater Coastal Permitting Commission (Orange) ----------
+      { name: "GCPC SUB1",                 group: "GCPC",  sub: "NEW DESIGN", start: "2026-11-02", end: "2026-12-15", color: "#e8862a", note: "GRADING ONLY & BUILDING PADS" },
+      { name: "GCPC SUB2",                 group: "GCPC",  sub: "NEW DESIGN", start: "2027-02-01", end: "2027-03-31", color: "#e8862a", note: "APPROVAL" },
+
+      // ---------- BP — Building Permit (Green) ----------
+      { name: "BP SUB1",                   group: "BP",    sub: "CDP DESIGN", start: "2026-05-04", end: "2026-06-19", color: "#5d8a3a", note: "REVIEW" },
+      { name: "BP SUB2",                   group: "BP",    sub: "CDP DESIGN", start: "2026-07-10", end: "2026-08-21", color: "#5d8a3a", note: "REVIEW" },
+      { name: "BP SUB3",                   group: "BP",    sub: "CDP DESIGN", start: "2026-09-14", end: "2026-11-13", color: "#5d8a3a", note: "REVIEW" },
+      { name: "BP SUB4",                   group: "BP",    sub: "NEW DESIGN", start: "2026-12-14", end: "2027-03-19", color: "#5d8a3a", note: "GRADING ONLY & BUILDING PADS — REVIEW" },
+      { name: "BP APPROVAL",               group: "BP",    sub: "NEW DESIGN", start: "2027-03-19", end: "2027-04-09", color: "#4a6e2c", note: "APPROVAL" },
+
+      // ---------- BCPC — Building Coastal Permit Commission (Green) ----------
+      { name: "BCPC SUB1",                 group: "BCPC",  sub: "NEW DESIGN", start: "2027-04-06", end: "2027-07-03", color: "#5d8a3a", note: "REVIEW" },
+      { name: "BCPC APPROVAL",             group: "BCPC",  sub: "NEW DESIGN", start: "2027-07-03", end: "2027-07-20", color: "#4a6e2c", note: "APPROVAL" },
+
+      // ---------- SUB-C — Sub-Coastal (Blue) ----------
+      { name: "SUBC SUB1",                 group: "SUBC",  sub: "SUB-C DESIGN", start: "2026-11-13", end: "2026-12-18", color: "#6878a8", note: "GRADING ONLY & BUILDING PADS" },
+      { name: "SUBC SUB2",                 group: "SUBC",  sub: "NEW DESIGN",   start: "2027-04-06", end: "2027-07-03", color: "#6878a8", note: "INTERIOR FLOOR PLAN CHANGES, EXTERIOR MATERIALS" },
+      { name: "SUBC APPROVAL",             group: "SUBC",  sub: "SUB-C DESIGN", start: "2027-07-03", end: "2027-09-11", color: "#8a98c4", note: "APPROVAL" },
+
+      // ---------- Grading (Yellow) ----------
+      { name: "ROUGH GRADING",             group: "GRADE", sub: "CDP DESIGN", start: "2026-09-14", end: "2026-11-13", color: "#d9c34a", note: "" },
+      { name: "PRECISE GRADING",           group: "GRADE", sub: "CDP DESIGN", start: "2026-11-13", end: "2027-04-06", color: "#d9c34a", note: "" },
+
+      // ---------- Vertical Construction (Maroon) ----------
+      { name: "VERTICAL CONSTRUCTION",     group: "VERT",  sub: "24 MONTHS",   start: "2027-04-06", end: "2029-04-06", color: "#4a1c2e", note: "24 MONTHS" },
+
+      // ---------- CDP Extensions (Dashed Red) ----------
+      { name: "CDP EXTENSION 1",           group: "CDP",   sub: "CDP EXTENSION", start: "2026-05-04", end: "2026-05-25", color: "#a01e2e", note: "", dashed: true },
+      { name: "CDP EXTENSION 2",           group: "CDP",   sub: "CDP EXTENSION", start: "2027-04-01", end: "2027-04-22", color: "#a01e2e", note: "", dashed: true }
+    ];
+
+    // -----------------------------
+    // Data model
+    // -----------------------------
+    let tasks = [];
+    let taskIdCounter = 1;
+
+    const taskNameInput   = document.getElementById('task-name');
+    const taskStartInput  = document.getElementById('task-start');
+    const taskEndInput    = document.getElementById('task-end');
+    const taskColorInput  = document.getElementById('task-color');
+    const parentSelect    = document.getElementById('parent-task');
+
+    const chartStartInput = document.getElementById('chart-start');
+    const chartEndInput   = document.getElementById('chart-end');
+    const scaleSelect     = document.getElementById('scale');
+
+    const addTaskBtn      = document.getElementById('add-task-btn');
+    const clearTasksBtn   = document.getElementById('clear-tasks-btn');
+    const reloadDefaultsBtn = document.getElementById('reload-defaults-btn');
+    const renderBtn       = document.getElementById('render-btn');
+    const printBtn        = document.getElementById('print-btn');
+    const exportCsvBtn    = document.getElementById('export-csv-btn');
+    const exportExcelBtn  = document.getElementById('export-excel-btn');
+
+    const taskTableBody   = document.getElementById('task-table-body');
+    const summaryPill     = document.getElementById('summary-pill');
+    const statusText      = document.getElementById('status-text');
+    const ganttScroll     = document.getElementById('gantt-scroll');
+    const emptyState      = document.getElementById('empty-state');
+
+    function parseDate(value) {
+      if (!value) return null;
+      const d = new Date(value + 'T00:00:00');
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function formatDate(d) {
+      if (!(d instanceof Date)) return '';
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function loadDefaults() {
+      tasks = [];
+      taskIdCounter = 1;
+      DEFAULT_TASKS.forEach(t => {
+        tasks.push({
+          id: taskIdCounter++,
+          name: t.name,
+          group: t.group,
+          sub: t.sub,
+          note: t.note || "",
+          dashed: !!t.dashed,
+          start: parseDate(t.start),
+          end: parseDate(t.end),
+          color: t.color,
+          parentId: null
+        });
+      });
+      refreshTaskTable();
+      refreshParentDropdown();
+      updateStatusText();
+      renderGantt();
+    }
+
+    // -----------------------------
+    // Task logic
+    // -----------------------------
+    function addTask() {
+      const name = taskNameInput.value.trim();
+      if (!name) {
+        alert('Please enter a task name.');
+        return;
+      }
+
+      const start = parseDate(taskStartInput.value);
+      const end   = parseDate(taskEndInput.value);
+
+      if (!start || !end) {
+        alert('Please provide both start and end dates.');
+        return;
+      }
+      if (end < start) {
+        alert('End date must be on or after the start date.');
+        return;
+      }
+
+      const color = taskColorInput.value || '#38bdf8';
+      const parentId = parentSelect.value ? parseInt(parentSelect.value, 10) : null;
+
+      const id = taskIdCounter++;
+      tasks.push({
+        id, name, start, end, color, parentId,
+        group: "CUSTOM", sub: "", note: "", dashed: false
+      });
+
+      refreshTaskTable();
+      refreshParentDropdown();
+      updateStatusText();
+    }
+
+    function clearTasks() {
+      if (!tasks.length) return;
+      if (!confirm('Clear all tasks?')) return;
+      tasks = [];
+      refreshTaskTable();
+      refreshParentDropdown();
+      updateStatusText();
+      renderGantt();
+    }
+
+    function getTaskType(task) {
+      return task.parentId ? 'Subtask' : 'Main';
+    }
+
+    function refreshParentDropdown() {
+      parentSelect.innerHTML = '<option value="">(None — main task)</option>';
+      tasks
+        .filter(t => !t.parentId)
+        .forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = t.name;
+          parentSelect.appendChild(opt);
+        });
+    }
+
+    function refreshTaskTable() {
+      taskTableBody.innerHTML = '';
+      if (!tasks.length) return;
+
+      tasks.forEach(task => {
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'task-name';
+        const dot = document.createElement('span');
+        dot.className = 'task-dot';
+        dot.style.backgroundColor = task.color;
+        nameDiv.appendChild(dot);
+        nameDiv.appendChild(document.createTextNode(task.name));
+        tdName.appendChild(nameDiv);
+        tr.appendChild(tdName);
+
+        const tdType = document.createElement('td');
+        const pill = document.createElement('span');
+        pill.className = 'task-type-pill';
+        pill.textContent = task.group || 'TASK';
+        tdType.appendChild(pill);
+        tr.appendChild(tdType);
+
+        const tdStart = document.createElement('td');
+        tdStart.textContent = formatDate(task.start);
+        tr.appendChild(tdStart);
+
+        const tdEnd = document.createElement('td');
+        tdEnd.textContent = formatDate(task.end);
+        tr.appendChild(tdEnd);
+
+        const tdColor = document.createElement('td');
+        const swatch = document.createElement('div');
+        swatch.style.width = '32px';
+        swatch.style.height = '12px';
+        swatch.style.borderRadius = '999px';
+        swatch.style.backgroundColor = task.color;
+        swatch.style.border = '1px solid rgba(15,23,42,0.8)';
+        tdColor.appendChild(swatch);
+        tr.appendChild(tdColor);
+
+        taskTableBody.appendChild(tr);
+      });
+    }
+
+    function updateStatusText() {
+      if (!tasks.length) {
+        statusText.textContent = 'No tasks yet. Add a task, then click Refresh Gantt.';
+        summaryPill.textContent = '0 tasks • 0 days range';
+        return;
+      }
+      const startMin = tasks.reduce((acc, t) => t.start < acc ? t.start : acc, tasks[0].start);
+      const endMax = tasks.reduce((acc, t) => t.end > acc ? t.end : acc, tasks[0].end);
+      const days = Math.round((endMax - startMin) / (1000 * 60 * 60 * 24)) + 1;
+      statusText.textContent = `Tasks: ${tasks.length}, Range: ${formatDate(startMin)} → ${formatDate(endMax)} (${days} days).`;
+      summaryPill.textContent = `${tasks.length} tasks • ${days} days range`;
+    }
+
+    // -----------------------------
+    // Gantt Rendering — La Costa Hotel layout
+    // -----------------------------
+
+    // Define the row layout matching the PDF
+    const ROW_LAYOUT = [
+      { key: "RGP",   label: "RGP — ROUGH GRADING PERMIT" },
+      { key: "PGP",   label: "PGP — PRECISE GRADING PERMIT" },
+      { key: "GCPC",  label: "GCPC — GRADING COASTAL" },
+      { key: "BP",    label: "BP — BUILDING PERMIT" },
+      { key: "BCPC",  label: "BCPC — BUILDING COASTAL" },
+      { key: "SUBC",  label: "SUB-C — SUB-COASTAL" },
+      { key: "GRADE", label: "GRADING (ROUGH / PRECISE)" },
+      { key: "VERT",  label: "VERTICAL CONSTRUCTION" },
+      { key: "CDP",   label: "CDP EXTENSIONS" }
+    ];
+
+    function renderGantt() {
+      ganttScroll.innerHTML = '';
+      if (!tasks.length) {
+        emptyState.style.display = 'block';
+        return;
+      }
+      emptyState.style.display = 'none';
+
+      // Chart range
+      const userStart = parseDate(chartStartInput.value);
+      const userEnd   = parseDate(chartEndInput.value);
+      let minDate = userStart || tasks.reduce((acc, t) => t.start < acc ? t.start : acc, tasks[0].start);
+      let maxDate = userEnd   || tasks.reduce((acc, t) => t.end > acc ? t.end : acc, tasks[0].end);
+
+      // Build month ticks
+      const ticks = buildMonthTicks(minDate, maxDate);
+
+      const leftLabelWidth = 220;
+      const topAxisHeight = 60;
+      const rowHeight = 56;
+      const paddingBottom = 30;
+      const unitWidth = 90;
+      const rowGap = 2;
+
+      const svgWidth = leftLabelWidth + ticks.length * unitWidth + 40;
+      const svgHeight = topAxisHeight + ROW_LAYOUT.length * (rowHeight + rowGap) + paddingBottom;
+
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('width', svgWidth);
+      svg.setAttribute('height', svgHeight);
+      svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+      svg.setAttribute('xmlns', svgNS);
+
+      // Background
+      const bg = document.createElementNS(svgNS, 'rect');
+      bg.setAttribute('x', 0);
+      bg.setAttribute('y', 0);
+      bg.setAttribute('width', svgWidth);
+      bg.setAttribute('height', svgHeight);
+      bg.setAttribute('fill', '#020617');
+      svg.appendChild(bg);
+
+      // Month grid lines + labels
+      ticks.forEach((tick, i) => {
+        const x = leftLabelWidth + i * unitWidth;
+        const line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', x);
+        line.setAttribute('y1', topAxisHeight - 10);
+        line.setAttribute('x2', x);
+        line.setAttribute('y2', svgHeight - paddingBottom);
+        line.setAttribute('class', 'month-line');
+        svg.appendChild(line);
+
+        // Month label (rotated)
+        const label = document.createElementNS(svgNS, 'text');
+        label.setAttribute('x', x + 6);
+        label.setAttribute('y', topAxisHeight - 14);
+        label.setAttribute('class', 'axis-label');
+        label.setAttribute('transform', `rotate(-35 ${x + 6} ${topAxisHeight - 14})`);
+        label.textContent = formatMonthTickLabel(tick);
+        svg.appendChild(label);
+      });
+
+      // Right edge line
+      const rightEdge = leftLabelWidth + ticks.length * unitWidth;
+      const rEdge = document.createElementNS(svgNS, 'line');
+      rEdge.setAttribute('x1', rightEdge);
+      rEdge.setAttribute('y1', topAxisHeight - 10);
+      rEdge.setAttribute('x2', rightEdge);
+      rEdge.setAttribute('y2', svgHeight - paddingBottom);
+      rEdge.setAttribute('class', 'month-line');
+      svg.appendChild(rEdge);
+
+      // Today line
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      if (today >= minDate && today <= maxDate) {
+        const x = dateToX(today, minDate, maxDate, leftLabelWidth, rightEdge);
+        const tline = document.createElementNS(svgNS, 'line');
+        tline.setAttribute('x1', x);
+        tline.setAttribute('y1', topAxisHeight - 10);
+        tline.setAttribute('x2', x);
+        tline.setAttribute('y2', svgHeight - paddingBottom);
+        tline.setAttribute('class', 'today-line');
+        svg.appendChild(tline);
+
+        const tLabel = document.createElementNS(svgNS, 'text');
+        tLabel.setAttribute('x', x + 4);
+        tLabel.setAttribute('y', topAxisHeight - 1);
+        tLabel.setAttribute('class', 'axis-label');
+        tLabel.setAttribute('fill', '#ffffff');
+        tLabel.textContent = 'TODAY';
+        svg.appendChild(tLabel);
+      }
+
+      // Render each row
+      ROW_LAYOUT.forEach((row, rowIdx) => {
+        const yTop = topAxisHeight + rowIdx * (rowHeight + rowGap);
+        const yMid = yTop + rowHeight / 2;
+
+        // Row label (left side)
+        const rowLabel = document.createElementNS(svgNS, 'text');
+        rowLabel.setAttribute('x', 10);
+        rowLabel.setAttribute('y', yMid + 4);
+        rowLabel.setAttribute('class', 'row-label');
+        rowLabel.textContent = row.label;
+        svg.appendChild(rowLabel);
+
+        // Row background separator
+        if (rowIdx % 2 === 0) {
+          const rowBg = document.createElementNS(svgNS, 'rect');
+          rowBg.setAttribute('x', leftLabelWidth);
+          rowBg.setAttribute('y', yTop);
+          rowBg.setAttribute('width', rightEdge - leftLabelWidth);
+          rowBg.setAttribute('height', rowHeight);
+          rowBg.setAttribute('fill', 'rgba(148,163,184,0.04)');
+          svg.insertBefore(rowBg, svg.firstChild.nextSibling);
+        }
+
+        // Tasks in this row
+        const rowTasks = tasks.filter(t => t.group === row.key);
+        rowTasks.forEach(task => {
+          const x1 = dateToX(task.start, minDate, maxDate, leftLabelWidth, rightEdge);
+          const x2 = dateToX(task.end, minDate, maxDate, leftLabelWidth, rightEdge);
+          const barX = Math.min(x1, x2);
+          const barW = Math.max(8, Math.abs(x2 - x1));
+          const barH = rowHeight - 14;
+          const barY = yTop + 7;
+
+          if (task.dashed) {
+            // Dashed outline (for CDP Extensions)
+            const rect = document.createElementNS(svgNS, 'rect');
+            rect.setAttribute('x', barX);
+            rect.setAttribute('y', barY);
+            rect.setAttribute('width', barW);
+            rect.setAttribute('height', barH);
+            rect.setAttribute('class', 'task-bar dashed');
+            rect.setAttribute('rx', 2);
+            svg.appendChild(rect);
+          } else {
+            // Filled bar
+            const rect = document.createElementNS(svgNS, 'rect');
+            rect.setAttribute('x', barX);
+            rect.setAttribute('y', barY);
+            rect.setAttribute('width', barW);
+            rect.setAttribute('height', barH);
+            rect.setAttribute('fill', task.color);
+            rect.setAttribute('class', 'task-bar');
+            rect.setAttribute('rx', 2);
+            svg.appendChild(rect);
+          }
+
+          // Task name label (overlaid on bar)
+          const nameLabel = document.createElementNS(svgNS, 'text');
+          nameLabel.setAttribute('x', barX + 6);
+          nameLabel.setAttribute('y', barY + 16);
+          nameLabel.setAttribute('class', 'task-label-big');
+          if (task.dashed) {
+            nameLabel.setAttribute('fill', '#f87171');
+          } else if (task.color === '#d9c34a') {
+            nameLabel.setAttribute('fill', '#1c1917');
+          }
+          // Format the name to show subscript-like SUB1, SUB2 etc.
+          nameLabel.textContent = task.name;
+          svg.appendChild(nameLabel);
+
+          // Sub label (e.g., "CDP DESIGN", "NEW DESIGN")
+          if (task.sub) {
+            const subLabel = document.createElementNS(svgNS, 'text');
+            subLabel.setAttribute('x', barX + 6);
+            subLabel.setAttribute('y', barY + 30);
+            subLabel.setAttribute('class', 'task-label-sub');
+            if (task.dashed) {
+              subLabel.setAttribute('fill', '#f87171');
+            } else if (task.color === '#d9c34a') {
+              subLabel.setAttribute('fill', '#1c1917');
+            }
+            subLabel.textContent = task.sub;
+            svg.appendChild(subLabel);
+          }
+
+          // Note label (e.g., "GRADING ONLY & BUILDING PADS", "APPROVAL")
+          if (task.note && barW > 80) {
+            const noteLabel = document.createElementNS(svgNS, 'text');
+            noteLabel.setAttribute('x', barX + 6);
+            noteLabel.setAttribute('y', barY + barH - 3);
+            noteLabel.setAttribute('class', task.note === 'APPROVAL' ? 'approval-text' : 'task-label-note');
+            if (task.color === '#d9c34a' && task.note !== 'APPROVAL') {
+              noteLabel.setAttribute('fill', '#3f2e0e');
+            }
+            noteLabel.textContent = task.note;
+            svg.appendChild(noteLabel);
+          }
+
+          // Special: vertical construction "24 MONTHS" overlay on right side
+          if (task.name === 'VERTICAL CONSTRUCTION') {
+            // Add a "24 MONTHS" text on the right side of the visible portion
+            const visibleRight = Math.min(barX + barW, rightEdge - 8);
+            const monthsLabel = document.createElementNS(svgNS, 'text');
+            monthsLabel.setAttribute('x', visibleRight - 80);
+            monthsLabel.setAttribute('y', barY + 28);
+            monthsLabel.setAttribute('class', 'vertical-text');
+            monthsLabel.setAttribute('text-anchor', 'start');
+            monthsLabel.textContent = '24 MONTHS →';
+            svg.appendChild(monthsLabel);
+          }
+        });
+      });
+
+      // Title overlay (top-left, inside SVG, so it prints)
+      const titleBg = document.createElementNS(svgNS, 'rect');
+      titleBg.setAttribute('x', 8);
+      titleBg.setAttribute('y', 6);
+      titleBg.setAttribute('width', leftLabelWidth - 16);
+      titleBg.setAttribute('height', topAxisHeight - 18);
+      titleBg.setAttribute('fill', 'rgba(2,6,23,0.0)');
+      svg.appendChild(titleBg);
+
+      const titleText = document.createElementNS(svgNS, 'text');
+      titleText.setAttribute('x', 10);
+      titleText.setAttribute('y', 22);
+      titleText.setAttribute('font-size', '15');
+      titleText.setAttribute('font-weight', '800');
+      titleText.setAttribute('fill', '#ffffff');
+      titleText.setAttribute('letter-spacing', '0.08em');
+      titleText.textContent = 'LA COSTA HOTEL';
+      svg.appendChild(titleText);
+
+      const subtitleText = document.createElementNS(svgNS, 'text');
+      subtitleText.setAttribute('x', 10);
+      subtitleText.setAttribute('y', 38);
+      subtitleText.setAttribute('font-size', '10');
+      subtitleText.setAttribute('font-weight', '600');
+      subtitleText.setAttribute('fill', '#94a3b8');
+      subtitleText.setAttribute('letter-spacing', '0.1em');
+      subtitleText.textContent = 'PROJECT SCHEDULE';
+      svg.appendChild(subtitleText);
+
+      const updatedText = document.createElementNS(svgNS, 'text');
+      updatedText.setAttribute('x', 10);
+      updatedText.setAttribute('y', 52);
+      updatedText.setAttribute('font-size', '9');
+      updatedText.setAttribute('font-weight', '500');
+      updatedText.setAttribute('fill', '#cbd5e1');
+      updatedText.setAttribute('letter-spacing', '0.06em');
+      updatedText.textContent = 'UPDATED: MAY 14, 2026';
+      svg.appendChild(updatedText);
+
+      ganttScroll.appendChild(svg);
+    }
+
+    function buildMonthTicks(start, end) {
+      const ticks = [];
+      const d = new Date(start.getFullYear(), start.getMonth(), 1);
+      const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+      while (d <= endMonth) {
+        ticks.push(new Date(d.getTime()));
+        d.setMonth(d.getMonth() + 1);
+      }
+      return ticks;
+    }
+
+    function formatMonthTickLabel(date) {
+      const names = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+      return `${names[date.getMonth()]} ${date.getFullYear()}`;
+    }
+
+    function dateToX(date, minDate, maxDate, leftLabelWidth, rightEdge) {
+      const totalMs = maxDate - minDate || 1;
+      const msFromStart = date - minDate;
+      const usableWidth = rightEdge - leftLabelWidth;
+      const ratio = Math.max(0, Math.min(1, msFromStart / totalMs));
+      return leftLabelWidth + ratio * usableWidth;
+    }
+
+    // -----------------------------
+    // Export / Print
+    // -----------------------------
+    function exportToCSV() {
+      if (!tasks.length) { alert('No tasks to export.'); return; }
+      const header = ['ID','Name','Group','SubDesign','Start','End','Note','Color'];
+      const rows = tasks.map(t => [
+        t.id,
+        `"${(t.name||'').replace(/"/g, '""')}"`,
+        t.group || '',
+        t.sub || '',
+        formatDate(t.start),
+        formatDate(t.end),
+        `"${(t.note||'').replace(/"/g, '""')}"`,
+        t.color
+      ]);
+      const csvContent = [header.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'la_costa_hotel_schedule.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportToExcel() {
+      if (!tasks.length) { alert('No tasks to export.'); return; }
+      const data = [['ID','Name','Group','SubDesign','Start','End','Note','Color']];
+      tasks.forEach(t => {
+        data.push([t.id, t.name, t.group||'', t.sub||'', formatDate(t.start), formatDate(t.end), t.note||'', t.color]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'La Costa Hotel');
+      XLSX.writeFile(wb, 'la_costa_hotel_schedule.xlsx');
+    }
+
+    function doPrint() {
+      window.print();
+    }
+
+    // -----------------------------
+    // Event wiring
+    // -----------------------------
+    addTaskBtn.addEventListener('click', () => { addTask(); renderGantt(); });
+    clearTasksBtn.addEventListener('click', clearTasks);
+    reloadDefaultsBtn.addEventListener('click', loadDefaults);
+    renderBtn.addEventListener('click', () => { updateStatusText(); renderGantt(); });
+    printBtn.addEventListener('click', doPrint);
+    exportCsvBtn.addEventListener('click', exportToCSV);
+    exportExcelBtn.addEventListener('click', exportToExcel);
+
+    // Initial load
+    loadDefaults();
+  </script>
+</body>
+</html>
