@@ -668,6 +668,20 @@
 
           <button id="toolbar-collapse-btn" title="Show/hide settings">▼ Settings</button>
 
+          <!-- Google Sheets Sync — always visible outside the collapsible -->
+          <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px;">
+            <div class="pill-label">Google Sheets Sync</div>
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <span class="sync-indicator" id="sync-indicator">
+                <span class="sync-dot" id="sync-dot"></span>
+                <span id="sync-label">Not connected</span>
+              </span>
+              <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
+              <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
+              <span id="sheet-name-display" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title=""></span>
+            </div>
+          </div>
+
           <div id="toolbar-collapsible">
 
           <div>
@@ -703,19 +717,6 @@
               <option value="7" selected>Week</option>
               <option value="0">None</option>
             </select>
-          </div>
-
-          <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px;">
-            <div class="pill-label">Google Sheets Sync</div>
-            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-              <span class="sync-indicator" id="sync-indicator">
-                <span class="sync-dot" id="sync-dot"></span>
-                <span id="sync-label">Not connected</span>
-              </span>
-              <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
-              <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
-              <span id="sheet-name-display" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title=""></span>
-            </div>
           </div>
 
           </div><!-- /toolbar-collapsible -->
