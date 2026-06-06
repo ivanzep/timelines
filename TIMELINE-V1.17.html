@@ -5212,11 +5212,11 @@
           renderGantt();
           _syncDot('ok', 'Loaded ' + loaded.length + ' tasks');
           if (statusText) statusText.textContent = '☁ Loaded ' + loaded.length + ' tasks from Google Sheets at ' + new Date().toLocaleTimeString();
-          _setSheetNameDisplay(data.spreadsheetName);
+          _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets');
         } else {
           _syncDot('ok', 'Sheet empty — use Save to push data');
           if (statusText) statusText.textContent = 'Google Sheet has no tasks yet. Make edits here, then click ⬆ Save.';
-          _setSheetNameDisplay(data.spreadsheetName);
+          _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets');
         }
       } catch(err) {
         _syncDot('err', 'Load failed');
