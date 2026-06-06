@@ -1,10 +1,24 @@
 <!--
   ============================================================
   LA COSTA HOTEL — Interactive Project Timeline
-  File: LA_COSTA_HOTEL_TIMELINE_INTERACTIVE.html
+  File: TIMELINE-V1.18.html
 
   VERSION HISTORY
   ───────────────
+  V1.18  2026-06-06
+    • Each task is assigned a unique persistent integer TASKID stored in
+      the GANTT TASK PARAMS-DO NOT EDIT spreadsheet tab (new 7th column).
+    • IDs are assigned automatically on Load — any task without one gets
+      the next sequential number and the tab is updated immediately.
+    • TASKID is not visible in the HTML; it lives entirely in the sheet.
+    • Enables rename tracking: when a task's name or discipline changes,
+      saveBackToTaskList uses the taskId to locate the original sheet row
+      and updates it in-place instead of creating a duplicate.
+    • Also helps detect task creates and deletes across sessions.
+    • Frontend stores taskId on each task object and includes it in the
+      save payload; new tasks created in the UI have taskId: null until
+      their first Save + Reload.
+
   V1.17  2026-06-06
     • FILE (Save MD, Load MD), ACTIONS (Defaults, CSV, Excel), Dark Mode,
       and ⚙ Setup collapsed into a ··· overflow menu at the top-right of

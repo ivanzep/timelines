@@ -1,6 +1,6 @@
 // ============================================================
 //  LA COSTA HOTEL — TIMELINE SYNC  |  Google Apps Script
-//  File: Code_V1.17.gs
+//  File: Code_V1.18.gs
 //
 //  PURPOSE
 //  ───────
@@ -12,7 +12,7 @@
 //       Read on Load; dates + status written back on Save.
 //
 //    2. GANTT TASK PARAMS tab  — per-task Gantt display params
-//       (color override, bar type, bar style, symbol)
+//       (color override, bar type, bar style, symbol, taskId)
 //       Read on Load and merged into tasks; fully rewritten on Save.
 //       These are Gantt-only values that don't belong in the main list.
 //
@@ -31,6 +31,28 @@
 //
 //  VERSION HISTORY
 //  ───────────────
+//  V1.18  2026-06-06
+//    • Persistent numeric TASKID assigned to each task and stored in
+//      GANTT TASK PARAMS tab (new 7th column).
+//    • doGet assigns sequential IDs to any tasks without one on every
+//      Load and immediately writes them back via writeTaskParamsMap().
+//    • writeTaskParams() persists TASKID alongside existing params.
+//    • saveBackToTaskList() uses taskId for rename detection: when a
+//      task's key is not found in the sheet but its taskId matches a
+//      known params entry, the existing sheet row is updated in-place
+//      (discipline + task name rewritten) instead of appending a new row.
+//
+//  V1.17  2026-06-06  (HTML only — no backend changes)
+//
+//  V1.16  2026-06-03
+//    • Task deletion syncs to spreadsheet — rows removed from the chart
+//      are deleted from PROJECT TASK LIST on Save.
+//    • MILESTONE column explicitly written on every Save (TRUE/FALSE) so
+//      un-checking it in the sheet is respected on next Load.
+//    • Fixed: stale GANTT TASK PARAMS type='milestone' override is
+//      ignored when the sheet's MILESTONE column is FALSE (_sheetMilestone
+//      guard added to doGet).
+//
 //  V1.14  2026-05-22
 //    • SETTINGS_KEYS expanded with 4 new keys introduced in HTML V1.14:
 //        ganttCollapsedGroups      — Gantt chart collapse state (separate from task list)
