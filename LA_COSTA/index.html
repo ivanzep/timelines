@@ -5,6 +5,26 @@
 
   VERSION HISTORY
   ───────────────
+  V1.17  2026-06-06
+    • FILE (Save MD, Load MD), ACTIONS (Defaults, CSV, Excel), Dark Mode,
+      and ⚙ Setup collapsed into a ··· overflow menu at the top-right of
+      the toolbar. Load and Save remain visible in the main toolbar.
+    • Added viewport meta tag for correct iPad/mobile scaling.
+    • Responsive CSS breakpoints at 1100px and 820px: reduced padding,
+      font sizes, and gantt/table max-heights for tablet viewports.
+
+  V1.16  2026-06-03
+    • Task deletion now syncs to the spreadsheet on Save — rows removed
+      from the chart are deleted from PROJECT TASK LIST.
+    • MILESTONE column explicitly written on every save (TRUE or FALSE),
+      so un-checking it in the sheet is respected on next Load.
+    • Fixed: milestone type no longer persists after MILESTONE is unchecked
+      in the spreadsheet — stale GANTT TASK PARAMS type override is ignored
+      when the sheet's MILESTONE column is FALSE.
+    • Batch edit (task section) now covers all task properties: Status,
+      Color override, Discipline, Type (Bar/Milestone/Flag), Style
+      (Solid/Dashed/Dashed Outline), Start date, End date, Notes.
+
   V1.15  2026-05-22
     • Shift+click multi-select on Gantt bars, milestones, and flags.
       Shift+click any bar/milestone/flag to add it to a multi-selection.
@@ -123,7 +143,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>LA COSTA-TIMELINE</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>La Costa Hotel - Interactive Project Schedule</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
@@ -524,6 +545,47 @@
     #tp-print-btn:hover { background: #0284c7; }
     #tp-close-btn  { background: #475569; color: #e2e8f0; }
     #tp-close-btn:hover { background: #64748b; }
+
+    /* ---- Overflow / hamburger menu ---- */
+    .overflow-menu-wrapper { position: relative; align-self: flex-end; }
+    #overflow-menu-btn { font-size: 1.15rem; padding: 5px 11px; line-height: 1; letter-spacing: 0.04em; }
+    .overflow-menu {
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: var(--panel); border: 1px solid var(--border-strong);
+      border-radius: 12px; box-shadow: var(--shadow-soft);
+      padding: 6px 0; min-width: 172px; z-index: 400;
+      display: none;
+    }
+    .overflow-menu.open { display: block; }
+    .overflow-section { padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; }
+    .overflow-section + .overflow-section { border-top: 1px solid var(--border); margin-top: 2px; padding-top: 6px; }
+    .overflow-section-label { font-size: 0.64rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-muted); padding: 0 6px 3px; }
+    .overflow-menu button {
+      width: 100%; text-align: left; border: none; background: transparent;
+      padding: 6px 10px; border-radius: 7px; font-size: 0.82rem; cursor: pointer;
+      color: var(--text); font-family: inherit; font-weight: 500;
+      transition: background 0.1s;
+    }
+    .overflow-menu button:hover { background: var(--panel-soft); }
+
+    /* ---- iPad / responsive fixes ---- */
+    @media (max-width: 1100px) {
+      .app-shell { padding: 12px 14px 16px; border-radius: 14px; }
+      .toolbar { gap: 6px; }
+      #toolbar-collapsible { gap: 5px; }
+      .gantt-scroll { max-height: 62vh; }
+    }
+    @media (max-width: 820px) {
+      body { padding: 6px; }
+      .app-shell { border-radius: 10px; padding: 10px 10px 14px; }
+      .meta-name { font-size: 1.1rem !important; }
+      .toolbar { flex-wrap: wrap; gap: 5px; }
+      #toolbar-collapsible { flex-wrap: wrap; gap: 4px; }
+      .gantt-scroll { max-height: 55vh; }
+      .task-table-wrapper { max-height: 50vh; }
+      .zoom-slider { width: 70px; }
+    }
+
     #task-print-preview-area {
       flex: 1; overflow-y: auto; padding: 24px; display: flex;
       flex-direction: column; align-items: center; gap: 24px;
@@ -639,28 +701,6 @@
             </select>
           </div>
 
-          <div>
-            <div class="pill-label">File</div>
-            <div style="display:flex; gap:6px;">
-              <button id="save-md-btn" class="secondary">Save MD</button>
-              <button id="load-md-btn" class="secondary">Load MD</button>
-              <input type="file" id="load-md-input" class="hidden-file-input" accept=".md,.txt,.markdown" />
-            </div>
-          </div>
-
-          <div>
-            <div class="pill-label">Actions</div>
-            <div style="display:flex; gap:6px;">
-              <button id="reload-defaults-btn" class="secondary">Defaults</button>
-              <button id="export-csv-btn" class="secondary">CSV</button>
-              <button id="export-excel-btn" class="secondary">Excel</button>
-            </div>
-          </div>
-
-          <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px; align-self:flex-end;">
-            <button id="theme-toggle-btn" class="secondary" title="Toggle dark / light theme" style="font-size:0.82rem; padding:6px 12px;">🌙 Dark</button>
-          </div>
-
           <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px;">
             <div class="pill-label">Google Sheets Sync</div>
             <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
@@ -670,12 +710,36 @@
               </span>
               <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
               <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
-              <button id="sheets-config-btn" class="secondary" title="Configure Google Sheets connection">⚙ Setup</button>
               <span id="sheet-name-display" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title=""></span>
             </div>
           </div>
 
           </div><!-- /toolbar-collapsible -->
+
+          <!-- Overflow menu — always visible, contains File / Actions / Setup / Theme -->
+          <div class="overflow-menu-wrapper">
+            <button id="overflow-menu-btn" class="secondary" title="More options">···</button>
+            <div class="overflow-menu" id="overflow-menu">
+              <div class="overflow-section">
+                <div class="overflow-section-label">File</div>
+                <button id="save-md-btn">💾 Save MD</button>
+                <button id="load-md-btn">📂 Load MD</button>
+                <input type="file" id="load-md-input" class="hidden-file-input" accept=".md,.txt,.markdown" />
+              </div>
+              <div class="overflow-section">
+                <div class="overflow-section-label">Actions</div>
+                <button id="reload-defaults-btn">↺ Defaults</button>
+                <button id="export-csv-btn">⬇ CSV</button>
+                <button id="export-excel-btn">⬇ Excel</button>
+              </div>
+              <div class="overflow-section">
+                <button id="theme-toggle-btn" title="Toggle dark / light theme">🌙 Dark Mode</button>
+              </div>
+              <div class="overflow-section">
+                <button id="sheets-config-btn" title="Configure Google Sheets connection">⚙ Setup</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -750,6 +814,31 @@
           <span style="color:var(--border-strong);margin:0 2px;">|</span>
           <label style="display:flex;align-items:center;gap:4px;font-size:0.74rem;color:var(--text-muted);text-transform:none;letter-spacing:normal;margin:0;">
             Disc <input type="text" id="batch-disc-inp" placeholder="DISCIPLINE" style="width:100px;padding:2px 5px;font-size:0.74rem;border-radius:5px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" />
+          </label>
+          <span style="color:var(--border-strong);margin:0 2px;">|</span>
+          <select id="batch-type-sel" style="width:100px;padding:3px 6px;font-size:0.74rem;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" title="Set task type">
+            <option value="">— Type —</option>
+            <option value="bar">Bar</option>
+            <option value="milestone">Milestone</option>
+            <option value="flag">Flag</option>
+          </select>
+          <span style="color:var(--border-strong);margin:0 2px;">|</span>
+          <select id="batch-style-sel" style="width:120px;padding:3px 6px;font-size:0.74rem;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" title="Set bar style">
+            <option value="">— Style —</option>
+            <option value="solid">Solid</option>
+            <option value="dashed">Dashed</option>
+            <option value="dashed-outline">Dashed Outline</option>
+          </select>
+          <span style="color:var(--border-strong);margin:0 2px;">|</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.74rem;color:var(--text-muted);text-transform:none;letter-spacing:normal;margin:0;">
+            Start <input type="date" id="batch-start-inp" style="padding:2px 4px;font-size:0.73rem;border-radius:5px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" title="Set start date for selected tasks" />
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.74rem;color:var(--text-muted);text-transform:none;letter-spacing:normal;margin:0;">
+            End <input type="date" id="batch-end-inp" style="padding:2px 4px;font-size:0.73rem;border-radius:5px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" title="Set end date for selected tasks" />
+          </label>
+          <span style="color:var(--border-strong);margin:0 2px;">|</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.74rem;color:var(--text-muted);text-transform:none;letter-spacing:normal;margin:0;">
+            Notes <input type="text" id="batch-notes-inp" placeholder="notes…" style="width:110px;padding:2px 5px;font-size:0.74rem;border-radius:5px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" title="Set notes for selected tasks" />
           </label>
           <button id="batch-apply-btn"  class="primary"    style="font-size:0.74rem;padding:3px 10px;">Apply</button>
           <button id="batch-delete-btn" class="danger"     style="font-size:0.74rem;padding:3px 9px;">Delete</button>
@@ -4469,13 +4558,23 @@
       var batchColorIn = document.getElementById('batch-color-inp');
       var batchColorCb = document.getElementById('batch-color-cb');
       var batchDiscIn  = document.getElementById('batch-disc-inp');
+      var batchTypeSel = document.getElementById('batch-type-sel');
+      var batchStyleSel= document.getElementById('batch-style-sel');
+      var batchStartIn = document.getElementById('batch-start-inp');
+      var batchEndIn   = document.getElementById('batch-end-inp');
+      var batchNotesIn = document.getElementById('batch-notes-inp');
       if (batchApply) {
         batchApply.addEventListener('click', function() {
-          var newStatus = batchSel ? batchSel.value : '';
+          var newStatus  = batchSel      ? batchSel.value                    : '';
           var applyColor = batchColorCb && batchColorCb.checked;
-          var newColor   = batchColorIn ? batchColorIn.value : '';
-          var newDisc    = batchDiscIn ? batchDiscIn.value.trim().toUpperCase() : '';
-          var hasAction  = newStatus || applyColor || newDisc;
+          var newColor   = batchColorIn  ? batchColorIn.value                : '';
+          var newDisc    = batchDiscIn   ? batchDiscIn.value.trim().toUpperCase() : '';
+          var newType    = batchTypeSel  ? batchTypeSel.value                : '';
+          var newStyle   = batchStyleSel ? batchStyleSel.value               : '';
+          var newStart   = batchStartIn  ? batchStartIn.value                : '';
+          var newEnd     = batchEndIn    ? batchEndIn.value                  : '';
+          var newNotes   = batchNotesIn  ? batchNotesIn.value                : '';
+          var hasAction  = newStatus || applyColor || newDisc || newType || newStyle || newStart || newEnd || newNotes !== '';
           if (!hasAction) return;
           var COLOR_MAP = {'IN PROGRESS':'#16a34a','UPCOMING':'#f59e0b','DOWNSTREAM':'#8b5cf6','PENDING':'#d9c34a','COMPLETED':'#94a3b8','CANCELLED':'#dc2626','75% COMPLETE':'#22c55e','WAITING ON OTHERS':'#f97316','WITING ON THE CITY':'#f97316','UNDER REVIEW':'#06b6d4','URGENT':'#dc2626','ON HOLD':'#94a3b8','STAND BY':'#94a3b8','NEEDS ATTENTION':'#f97316','TBD':'#94a3b8','NOTE':'#60a5fa','RECEIVED':'#22c55e','APPROVED':'#16a34a','DECLINED':'#dc2626'};
           tasks.forEach(function(t) {
@@ -4485,7 +4584,14 @@
               if (COLOR_MAP[newStatus]) { t.color = COLOR_MAP[newStatus]; delete t.colorOverride; }
             }
             if (applyColor && newColor) t.colorOverride = newColor;
-            if (newDisc) t.group = newDisc;
+            if (newDisc)  t.group = newDisc;
+            if (newType)  t.type  = newType;
+            if (newStyle === 'solid')         { t.dashed = false; t.dashedOutline = false; }
+            if (newStyle === 'dashed')        { t.dashed = true;  t.dashedOutline = false; }
+            if (newStyle === 'dashed-outline'){ t.dashed = false; t.dashedOutline = true;  }
+            if (newStart) { var s = new Date(newStart + 'T00:00:00'); if (!isNaN(s)) t.start = s; }
+            if (newEnd)   { var e = new Date(newEnd   + 'T00:00:00'); if (!isNaN(e)) t.end   = e; }
+            if (batchNotesIn && batchNotesIn.value !== '') t.notes = newNotes;
           });
           refreshTaskTable(); renderGantt();
         });
@@ -4634,7 +4740,7 @@
     }
 
     // Default URL embedded in file — works across all browsers/computers without setup
-    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzotyM0lV7qUU8OCPBI5F-nqciH0-pDDCBVtEvXz5LFfIY_o7xAnn-3jNfRTW-XV3ugpw/exec';
+    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwD0rXgO3FqGRQVSJL_U2_MSFpm_8UMEEImhf9nMi1GwKlAiJ0CXBoB5sZ_NSD8qhp_8Q/exec';
 
     function _loadStoredURL() {
       // Always use the URL embedded in this file — localStorage is ignored.
@@ -5229,9 +5335,30 @@
         _syncDot('', 'Not connected');
       }
 
-      document.getElementById('sheets-config-btn').addEventListener('click', openSheetsModal);
+      document.getElementById('sheets-config-btn').addEventListener('click', function() {
+        document.getElementById('overflow-menu').classList.remove('open');
+        openSheetsModal();
+      });
       document.getElementById('sheets-load-btn').addEventListener('click', loadFromSheets);
       document.getElementById('sheets-save-btn').addEventListener('click', saveToSheets);
+
+      // Overflow menu toggle
+      (function() {
+        var btn  = document.getElementById('overflow-menu-btn');
+        var menu = document.getElementById('overflow-menu');
+        if (!btn || !menu) return;
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          menu.classList.toggle('open');
+        });
+        menu.addEventListener('click', function() {
+          // Close menu after any action is clicked
+          setTimeout(function() { menu.classList.remove('open'); }, 120);
+        });
+        document.addEventListener('click', function() {
+          menu.classList.remove('open');
+        });
+      })();
       document.getElementById('sheets-modal-cancel').addEventListener('click', closeSheetsModal);
 
       document.getElementById('sheets-modal-test').addEventListener('click', function() {
