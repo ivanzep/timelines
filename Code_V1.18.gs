@@ -473,29 +473,41 @@ function saveBackToTaskList(payload) {
       var key        = normKey(discipline + '|' + taskName);
       var sheetRow   = lookup[key];
 
-      // Rename detection: if key not found but task has a persistent taskId,
-      // look up the old key and use that row (updating name/discipline in sheet).
+      // Rename / discipline-change detection via persistent taskId.
+      // • Name-only rename   → update in place (sheetRow set, payloadKeys[oldKey] protected)
+      // • Discipline change  → leave sheetRow null; Phase 2 deletes old row,
+      //                        Phase 3 appends row under the new discipline group
       var isRename = false;
+      var renamedOldKey = null;
       if (!sheetRow && t.taskId) {
-        var oldKey = idToKey[parseInt(t.taskId, 10)];
-        if (oldKey && lookup[oldKey] && !payloadKeys[oldKey]) {
-          sheetRow = lookup[oldKey];
+        renamedOldKey = idToKey[parseInt(t.taskId, 10)];
+        if (renamedOldKey && lookup[renamedOldKey] && !payloadKeys[renamedOldKey]) {
           isRename = true;
-          payloadKeys[oldKey] = true; // prevent Phase 2 from deleting the row
+          var oldDiscNorm       = renamedOldKey.split('|')[0];
+          var isDisciplineChange = (oldDiscNorm !== normKey(discipline));
+
+          if (!isDisciplineChange) {
+            // Name-only rename: update the existing row in place
+            sheetRow = lookup[renamedOldKey];
+            payloadKeys[renamedOldKey] = true; // prevent Phase 2 from deleting
+          }
+          // Discipline change: renamedOldKey stays absent from payloadKeys so
+          // Phase 2 deletes it; sheetRow remains null so Phase 3 appends the row.
+
+          // Update IDs registry: new key inherits the same persistent ID
+          if (savedTaskIds.ids[renamedOldKey]) {
+            savedTaskIds.ids[key] = savedTaskIds.ids[renamedOldKey];
+            delete savedTaskIds.ids[renamedOldKey];
+            try { writeTaskIds(savedTaskIds); } catch(e) {}
+          }
         }
       }
 
       if (sheetRow) {
         if (isRename) {
+          // Name-only rename: overwrite discipline + task name in the existing row
           sheet.getRange(sheetRow, CI.discipline + 1).setValue(discipline);
           sheet.getRange(sheetRow, CI.task       + 1).setValue(taskName);
-          // Update IDs registry so the new key carries the same ID
-          var oldKey2 = idToKey[parseInt(t.taskId, 10)];
-          if (oldKey2 && savedTaskIds.ids[oldKey2]) {
-            savedTaskIds.ids[key] = savedTaskIds.ids[oldKey2];
-            delete savedTaskIds.ids[oldKey2];
-            try { writeTaskIds(savedTaskIds); } catch(e) {}
-          }
         }
         if (t.start) sheet.getRange(sheetRow, CI.start + 1).setValue(t.start);
         if (t.end)   sheet.getRange(sheetRow, CI.end   + 1).setValue(t.end);
@@ -512,7 +524,8 @@ function saveBackToTaskList(payload) {
         updated++;
 
       } else if (taskName) {
-        // Queue new row under its discipline group
+        // Queue new row under its discipline group.
+        // Covers genuinely new tasks AND discipline changes (old row removed by Phase 2).
         var totalCols = raw[hRow].length;
         var newRow = new Array(totalCols).fill('');
         newRow[CI.discipline] = discipline;
