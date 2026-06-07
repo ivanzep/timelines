@@ -1,5 +1,5 @@
 // ============================================================
-//  LA COSTA HOTEL — TIMELINE SYNC  |  Google Apps Script
+//  TIMELINE SYNC  |  Google Apps Script
 //  File: Code_V1.18.gs
 //
 //  PURPOSE
