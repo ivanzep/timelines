@@ -655,6 +655,9 @@ function writeTaskParamsMap(taskParams) {
 // Write all task display params to GANTT TASK PARAMS.
 // Rewrites the entire tab — one row per task.
 // Creates the tab if it doesn't exist.
+// Task IDs are treated as permanent: existing IDs are read from the tab
+// before it is cleared, so they are preserved even when the frontend
+// sends taskId as null (e.g. after a page reload that predates V1.18).
 function writeTaskParams(tasks) {
   if (!tasks || !tasks.length) return;
 
@@ -662,9 +665,35 @@ function writeTaskParams(tasks) {
   var sh = ss.getSheetByName(TASK_PARAMS_SHEET);
   if (!sh) sh = ss.insertSheet(TASK_PARAMS_SHEET);
 
+  // ── Read existing IDs from the tab BEFORE clearing ──────────
+  var existingIds = {}; // normKey → taskId (integer)
+  var existingMaxId = 0;
+  if (sh.getLastRow() >= 2) {
+    var existingData = sh.getDataRange().getValues();
+    var ehRow = -1;
+    for (var i = 0; i < Math.min(existingData.length, 5); i++) {
+      if (String(existingData[i][0]).trim().toUpperCase() === 'KEY') { ehRow = i; break; }
+    }
+    if (ehRow >= 0) {
+      var eCols = {};
+      existingData[ehRow].forEach(function(h, idx) { eCols[String(h).trim().toUpperCase()] = idx; });
+      var eColKey    = eCols['KEY']    !== undefined ? eCols['KEY']    : 0;
+      var eColTaskId = eCols['TASKID'] !== undefined ? eCols['TASKID'] : 6;
+      for (var r = ehRow + 1; r < existingData.length; r++) {
+        var ek  = normKey(String(existingData[r][eColKey] || '').trim());
+        var eid = parseInt(String(existingData[r][eColTaskId] || '').trim(), 10) || 0;
+        if (ek && eid) {
+          existingIds[ek] = eid;
+          if (eid > existingMaxId) existingMaxId = eid;
+        }
+      }
+    }
+  }
+
   sh.clearContents();
 
   var rows = [['KEY', 'COLOR', 'TYPE', 'STYLE', 'SYMBOL', 'DEPS', 'TASKID']];
+  var nextId = existingMaxId;
 
   tasks.forEach(function(t) {
     var disc = String(t.group || '').trim().toUpperCase();
@@ -683,8 +712,12 @@ function writeTaskParams(tasks) {
       style = 'solid';
     }
     var symbol = String(t.symbol || '').trim();
-    var deps   = String(t.dependencies || '').trim();  // tilde-separated "GROUP|NAME" keys
-    var taskId = parseInt(t.taskId || 0, 10) || '';
+    var deps   = String(t.dependencies || '').trim();
+
+    // Priority: payload taskId → existing ID in tab (permanent) → new sequential ID
+    var taskId = parseInt(t.taskId || 0, 10) || 0;
+    if (!taskId) taskId = existingIds[key] || 0;
+    if (!taskId) { nextId++; taskId = nextId; }
 
     rows.push([key, color, type, style, symbol, deps, taskId]);
   });
