@@ -206,6 +206,8 @@ function doGet(e) {
     });
     if (newIdsAssigned) {
       try { writeTaskIds(taskIds); } catch(e) {}
+    } else {
+      try { hideTaskIdsSheet(); } catch(e) {}
     }
 
     result.settings = readSettings();
@@ -449,6 +451,7 @@ function saveBackToTaskList(payload) {
 
   // Build taskId → old sheet key map for rename detection (reads the IDs tab)
   var savedTaskIds = readTaskIds();
+  try { hideTaskIdsSheet(); } catch(e) {}
   var idToKey = {};
   Object.keys(savedTaskIds.ids).forEach(function(k) {
     idToKey[savedTaskIds.ids[k]] = k;
@@ -644,6 +647,11 @@ function writeTaskIds(taskIds) {
   });
   sh.getRange(1, 1, rows.length, 2).setValues(rows);
   sh.hideSheet();
+}
+
+function hideTaskIdsSheet() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TASK_IDS_SHEET);
+  if (sh && !sh.isSheetHidden()) sh.hideSheet();
 }
 
 // ============================================================
