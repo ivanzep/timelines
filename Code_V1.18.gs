@@ -655,9 +655,14 @@ function writeTaskParamsMap(taskParams) {
 // Write all task display params to GANTT TASK PARAMS.
 // Rewrites the entire tab — one row per task.
 // Creates the tab if it doesn't exist.
-// Task IDs are treated as permanent: existing IDs are read from the tab
-// before it is cleared, so they are preserved even when the frontend
-// sends taskId as null (e.g. after a page reload that predates V1.18).
+//
+// Task IDs are owned entirely by the backend:
+//   1. Existing ID for this key in the params tab  → use it (permanent)
+//   2. Frontend taskId matches a known existing ID → use it (renamed task)
+//   3. Neither                                     → assign next sequential ID
+//
+// The frontend's taskId is NEVER trusted to override an existing key match,
+// so a simple page reload or stale payload cannot wipe or change stored IDs.
 function writeTaskParams(tasks) {
   if (!tasks || !tasks.length) return;
 
@@ -665,35 +670,23 @@ function writeTaskParams(tasks) {
   var sh = ss.getSheetByName(TASK_PARAMS_SHEET);
   if (!sh) sh = ss.insertSheet(TASK_PARAMS_SHEET);
 
-  // ── Read existing IDs from the tab BEFORE clearing ──────────
-  var existingIds = {}; // normKey → taskId (integer)
-  var existingMaxId = 0;
-  if (sh.getLastRow() >= 2) {
-    var existingData = sh.getDataRange().getValues();
-    var ehRow = -1;
-    for (var i = 0; i < Math.min(existingData.length, 5); i++) {
-      if (String(existingData[i][0]).trim().toUpperCase() === 'KEY') { ehRow = i; break; }
+  // Read the existing params tab before clearing it.
+  // existingParams: key → { taskId, ... }
+  // existingIdToKey: taskId → key  (for rename detection)
+  var existingParams = readTaskParams();
+  var existingIdToKey = {};
+  var maxId = 0;
+  Object.keys(existingParams).forEach(function(k) {
+    var id = existingParams[k].taskId || 0;
+    if (id) {
+      existingIdToKey[id] = k;
+      if (id > maxId) maxId = id;
     }
-    if (ehRow >= 0) {
-      var eCols = {};
-      existingData[ehRow].forEach(function(h, idx) { eCols[String(h).trim().toUpperCase()] = idx; });
-      var eColKey    = eCols['KEY']    !== undefined ? eCols['KEY']    : 0;
-      var eColTaskId = eCols['TASKID'] !== undefined ? eCols['TASKID'] : 6;
-      for (var r = ehRow + 1; r < existingData.length; r++) {
-        var ek  = normKey(String(existingData[r][eColKey] || '').trim());
-        var eid = parseInt(String(existingData[r][eColTaskId] || '').trim(), 10) || 0;
-        if (ek && eid) {
-          existingIds[ek] = eid;
-          if (eid > existingMaxId) existingMaxId = eid;
-        }
-      }
-    }
-  }
+  });
 
   sh.clearContents();
 
   var rows = [['KEY', 'COLOR', 'TYPE', 'STYLE', 'SYMBOL', 'DEPS', 'TASKID']];
-  var nextId = existingMaxId;
 
   tasks.forEach(function(t) {
     var disc = String(t.group || '').trim().toUpperCase();
@@ -714,10 +707,16 @@ function writeTaskParams(tasks) {
     var symbol = String(t.symbol || '').trim();
     var deps   = String(t.dependencies || '').trim();
 
-    // Priority: payload taskId → existing ID in tab (permanent) → new sequential ID
-    var taskId = parseInt(t.taskId || 0, 10) || 0;
-    if (!taskId) taskId = existingIds[key] || 0;
-    if (!taskId) { nextId++; taskId = nextId; }
+    // ID resolution — backend is authoritative:
+    // 1. Key match in existing params → permanent ID, always use it
+    var taskId = (existingParams[key] && existingParams[key].taskId) ? existingParams[key].taskId : 0;
+    // 2. No key match but frontend sends a known ID → task was renamed, carry the ID forward
+    if (!taskId) {
+      var payloadId = parseInt(t.taskId || 0, 10) || 0;
+      if (payloadId && existingIdToKey[payloadId]) taskId = payloadId;
+    }
+    // 3. Brand-new task — assign next sequential ID
+    if (!taskId) { maxId++; taskId = maxId; }
 
     rows.push([key, color, type, style, symbol, deps, taskId]);
   });
