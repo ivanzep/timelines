@@ -1,10 +1,24 @@
 <!--
   ============================================================
-  LA COSTA HOTEL — Interactive Project Timeline
-  File: LA_COSTA_HOTEL_TIMELINE_INTERACTIVE.html
+  Interactive Project Timeline
+  File: TIMELINE-V1.18.html
 
   VERSION HISTORY
   ───────────────
+  V1.18  2026-06-06
+    • Each task is assigned a unique persistent integer TASKID stored in
+      the GANTT TASK PARAMS-DO NOT EDIT spreadsheet tab (new 7th column).
+    • IDs are assigned automatically on Load — any task without one gets
+      the next sequential number and the tab is updated immediately.
+    • TASKID is not visible in the HTML; it lives entirely in the sheet.
+    • Enables rename tracking: when a task's name or discipline changes,
+      saveBackToTaskList uses the taskId to locate the original sheet row
+      and updates it in-place instead of creating a duplicate.
+    • Also helps detect task creates and deletes across sessions.
+    • Frontend stores taskId on each task object and includes it in the
+      save payload; new tasks created in the UI have taskId: null until
+      their first Save + Reload.
+
   V1.17  2026-06-06
     • FILE (Save MD, Load MD), ACTIONS (Defaults, CSV, Excel), Dark Mode,
       and ⚙ Setup collapsed into a ··· overflow menu at the top-right of
@@ -1337,6 +1351,7 @@
       var t = asType || 'bar';
       var newTask = {
         id: taskIdCounter++,
+        taskId: null,
         name: t === 'milestone' ? ("MILESTONE " + taskIdCounter) :
               t === 'flag' ? ("FLAG " + taskIdCounter) :
               ("NEW TASK " + taskIdCounter),
@@ -4744,7 +4759,7 @@
     }
 
     // Default URL embedded in file — works across all browsers/computers without setup
-    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwD0rXgO3FqGRQVSJL_U2_MSFpm_8UMEEImhf9nMi1GwKlAiJ0CXBoB5sZ_NSD8qhp_8Q/exec';
+    var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxD1ZPZBjz0VilOAdSV4dmLOUvokSrqyAD7d9kGEebdlOnM4C2Ol8KApZzx_ujeNYgTpw/exec';
 
     function _loadStoredURL() {
       // Always use the URL embedded in this file — localStorage is ignored.
@@ -5134,6 +5149,7 @@
             if (!s || !e) return;
             loaded.push({
               id:           idx + 1,
+              taskId:       t.taskId  || null,
               name:         t.name    || '',
               group:        t.group   || 'UTIL',
               sub:          t.sub     || '',
@@ -5212,11 +5228,11 @@
           renderGantt();
           _syncDot('ok', 'Loaded ' + loaded.length + ' tasks');
           if (statusText) statusText.textContent = '☁ Loaded ' + loaded.length + ' tasks from Google Sheets at ' + new Date().toLocaleTimeString();
-          _setSheetNameDisplay(data.spreadsheetName);
+          _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets');
         } else {
           _syncDot('ok', 'Sheet empty — use Save to push data');
           if (statusText) statusText.textContent = 'Google Sheet has no tasks yet. Make edits here, then click ⬆ Save.';
-          _setSheetNameDisplay(data.spreadsheetName);
+          _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets');
         }
       } catch(err) {
         _syncDot('err', 'Load failed');
@@ -5260,6 +5276,7 @@
         tasks: tasks.map(function(t) {
           return {
             id:           t.id,
+            taskId:       t.taskId  || null,
             name:         t.name    || '',
             group:        t.group   || '',
             sub:          t.sub     || '',
