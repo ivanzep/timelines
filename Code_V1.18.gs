@@ -459,9 +459,10 @@ function saveBackToTaskList(payload) {
 
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
-  var updated  = 0;
-  var appended = 0;
-  var deleted  = 0;
+  var updated   = 0;
+  var appended  = 0;
+  var deleted   = 0;
+  var moveTasks = [];          // discipline-change moves: {oldRow, newRow[], targetDiscKey}
   var newRowsByDisc   = {};
   var newRowsOrphaned = [];
 
@@ -475,24 +476,39 @@ function saveBackToTaskList(payload) {
 
       // Rename / discipline-change detection via persistent taskId.
       // • Name-only rename   → update in place (sheetRow set, payloadKeys[oldKey] protected)
-      // • Discipline change  → leave sheetRow null; Phase 2 deletes old row,
-      //                        Phase 3 appends row under the new discipline group
+      // • Discipline change  → queued in moveTasks for Phase 4 (explicit move)
       var isRename = false;
       var renamedOldKey = null;
       if (!sheetRow && t.taskId) {
         renamedOldKey = idToKey[parseInt(t.taskId, 10)];
         if (renamedOldKey && lookup[renamedOldKey] && !payloadKeys[renamedOldKey]) {
           isRename = true;
-          var oldDiscNorm       = renamedOldKey.split('|')[0];
+          var oldDiscNorm        = renamedOldKey.split('|')[0];
           var isDisciplineChange = (oldDiscNorm !== normKey(discipline));
+
+          // Always protect old key so Phase 2 doesn't delete it
+          payloadKeys[renamedOldKey] = true;
 
           if (!isDisciplineChange) {
             // Name-only rename: update the existing row in place
             sheetRow = lookup[renamedOldKey];
-            payloadKeys[renamedOldKey] = true; // prevent Phase 2 from deleting
+          } else {
+            // Discipline change: build a move record; Phase 4 handles delete + insert
+            var totalColsM = raw[hRow].length;
+            var moveRow = new Array(totalColsM).fill('');
+            moveRow[CI.discipline] = discipline;
+            moveRow[CI.task]       = taskName;
+            moveRow[CI.start]      = t.start || '';
+            moveRow[CI.end]        = t.end   || '';
+            moveRow[CI.schedule]   = true;
+            moveRow[CI.milestone]  = (t.type === 'milestone');
+            if (t.note) {
+              var moveSc = t.note.split('·')[0].trim().toUpperCase();
+              if (STATUS_COLORS[moveSc]) moveRow[CI.status] = moveSc;
+            }
+            if (t.notes) moveRow[CI.notes] = t.notes;
+            moveTasks.push({ oldRow: lookup[renamedOldKey], newRow: moveRow, targetDiscKey: normKey(discipline) });
           }
-          // Discipline change: renamedOldKey stays absent from payloadKeys so
-          // Phase 2 deletes it; sheetRow remains null so Phase 3 appends the row.
 
           // Update IDs registry: new key inherits the same persistent ID
           if (savedTaskIds.ids[renamedOldKey]) {
@@ -523,9 +539,8 @@ function saveBackToTaskList(payload) {
         sheet.getRange(sheetRow, CI.milestone + 1).setValue(t.type === 'milestone');
         updated++;
 
-      } else if (taskName) {
-        // Queue new row under its discipline group.
-        // Covers genuinely new tasks AND discipline changes (old row removed by Phase 2).
+      } else if (taskName && !moveTasks.some(function(m) { return m.newRow[CI.discipline] === discipline && m.newRow[CI.task] === taskName; })) {
+        // Queue genuinely new row under its discipline group (not a discipline-change move)
         var totalCols = raw[hRow].length;
         var newRow = new Array(totalCols).fill('');
         newRow[CI.discipline] = discipline;
@@ -568,6 +583,44 @@ function saveBackToTaskList(payload) {
         if (discLastRow[dk] >= rowNum) discLastRow[dk]--;
       });
     });
+
+    // ── 4. Move discipline-changed tasks ────────────────────────
+    // Two-pass approach so row-number accounting stays exact:
+    // Pass A: delete all old rows (descending order → no index drift)
+    // Pass B: insert at target discipline's current last row (descending → safe)
+    if (moveTasks.length) {
+      // Pass A — delete old rows, adjusting discLastRow after each
+      moveTasks.sort(function(a, b) { return b.oldRow - a.oldRow; });
+      moveTasks.forEach(function(m) {
+        sheet.deleteRow(m.oldRow);
+        Object.keys(discLastRow).forEach(function(dk) {
+          if (discLastRow[dk] >= m.oldRow) discLastRow[dk]--;
+        });
+      });
+
+      // Pass B — insert at target position, adjusting discLastRow after each
+      moveTasks.sort(function(a, b) {
+        return (discLastRow[b.targetDiscKey] || 0) - (discLastRow[a.targetDiscKey] || 0);
+      });
+      moveTasks.forEach(function(m) {
+        var insertAfter = discLastRow[m.targetDiscKey];
+        if (insertAfter) {
+          sheet.insertRowsAfter(insertAfter, 1);
+          sheet.getRange(insertAfter + 1, 1, 1, m.newRow.length).setValues([m.newRow]);
+          // Shift all disciplines whose last row is now at or beyond the inserted row
+          Object.keys(discLastRow).forEach(function(dk) {
+            if (discLastRow[dk] >= insertAfter + 1) discLastRow[dk]++;
+          });
+          discLastRow[m.targetDiscKey] = insertAfter + 1;
+        } else {
+          // Target discipline not yet in sheet — append at end
+          var lastRow = sheet.getLastRow();
+          sheet.getRange(lastRow + 1, 1, 1, m.newRow.length).setValues([m.newRow]);
+          discLastRow[m.targetDiscKey] = lastRow + 1;
+        }
+        appended++;
+      });
+    }
 
     // ── 3. Append new rows ──────────────────────────────────────
     var discKeys = Object.keys(newRowsByDisc);
