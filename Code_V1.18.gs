@@ -32,14 +32,15 @@
 //  VERSION HISTORY
 //  ───────────────
 //  V1.18  2026-06-06
-//    • Persistent numeric TASKID assigned to each task and stored in
-//      GANTT TASK PARAMS tab (new 7th column).
-//    • doGet assigns sequential IDs to any tasks without one on every
-//      Load and immediately writes them back via writeTaskParamsMap().
-//    • writeTaskParams() persists TASKID alongside existing params.
+//    • Persistent numeric TASKID assigned to each task on Load and
+//      stored in a dedicated GANTT TASK IDS-DO NOT EDIT tab (KEY|TASKID)
+//      that is NEVER touched by writeTaskParams — IDs survive every Save.
+//    • doGet reads existing IDs from the IDs tab, assigns new sequential
+//      IDs only to tasks without one, then writes back only if new IDs
+//      were assigned.
 //    • saveBackToTaskList() uses taskId for rename detection: when a
 //      task's key is not found in the sheet but its taskId matches a
-//      known params entry, the existing sheet row is updated in-place
+//      known IDs-tab entry, the existing sheet row is updated in-place
 //      (discipline + task name rewritten) instead of appending a new row.
 //
 //  V1.17  2026-06-06  (HTML only — no backend changes)
@@ -127,9 +128,10 @@
 // ============================================================
 
 // ---- Tab names ----
-var SOURCE_SHEET      = 'PROJECT TASK LIST';          // master task data — never reformatted
-var TASK_PARAMS_SHEET = 'GANTT TASK PARAMS-DO NOT EDIT'; // per-task Gantt display params
-var SETTINGS_SHEET    = 'GANTT SETTINGS-DO NOT EDIT'; // chart-wide UI settings
+var SOURCE_SHEET      = 'PROJECT TASK LIST';             // master task data — never reformatted
+var TASK_PARAMS_SHEET = 'GANTT TASK PARAMS-DO NOT EDIT'; // per-task Gantt display params (color, type, style, symbol, deps)
+var TASK_IDS_SHEET    = 'GANTT TASK IDS-DO NOT EDIT';    // persistent numeric task ID registry — never cleared by saves
+var SETTINGS_SHEET    = 'GANTT SETTINGS-DO NOT EDIT';    // chart-wide UI settings
 
 // ---- Status text → Gantt bar colour ----
 // Used as the fallback bar colour when no colour override is set on the task
@@ -182,32 +184,28 @@ function doGet(e) {
         if (p.style === 'solid')          { t.dashed = 'false'; t.dashedOutline = 'false'; }
         if (p.symbol) t.symbol = p.symbol;
         if (p.deps)   t.dependencies = p.deps;
-        if (p.taskId) t.taskId = p.taskId;
       }
       delete t._sheetMilestone; // internal flag — not sent to frontend
     });
 
-    // Assign persistent numeric IDs to any tasks that don't have one yet
-    var maxId = 0;
-    Object.keys(taskParams).forEach(function(k) {
-      var id = parseInt(taskParams[k].taskId || 0, 10);
-      if (id > maxId) maxId = id;
-    });
+    // Assign persistent numeric IDs from the dedicated IDs tab.
+    // IDs are stored separately so writeTaskParams (called on Save) can
+    // never accidentally wipe them.
+    var taskIds = readTaskIds(); // { ids: {key: taskId}, maxId: N }
     var newIdsAssigned = false;
     result.tasks.forEach(function(t) {
-      if (t.taskId) return;
-      maxId++;
-      t.taskId = maxId;
       var key = normKey((t.group || '') + '|' + (t.name || ''));
-      if (taskParams[key]) {
-        taskParams[key].taskId = maxId;
+      if (taskIds.ids[key]) {
+        t.taskId = taskIds.ids[key];
       } else {
-        taskParams[key] = { color: '', type: '', style: '', symbol: '', deps: '', taskId: maxId };
+        taskIds.maxId++;
+        t.taskId = taskIds.maxId;
+        taskIds.ids[key] = t.taskId;
+        newIdsAssigned = true;
       }
-      newIdsAssigned = true;
     });
     if (newIdsAssigned) {
-      try { writeTaskParamsMap(taskParams); } catch(e) {}
+      try { writeTaskIds(taskIds); } catch(e) {}
     }
 
     result.settings = readSettings();
@@ -449,12 +447,11 @@ function saveBackToTaskList(payload) {
     if (taskName) payloadKeys[normKey(discipline + '|' + taskName)] = true;
   });
 
-  // Build taskId → old sheet key map for rename detection
-  var taskParamsMap = readTaskParams();
+  // Build taskId → old sheet key map for rename detection (reads the IDs tab)
+  var savedTaskIds = readTaskIds();
   var idToKey = {};
-  Object.keys(taskParamsMap).forEach(function(k) {
-    var id = parseInt(taskParamsMap[k].taskId || 0, 10);
-    if (id) idToKey[id] = k;
+  Object.keys(savedTaskIds.ids).forEach(function(k) {
+    idToKey[savedTaskIds.ids[k]] = k;
   });
 
   var lock = LockService.getScriptLock();
@@ -489,6 +486,13 @@ function saveBackToTaskList(payload) {
         if (isRename) {
           sheet.getRange(sheetRow, CI.discipline + 1).setValue(discipline);
           sheet.getRange(sheetRow, CI.task       + 1).setValue(taskName);
+          // Update IDs registry so the new key carries the same ID
+          var oldKey2 = idToKey[parseInt(t.taskId, 10)];
+          if (oldKey2 && savedTaskIds.ids[oldKey2]) {
+            savedTaskIds.ids[key] = savedTaskIds.ids[oldKey2];
+            delete savedTaskIds.ids[oldKey2];
+            try { writeTaskIds(savedTaskIds); } catch(e) {}
+          }
         }
         if (t.start) sheet.getRange(sheetRow, CI.start + 1).setValue(t.start);
         if (t.end)   sheet.getRange(sheetRow, CI.end   + 1).setValue(t.end);
@@ -591,7 +595,68 @@ function saveBackToTaskList(payload) {
 //  All rows are rewritten on every Save (no partial updates).
 // ============================================================
 
-// Return a map of normKey(DISC|TASK) → { color, type, style, symbol }
+// ============================================================
+//  GANTT TASK IDS TAB — read / write
+//
+//  Separate from GANTT TASK PARAMS so that task IDs are NEVER
+//  touched by writeTaskParams (which rewrites the params tab on
+//  every Save). IDs are written here once by doGet and persist
+//  indefinitely — only doGet and saveBackToTaskList (for renames)
+//  ever modify this tab.
+//
+//  Tab columns: KEY | TASKID
+// ============================================================
+function readTaskIds() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(TASK_IDS_SHEET);
+  var result = { ids: {}, maxId: 0 };
+  if (!sh || sh.getLastRow() < 2) return result;
+  var data = sh.getDataRange().getValues();
+  // Find header row
+  var hRow = -1;
+  for (var i = 0; i < Math.min(data.length, 5); i++) {
+    if (String(data[i][0]).trim().toUpperCase() === 'KEY') { hRow = i; break; }
+  }
+  if (hRow < 0) return result;
+  var cols = {};
+  data[hRow].forEach(function(h, idx) { cols[String(h).trim().toUpperCase()] = idx; });
+  var colKey    = cols['KEY']    !== undefined ? cols['KEY']    : 0;
+  var colTaskId = cols['TASKID'] !== undefined ? cols['TASKID'] : 1;
+  for (var r = hRow + 1; r < data.length; r++) {
+    var key = normKey(String(data[r][colKey] || '').trim());
+    var id  = parseInt(String(data[r][colTaskId] || '').trim(), 10) || 0;
+    if (key && id) {
+      result.ids[key] = id;
+      if (id > result.maxId) result.maxId = id;
+    }
+  }
+  return result;
+}
+
+function writeTaskIds(taskIds) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(TASK_IDS_SHEET);
+  if (!sh) sh = ss.insertSheet(TASK_IDS_SHEET);
+  sh.clearContents();
+  var rows = [['KEY', 'TASKID']];
+  Object.keys(taskIds.ids).forEach(function(key) {
+    if (taskIds.ids[key]) rows.push([key, taskIds.ids[key]]);
+  });
+  sh.getRange(1, 1, rows.length, 2).setValues(rows);
+  sh.hideSheet();
+}
+
+// ============================================================
+//  GANTT TASK PARAMS TAB — read / write
+//
+//  Tab columns: KEY | COLOR | TYPE | STYLE | SYMBOL | DEPS
+//  (No TASKID — IDs live in GANTT TASK IDS tab instead.)
+//
+//  This tab is created automatically on the first Save.
+//  All rows are rewritten on every Save (no partial updates).
+// ============================================================
+
+// Return a map of normKey(DISC|TASK) → { color, type, style, symbol, deps }
 // Returns an empty object if the tab doesn't exist yet.
 function readTaskParams() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -618,7 +683,6 @@ function readTaskParams() {
   var colStyle  = cols['STYLE']  !== undefined ? cols['STYLE']  : 3;
   var colSymbol = cols['SYMBOL'] !== undefined ? cols['SYMBOL'] : 4;
   var colDeps   = cols['DEPS']   !== undefined ? cols['DEPS']   : 5;
-  var colTaskId = cols['TASKID'] !== undefined ? cols['TASKID'] : 6;
 
   var params = {};
   for (var r = hRow + 1; r < data.length; r++) {
@@ -629,40 +693,16 @@ function readTaskParams() {
       type:   String(data[r][colType]   || '').trim().toLowerCase(),
       style:  String(data[r][colStyle]  || '').trim().toLowerCase(),
       symbol: String(data[r][colSymbol] || '').trim(),
-      deps:   String(data[r][colDeps]   || '').trim(),
-      taskId: parseInt(String(data[r][colTaskId] || '').trim(), 10) || 0
+      deps:   String(data[r][colDeps]   || '').trim()
     };
   }
   return params;
 }
 
-// Write GANTT TASK PARAMS from a key→params map (used by doGet when assigning new IDs).
-// The map values have shape: { color, type, style, symbol, deps, taskId }.
-function writeTaskParamsMap(taskParams) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(TASK_PARAMS_SHEET);
-  if (!sh) sh = ss.insertSheet(TASK_PARAMS_SHEET);
-  sh.clearContents();
-  var rows = [['KEY', 'COLOR', 'TYPE', 'STYLE', 'SYMBOL', 'DEPS', 'TASKID']];
-  Object.keys(taskParams).forEach(function(key) {
-    var p = taskParams[key];
-    rows.push([key, p.color || '', p.type || '', p.style || '', p.symbol || '', p.deps || '', p.taskId || '']);
-  });
-  sh.getRange(1, 1, rows.length, 7).setValues(rows);
-  sh.hideSheet();
-}
-
 // Write all task display params to GANTT TASK PARAMS.
 // Rewrites the entire tab — one row per task.
 // Creates the tab if it doesn't exist.
-//
-// Task IDs are owned entirely by the backend:
-//   1. Existing ID for this key in the params tab  → use it (permanent)
-//   2. Frontend taskId matches a known existing ID → use it (renamed task)
-//   3. Neither                                     → assign next sequential ID
-//
-// The frontend's taskId is NEVER trusted to override an existing key match,
-// so a simple page reload or stale payload cannot wipe or change stored IDs.
+// Task IDs are NOT stored here — they live in GANTT TASK IDS tab.
 function writeTaskParams(tasks) {
   if (!tasks || !tasks.length) return;
 
@@ -670,23 +710,9 @@ function writeTaskParams(tasks) {
   var sh = ss.getSheetByName(TASK_PARAMS_SHEET);
   if (!sh) sh = ss.insertSheet(TASK_PARAMS_SHEET);
 
-  // Read the existing params tab before clearing it.
-  // existingParams: key → { taskId, ... }
-  // existingIdToKey: taskId → key  (for rename detection)
-  var existingParams = readTaskParams();
-  var existingIdToKey = {};
-  var maxId = 0;
-  Object.keys(existingParams).forEach(function(k) {
-    var id = existingParams[k].taskId || 0;
-    if (id) {
-      existingIdToKey[id] = k;
-      if (id > maxId) maxId = id;
-    }
-  });
-
   sh.clearContents();
 
-  var rows = [['KEY', 'COLOR', 'TYPE', 'STYLE', 'SYMBOL', 'DEPS', 'TASKID']];
+  var rows = [['KEY', 'COLOR', 'TYPE', 'STYLE', 'SYMBOL', 'DEPS']];
 
   tasks.forEach(function(t) {
     var disc = String(t.group || '').trim().toUpperCase();
@@ -707,21 +733,10 @@ function writeTaskParams(tasks) {
     var symbol = String(t.symbol || '').trim();
     var deps   = String(t.dependencies || '').trim();
 
-    // ID resolution — backend is authoritative:
-    // 1. Key match in existing params → permanent ID, always use it
-    var taskId = (existingParams[key] && existingParams[key].taskId) ? existingParams[key].taskId : 0;
-    // 2. No key match but frontend sends a known ID → task was renamed, carry the ID forward
-    if (!taskId) {
-      var payloadId = parseInt(t.taskId || 0, 10) || 0;
-      if (payloadId && existingIdToKey[payloadId]) taskId = payloadId;
-    }
-    // 3. Brand-new task — assign next sequential ID
-    if (!taskId) { maxId++; taskId = maxId; }
-
-    rows.push([key, color, type, style, symbol, deps, taskId]);
+    rows.push([key, color, type, style, symbol, deps]);
   });
 
-  sh.getRange(1, 1, rows.length, 7).setValues(rows);
+  sh.getRange(1, 1, rows.length, 6).setValues(rows);
   sh.hideSheet();
 }
 
