@@ -5903,7 +5903,7 @@
               if (!grMax || te > grMax) grMax = te;
             }
           }
-          if (grMin && grMax) {
+          if (showGroupBars && grMin && grMax) {
             var gx1 = _pDateToX(grMin, opts.sliceMin, opts.sliceMax, tw);
             var gx2 = _pDateToX(grMax, opts.sliceMin, opts.sliceMax, tw);
             var gxC1 = Math.max(0, gx1), gxC2 = Math.min(tw, gx2);
