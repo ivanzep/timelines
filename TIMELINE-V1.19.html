@@ -5518,7 +5518,7 @@
       a3:      { w: 1123, h: 1587 }
     };
 
-    var PRINT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var PRINT_MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
     var _printPageStyleEl = null;
 
@@ -5764,30 +5764,65 @@
         txt(opts.sliceMin.getFullYear().toString(),
             {x:mL+lw+3, y:rulerY+rH-5, 'font-size':Math.max(6,fs), fill:'#334155', 'font-weight':'700'});
       } else {
-        // Month scale — two-row ruler: year band on top half, month abbreviations on bottom half
+        // Month scale — two-row ruler matching the interactive viewer:
+        //   Top half:    alternating year bands, year label centered over its visible span
+        //   Bottom half: ALL-CAPS month abbreviations centered in each month cell
         var subH = Math.round(rH / 2);
-        // Starting year label at left edge (top half)
-        txt(opts.sliceMin.getFullYear().toString(),
-            {x:mL+lw+3, y:rulerY+subH-3, 'font-size':Math.max(5,fs-1), fill:'#334155', 'font-weight':'700'});
-        var md = new Date(opts.sliceMin.getFullYear(), opts.sliceMin.getMonth(), 1);
-        while (md <= opts.sliceMax) {
-          var mx = _pDateToX(md, opts.sliceMin, opts.sliceMax, tw);
-          if (mx >= 0) {
-            var isYear = md.getMonth() === 0;
-            line(mL+lw+mx, rulerY, mL+lw+mx, rulerY+rH, isYear ? '#475569' : '#94a3b8', isYear ? 1 : 0.5);
-            // Year label in top half at January boundary
-            if (isYear && mx + 3 < tw)
-              txt(md.getFullYear().toString(),
-                  {x:mL+lw+mx+3, y:rulerY+subH-3, 'font-size':Math.max(5,fs-1), fill:'#334155', 'font-weight':'700'});
-            // Month abbreviation in bottom half only (no year suffix — avoids overlap)
-            if (mx + 4 < tw)
-              txt(PRINT_MONTHS[md.getMonth()],
-                  {x:mL+lw+mx+3, y:rulerY+rH-4, 'font-size':Math.max(5,fs-1),
-                   fill: isYear ? '#334155' : '#64748b'});
+        var botH = rH - subH;
+
+        // ── Top half: year bands ───────────────────────────────────
+        var startYr = opts.sliceMin.getFullYear();
+        var endYr   = opts.sliceMax.getFullYear();
+        for (var yr = startYr; yr <= endYr; yr++) {
+          var yrStart = new Date(yr,     0, 1);
+          var yrEnd   = new Date(yr + 1, 0, 1);
+          var segS = new Date(Math.max(yrStart.getTime(), opts.sliceMin.getTime()));
+          var segE = new Date(Math.min(yrEnd.getTime(),   opts.sliceMax.getTime()));
+          var x1yr = _pDateToX(segS, opts.sliceMin, opts.sliceMax, tw);
+          var x2yr = _pDateToX(segE, opts.sliceMin, opts.sliceMax, tw);
+          var yrW  = x2yr - x1yr;
+          // Alternating band background
+          rect(mL+lw+x1yr, rulerY, yrW, subH, yr % 2 === 0 ? '#e2e8f0' : '#f1f5f9');
+          // Centered year label
+          if (yrW > 12) {
+            txt(yr.toString(), {
+              x: mL+lw+x1yr + yrW/2,
+              y: rulerY + subH/2 + Math.max(5,fs-1)*0.4,
+              'font-size': Math.max(5,fs-1), 'font-weight':'700',
+              fill:'#0f172a', 'text-anchor':'middle'
+            });
           }
-          md.setMonth(md.getMonth() + 1);
+          // Year boundary vertical line (skip leftmost edge)
+          if (yrStart > opts.sliceMin) {
+            var yrBndX = _pDateToX(yrStart, opts.sliceMin, opts.sliceMax, tw);
+            if (yrBndX > 0 && yrBndX < tw)
+              line(mL+lw+yrBndX, rulerY, mL+lw+yrBndX, rulerY+rH, '#475569', 1);
+          }
         }
-        line(mL+lw, rulerY+subH, mL+lw+tw, rulerY+subH, '#cbd5e1', 0.5);
+
+        // Divider between year and month rows
+        line(mL+lw, rulerY+subH, mL+lw+tw, rulerY+subH, '#94a3b8', 0.75);
+
+        // ── Bottom half: month tick + centered ALL-CAPS label ─────
+        var mdd = new Date(opts.sliceMin.getFullYear(), opts.sliceMin.getMonth(), 1);
+        while (mdd <= opts.sliceMax) {
+          var mx = _pDateToX(mdd, opts.sliceMin, opts.sliceMax, tw);
+          if (mx >= 0 && mx <= tw) {
+            line(mL+lw+mx, rulerY+subH, mL+lw+mx, rulerY+rH, '#94a3b8', 0.5);
+            // Center label in this month's cell
+            var nextM = new Date(mdd.getFullYear(), mdd.getMonth() + 1, 1);
+            var mx2   = Math.min(_pDateToX(nextM, opts.sliceMin, opts.sliceMax, tw), tw);
+            var cellW = mx2 - mx;
+            if (cellW > 8) {
+              txt(PRINT_MONTHS[mdd.getMonth()], {
+                x: mL+lw+mx + cellW/2,
+                y: rulerY + subH + botH/2 + Math.max(4,fs-1)*0.4,
+                'font-size': Math.max(4,fs-1), fill:'#334155', 'text-anchor':'middle'
+              });
+            }
+          }
+          mdd.setMonth(mdd.getMonth() + 1);
+        }
       }
 
       line(mL, rulerY+rH, mL+opts.usableW, rulerY+rH, '#94a3b8', 1);
