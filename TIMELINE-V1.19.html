@@ -700,6 +700,7 @@
               <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Hdr <input type="color" id="opt-header-color" value="#94a3b8" style="width:28px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" title="Group header row background color" /> <input type="range" id="opt-header-tint" min="0" max="100" value="30" style="width:55px;accent-color:var(--accent);" title="Header tint opacity" /> <span id="opt-header-tint-val">30</span>% <input type="color" id="opt-header-text-color" value="#0369a1" style="width:28px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" title="Group header text color" /></label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-match-hdr-color" /> Match Hdr Color</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-rollup-ticks" checked /> Bar Ticks</label>
+              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-show-group-bars" checked /> Group Bars</label>
             </div>
           </div>
 
@@ -1029,6 +1030,7 @@
     var groupHeaderTextColor = '#0369a1'; // text color for discipline group header labels
     var matchHdrToGroupColor = false;  // when true, header bg uses the group's bar color instead of groupHeaderColor
     var showRollupTicks    = true;     // when false, vertical tick lines at rollup bar ends are hidden
+    var showGroupBars      = true;     // when false, rollup bars on group header rows are hidden
     var taskRowTint        = 50;       // 0–100: opacity of grey alternating stripe in task label column (0=none, 50=default)
     var currentTab   = 'gantt'; // 'gantt' | 'tasks' | 'milestones' | 'flags'
     var taskTypeFilter = null;  // null = all | 'milestone' | 'flag'
@@ -2636,18 +2638,20 @@
           if (!rng) continue;
           var grx1  = dateToX(rng.start), grx2 = dateToX(rng.end);
           var gryT  = gr2 * (geom.rowHeight + geom.rowGap);
-          var rollH = Math.max(10, geom.rowHeight - 14);
-          var rollY = gryT + (geom.rowHeight - rollH) / 2;
-          var rollup = document.createElementNS(svgNS, 'rect');
-          rollup.setAttribute('x', Math.min(grx1, grx2));
-          rollup.setAttribute('y', rollY);
-          rollup.setAttribute('width', Math.max(6, Math.abs(grx2 - grx1)));
-          rollup.setAttribute('height', rollH);
-          rollup.setAttribute('rx', 3);
           var rollColor = (groupColors[ghRow.discipline]) || (rng.color) || '#0284c7';
-          rollup.setAttribute('fill', rollColor + groupTintHex(darkMode));
-          svg.appendChild(rollup);
-          if (showRollupTicks) {
+          if (showGroupBars) {
+            var rollH = Math.max(10, geom.rowHeight - 14);
+            var rollY = gryT + (geom.rowHeight - rollH) / 2;
+            var rollup = document.createElementNS(svgNS, 'rect');
+            rollup.setAttribute('x', Math.min(grx1, grx2));
+            rollup.setAttribute('y', rollY);
+            rollup.setAttribute('width', Math.max(6, Math.abs(grx2 - grx1)));
+            rollup.setAttribute('height', rollH);
+            rollup.setAttribute('rx', 3);
+            rollup.setAttribute('fill', rollColor + groupTintHex(darkMode));
+            svg.appendChild(rollup);
+          }
+          if (showGroupBars && showRollupTicks) {
             [grx1, grx2].forEach(function(cx) {
               var tick = document.createElementNS(svgNS, 'line');
               tick.setAttribute('x1', cx); tick.setAttribute('y1', gryT + 3);
@@ -4433,6 +4437,13 @@
         renderGantt();
       });
 
+      // Show/hide group rollup bars
+      var showGroupBarsEl = document.getElementById('opt-show-group-bars');
+      if (showGroupBarsEl) showGroupBarsEl.addEventListener('change', function() {
+        showGroupBars = this.checked;
+        renderGantt();
+      });
+
       // Today line toggle
       var optTodayEl = document.getElementById('opt-today');
       if (optTodayEl) optTodayEl.addEventListener('change', function() {
@@ -4964,6 +4975,7 @@
         groupHeaderTextColor:  groupHeaderTextColor,
         matchHdrToGroupColor:  matchHdrToGroupColor ? 'true' : 'false',
         showRollupTicks:       showRollupTicks ? 'true' : 'false',
+        showGroupBars:         showGroupBars ? 'true' : 'false',
         currentScale:        currentScale,
         zoomLevel:           zoomLevel,
         chartStart:          chartStartInput ? chartStartInput.value : '',
@@ -5109,6 +5121,13 @@
         showRollupTicks = (s.showRollupTicks !== 'false');
         var rtEl2 = document.getElementById('opt-rollup-ticks');
         if (rtEl2) rtEl2.checked = showRollupTicks;
+      }
+
+      // Sync group-bars toggle
+      if (s.showGroupBars !== undefined) {
+        showGroupBars = (s.showGroupBars !== 'false');
+        var gbEl = document.getElementById('opt-show-group-bars');
+        if (gbEl) gbEl.checked = showGroupBars;
       }
 
       // Sync scale
