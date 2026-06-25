@@ -410,6 +410,27 @@
     .sync-dot.err     { background:#dc2626; }
     @keyframes syncpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
+    /* ---- Loading dim overlay ---- */
+    #loading-dim {
+      display: none; position: fixed; inset: 0; z-index: 8000;
+      background: rgba(15,23,42,0.45); backdrop-filter: blur(1px);
+      align-items: center; justify-content: center; cursor: wait;
+    }
+    #loading-dim.active { display: flex; }
+    #loading-dim-inner {
+      background: var(--panel, #fff); border-radius: 14px;
+      padding: 18px 28px; display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 8px 32px rgba(15,23,42,0.28); border: 1px solid var(--border-strong, #cbd5e1);
+      font-size: 0.88rem; color: var(--text, #0f172a); font-weight: 600;
+    }
+    .loading-spinner {
+      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+      border: 3px solid var(--border-strong, #cbd5e1);
+      border-top-color: #f59e0b;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     .sheets-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
     .sheets-overlay.open { display:flex; }
     .sheets-modal { background:var(--panel); border-radius:18px; padding:28px 28px 22px; width:500px; max-width:93vw; box-shadow:0 24px 64px rgba(15,23,42,0.28); border:1px solid var(--border-strong); }
@@ -3257,8 +3278,10 @@
       var lineGap = barH > 24 ? 12 : 10;
       var currentY = barY + 4;
 
-      // Position labels vertically
-      if (labelsToShow.length === 1) {
+      // Position labels vertically — top-align when wrap is active, otherwise center
+      if (flatMode && flatTextWrap) {
+        currentY = barY + lineGap;  // top-align so wrapped lines build downward
+      } else if (labelsToShow.length === 1) {
         currentY = barY + barH/2 + 4;
       } else if (labelsToShow.length === 2) {
         currentY = barY + barH/2 - 3;
@@ -5199,6 +5222,16 @@
       if (!dot || !lbl) return;
       dot.className = 'sync-dot' + (state ? ' ' + state : '');
       lbl.textContent = label;
+      var dim = document.getElementById('loading-dim');
+      var dimLbl = document.getElementById('loading-dim-label');
+      if (dim) {
+        if (state === 'busy') {
+          if (dimLbl) dimLbl.textContent = label || 'Loading…';
+          dim.classList.add('active');
+        } else {
+          dim.classList.remove('active');
+        }
+      }
     }
 
     function _setSheetNameDisplay(name) {
@@ -6503,7 +6536,9 @@
                 ? opts.barTextColor
                 : (isLightColor(dbColor) ? '#1c1917' : '#ffffff');
               var lgap = Math.min(_fbH / (lblLines.length + 0.5), fs + 2);
-              var lblY0 = _fbY + _fbH / 2 - ((lblLines.length - 1) * lgap) / 2 + fs * 0.35;
+              var lblY0 = opts.flatTextWrap
+                ? _fbY + lgap                                                     // top-align when wrap active
+                : _fbY + _fbH / 2 - ((lblLines.length - 1) * lgap) / 2 + fs * 0.35; // centered
               for (var wl = 0; wl < lblLines.length; wl++) {
                 var ltEl = document.createElementNS(NS, 'text');
                 ltEl.setAttribute('x', mL + lw + dbC1 + 5);
@@ -7322,6 +7357,13 @@
     </div>
 
     <div id="print-preview-area"></div>
+  </div>
+
+  <div id="loading-dim">
+    <div id="loading-dim-inner">
+      <div class="loading-spinner"></div>
+      <span id="loading-dim-label">Loading…</span>
+    </div>
   </div>
 </body>
 </html>
