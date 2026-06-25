@@ -816,12 +816,8 @@ function readTaskParams() {
 function writeTaskParams(tasks) {
   if (!tasks || !tasks.length) return;
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(TASK_PARAMS_SHEET);
-  if (!sh) sh = ss.insertSheet(TASK_PARAMS_SHEET);
-
-  sh.clearContents();
-
+  // Build rows BEFORE touching the sheet — if nothing has a taskId, leave
+  // the existing tab intact rather than wiping it and returning early.
   var rows = [['TASKID', 'COLOR', 'TYPE', 'STYLE', 'SYMBOL', 'DEPS']];
 
   tasks.forEach(function(t) {
@@ -844,7 +840,13 @@ function writeTaskParams(tasks) {
     rows.push([taskId, color, type, style, symbol, deps]);
   });
 
-  if (rows.length < 2) return; // nothing to write — skip clearing the sheet
+  if (rows.length < 2) return; // nothing to write — do NOT clear the existing tab
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(TASK_PARAMS_SHEET);
+  if (!sh) sh = ss.insertSheet(TASK_PARAMS_SHEET);
+
+  sh.clearContents();
   sh.getRange(1, 1, rows.length, 6).setValues(rows);
   sh.hideSheet();
 }
