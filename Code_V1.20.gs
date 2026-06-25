@@ -43,7 +43,7 @@
 //      Result: colour, type, style, and symbol survive renames, discipline changes, AND
 //      accidental ID-tab loss. Backward-compatible with old KEY-only and TASKID-only tabs.
 //    • SETTINGS_KEYS also gains showGroupBars (new toggle from HTML V1.19/V1.20).
-    • SETTINGS_KEYS gains showDateColumns (persists START/END date column visibility from HTML V1.21).
+//    • SETTINGS_KEYS gains showDateColumns (persists START/END date column visibility from HTML V1.21).
 //
 //  V1.19  2026-06-17
 //    • SETTINGS_KEYS expanded with 2 new keys introduced in HTML V1.19:
