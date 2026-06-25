@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.21  2026-06-25 09:45
+  V1.21  2026-06-25 10:30
     • Gantt view: collapsible date columns (START / END) appear between the task
       label column and the timeline. Toggle via "Date Cols" checkbox in the toolbar.
       Group header rows show the earliest start and latest end across all tasks in the
@@ -3261,11 +3261,54 @@
         currentY = barY + 12;
       }
 
+      // Helper: resolve fill colour for a label slot
+      function _barLblFill(lbl) {
+        if (barTextColor !== null) return barTextColor;
+        if (task.dashed) return '#dc2626';
+        if (darkText) {
+          if (lbl.kind === 'name') return '#1c1917';
+          if (lbl.kind === 'sub')  return 'rgba(28,25,23,0.9)';
+          return lbl.text === 'APPROVAL' ? '#b45309' : 'rgba(28,25,23,0.8)';
+        }
+        return '#ffffff';
+      }
+
       // Check if the name label fits inside the bar; if not, render it to the left
       var nameLabel = labelsToShow.length > 0 ? labelsToShow[0] : null;
       var nameFits = !nameLabel || ((nameLabel.text.length * ganttBarFontSize * 0.6) <= (barW - 12));
 
-      if (!nameFits && nameLabel) {
+      if (flatMode && labelsToShow.length > 0 && barW >= 16) {
+        // ── FLAT MODE: always inside bar, right-justified, clipped to bar bounds ──
+        // Per-bar clipPath prevents text overflowing into adjacent bars
+        var cpId = 'fbc_' + task.id;
+        var defsEl = svg.querySelector('defs');
+        if (!defsEl) {
+          defsEl = document.createElementNS(svgNS, 'defs');
+          svg.insertBefore(defsEl, svg.firstChild);
+        }
+        var cp = document.createElementNS(svgNS, 'clipPath');
+        cp.setAttribute('id', cpId);
+        var cpR = document.createElementNS(svgNS, 'rect');
+        cpR.setAttribute('x', barX + 2); cpR.setAttribute('y', barY);
+        cpR.setAttribute('width', Math.max(0, barW - 4)); cpR.setAttribute('height', barH);
+        cp.appendChild(cpR); defsEl.appendChild(cp);
+
+        for (var li = 0; li < labelsToShow.length; li++) {
+          var lbl = labelsToShow[li];
+          var t = document.createElementNS(svgNS, 'text');
+          t.setAttribute('x', barX + barW - 5);
+          t.setAttribute('y', currentY);
+          t.setAttribute('font-size', fontSizes[lbl.kind]);
+          t.setAttribute('text-anchor', 'end');
+          t.setAttribute('clip-path', 'url(#' + cpId + ')');
+          t.setAttribute('class', lbl.kind === 'name' ? 'task-label-big' : (lbl.kind === 'sub' ? 'task-label-sub' : (lbl.text === 'APPROVAL' ? 'approval-text' : 'task-label-note')));
+          t.style.fill = _barLblFill(lbl);
+          t.style.pointerEvents = 'none';
+          t.textContent = lbl.text;
+          g.appendChild(t);
+          currentY += lineGap;
+        }
+      } else if (!nameFits && nameLabel) {
         // Vertically center the full label stack (name + sub + note) within the bar
         var outStartY;
         if (labelsToShow.length === 1) { outStartY = barY + barH / 2 + 4; }
@@ -3308,20 +3351,7 @@
           t.setAttribute('y', currentY);
           t.setAttribute('font-size', fontSizes[lbl.kind]);
           t.setAttribute('class', lbl.kind === 'name' ? 'task-label-big' : (lbl.kind === 'sub' ? 'task-label-sub' : (lbl.text === 'APPROVAL' ? 'approval-text' : 'task-label-note')));
-          // Determine fill colour — manual override takes precedence over auto
-          var textFillColor;
-          if (barTextColor !== null) {
-            textFillColor = barTextColor;
-          } else if (task.dashed) {
-            textFillColor = '#dc2626';
-          } else if (darkText) {
-            if (lbl.kind === 'name') textFillColor = '#1c1917';
-            else if (lbl.kind === 'sub') textFillColor = 'rgba(28,25,23,0.9)';
-            else textFillColor = lbl.text === 'APPROVAL' ? '#b45309' : 'rgba(28,25,23,0.8)';
-          } else {
-            textFillColor = '#ffffff';
-          }
-          t.style.fill = textFillColor;
+          t.style.fill = _barLblFill(lbl);
           t.style.pointerEvents = 'none';
           t.textContent = lbl.text;
           g.appendChild(t);
