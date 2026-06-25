@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.20  2026-06-25 06:36
+  V1.20  2026-06-25 06:43
     • Task display params (color override, bar type, style, symbol) are now keyed
       by persistent TASKID in the GANTT TASK PARAMS-DO NOT EDIT spreadsheet tab
       instead of DISCIPLINE|TASKNAME. Properties survive task renames and discipline
@@ -5434,7 +5434,11 @@
       if (DEFAULT_SHEETS_URL) {
         sheetsURL = DEFAULT_SHEETS_URL;
         _syncDot('ok', 'Connected');
-        loadFromSheets(true); // silent auto-load on every page open
+        // First silent load, then a second load 2 s later to pick up saved colours
+        // from GANTT TASK PARAMS (which may have been written on a previous session's Save).
+        loadFromSheets(true).then(function() {
+          setTimeout(function() { loadFromSheets(true); }, 2000);
+        });
       } else {
         _syncDot('', 'Not connected');
       }
