@@ -6461,6 +6461,8 @@
               txt(fmtDuration(dMin, dMax), {x:dDiscDurX+durW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
             }
           }
+          var _fbH = opts.flatMode ? Math.min(opts.flatBarHeight || 24, rowH - 4) : rowH - 4;
+          var _fbY = ry + Math.floor((rowH - _fbH) / 2);
           for (var di = 0; di < row.tasks.length; di++) {
             var dt = row.tasks[di];
             if (!dt.start || !dt.end || dt.end <= opts.sliceMin || dt.start >= opts.sliceMax) continue;
@@ -6469,8 +6471,51 @@
             var dbC1 = Math.max(0, dbx1), dbC2 = Math.min(tw, dbx2);
             var dbW  = Math.max(3, dbC2 - dbC1);
             var dbColor = dt.colorOverride || dt.color || '#0284c7';
-            mk('rect', {x:mL+lw+dbC1, y:ry+2, width:dbW, height:rowH-4, rx:2,
+            mk('rect', {x:mL+lw+dbC1, y:_fbY, width:dbW, height:_fbH, rx:2,
                         fill:dbColor, opacity:'0.85', 'clip-path':'url(#'+clipId+')'});
+            // Bar labels in flat mode
+            if (opts.flatMode && dbW >= 16 && opts.showName) {
+              var innerW = dbW - 10;
+              var lblLines = [dt.name];
+              if (opts.flatTextWrap && innerW > 0) {
+                var charW = fs * 0.6;
+                var words = dt.name.split(' ');
+                var cur = '', wlines = [];
+                for (var wi = 0; wi < words.length; wi++) {
+                  var test = cur ? cur + ' ' + words[wi] : words[wi];
+                  if (test.length * charW <= innerW) { cur = test; }
+                  else { if (cur) wlines.push(cur); cur = words[wi]; }
+                }
+                if (cur) wlines.push(cur);
+                if (wlines.length) lblLines = wlines;
+              }
+              var bcpId = 'pfbc_p' + opts.pageNum + '_' + di;
+              var bcpEl = document.createElementNS(NS, 'clipPath');
+              bcpEl.setAttribute('id', bcpId);
+              var bcpR = document.createElementNS(NS, 'rect');
+              bcpR.setAttribute('x', mL + lw + dbC1 + 2);
+              bcpR.setAttribute('y', _fbY);
+              bcpR.setAttribute('width', Math.max(0, dbW - 4));
+              bcpR.setAttribute('height', _fbH);
+              bcpEl.appendChild(bcpR);
+              defs.appendChild(bcpEl);
+              var autoFill = (opts.barTextColor !== null && opts.barTextColor)
+                ? opts.barTextColor
+                : (isLightColor(dbColor) ? '#1c1917' : '#ffffff');
+              var lgap = Math.min(_fbH / (lblLines.length + 0.5), fs + 2);
+              var lblY0 = _fbY + _fbH / 2 - ((lblLines.length - 1) * lgap) / 2 + fs * 0.35;
+              for (var wl = 0; wl < lblLines.length; wl++) {
+                var ltEl = document.createElementNS(NS, 'text');
+                ltEl.setAttribute('x', mL + lw + dbC1 + 5);
+                ltEl.setAttribute('y', lblY0 + wl * lgap);
+                ltEl.setAttribute('font-size', fs);
+                ltEl.setAttribute('text-anchor', 'start');
+                ltEl.setAttribute('fill', autoFill);
+                ltEl.setAttribute('clip-path', 'url(#' + bcpId + ')');
+                ltEl.textContent = lblLines[wl];
+                svg.appendChild(ltEl);
+              }
+            }
           }
 
         } else {
@@ -6794,7 +6839,10 @@
             showName:     displayOptions.showName,
             showPhase:    displayOptions.showPhase,
             showNote:     displayOptions.showNote,
-            barTextColor: barTextColor
+            barTextColor: barTextColor,
+            flatMode:     flatMode,
+            flatBarHeight: flatBarHeight,
+            flatTextWrap: flatTextWrap
           });
 
           container.appendChild(pageEl);
