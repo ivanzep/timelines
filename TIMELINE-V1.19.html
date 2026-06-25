@@ -1,29 +1,13 @@
 <!--
   ============================================================
   Interactive Project Timeline
-  File: TIMELINE-V1.19.html
+  File: TIMELINE-V1.18.html
 
   VERSION HISTORY
   ───────────────
-  V1.19  2026-06-17
-    • Print mode: removed "LA COSTA HOTEL…" footer text from bottom-left corner.
-    • Settings panel: "Match Hdr Color" toggle — when checked, each group header
-      row background uses that group's bar color instead of the global header color.
-    • Settings panel: "Bar Ticks" toggle — show/hide the vertical tick lines drawn
-      at the start and end of each rollup bar on group header rows.
-    • Settings panel: "Group Bars" toggle — show/hide rollup bars on group header
-      rows entirely (also respected in print mode).
-    • Print mode ruler redesigned to match the interactive viewer: alternating year
-      band backgrounds with the year label centered over its visible span; ALL-CAPS
-      month abbreviations (JAN, FEB …) centered in each month cell.
-    • matchHdrToGroupColor, showRollupTicks, showGroupBars persisted to GANTT
-      SETTINGS tab — restored automatically on every Load.
-    • Backend: Code_V1.19.gs adds the two new settings keys
-      (matchHdrToGroupColor, showRollupTicks) to SETTINGS_KEYS / SETTINGS_DESCRIPTIONS.
-
   V1.18  2026-06-06
     • Each task is assigned a unique persistent integer TASKID stored in
-      the GANTT TASK IDS-DO NOT EDIT spreadsheet tab (KEY | TASKID).
+      the GANTT TASK PARAMS-DO NOT EDIT spreadsheet tab (new 7th column).
     • IDs are assigned automatically on Load — any task without one gets
       the next sequential number and the tab is updated immediately.
     • TASKID is not visible in the HTML; it lives entirely in the sheet.
