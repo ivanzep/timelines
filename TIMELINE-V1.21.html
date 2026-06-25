@@ -739,6 +739,7 @@
               <label><input type="checkbox" id="opt-phase" /> Group</label>
               <label><input type="checkbox" id="opt-note" checked /> Status</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-flat-mode" /> Flat</label>
+              <label id="opt-flat-wrap-label" style="display:none;padding-left:8px;"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-today" checked /> Today</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-deps" checked /> Deps</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Font <input type="number" id="gantt-font-size" value="12" min="6" max="24" style="width:44px;height:22px;padding:2px 4px;border-radius:6px;font-size:0.74rem;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" /></label>
@@ -1083,6 +1084,7 @@
       showNote: true
     };
     var flatMode = false;
+    var flatTextWrap = false;   // when true, wrap bar labels at word boundaries inside the bar (flat mode only)
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
     var showTodayLine = true;  // whether to draw the Today vertical line
@@ -3278,7 +3280,7 @@
       var nameFits = !nameLabel || ((nameLabel.text.length * ganttBarFontSize * 0.6) <= (barW - 12));
 
       if (flatMode && labelsToShow.length > 0 && barW >= 16) {
-        // ── FLAT MODE: always inside bar, right-justified, clipped to bar bounds ──
+        // ── FLAT MODE: left-aligned inside bar, clipped to bar bounds ──
         // Per-bar clipPath prevents text overflowing into adjacent bars
         var cpId = 'fbc_' + task.id;
         var defsEl = svg.querySelector('defs');
@@ -3293,20 +3295,45 @@
         cpR.setAttribute('width', Math.max(0, barW - 4)); cpR.setAttribute('height', barH);
         cp.appendChild(cpR); defsEl.appendChild(cp);
 
+        var innerW = barW - 10; // usable width for text
         for (var li = 0; li < labelsToShow.length; li++) {
           var lbl = labelsToShow[li];
-          var t = document.createElementNS(svgNS, 'text');
-          t.setAttribute('x', barX + barW - 5);
-          t.setAttribute('y', currentY);
-          t.setAttribute('font-size', fontSizes[lbl.kind]);
-          t.setAttribute('text-anchor', 'end');
-          t.setAttribute('clip-path', 'url(#' + cpId + ')');
-          t.setAttribute('class', lbl.kind === 'name' ? 'task-label-big' : (lbl.kind === 'sub' ? 'task-label-sub' : (lbl.text === 'APPROVAL' ? 'approval-text' : 'task-label-note')));
-          t.style.fill = _barLblFill(lbl);
-          t.style.pointerEvents = 'none';
-          t.textContent = lbl.text;
-          g.appendChild(t);
-          currentY += lineGap;
+          var lfs = fontSizes[lbl.kind];
+          var charW = lfs * 0.6;
+          var lblClass = lbl.kind === 'name' ? 'task-label-big' : (lbl.kind === 'sub' ? 'task-label-sub' : (lbl.text === 'APPROVAL' ? 'approval-text' : 'task-label-note'));
+          var lblFill = _barLblFill(lbl);
+
+          // Build lines: wrap if toggle on, otherwise single line
+          var lines;
+          if (flatTextWrap && innerW > 0) {
+            lines = [];
+            var words = lbl.text.split(' ');
+            var cur = '';
+            for (var wi = 0; wi < words.length; wi++) {
+              var test = cur ? cur + ' ' + words[wi] : words[wi];
+              if (test.length * charW <= innerW) { cur = test; }
+              else { if (cur) lines.push(cur); cur = words[wi]; }
+            }
+            if (cur) lines.push(cur);
+            if (!lines.length) lines = [lbl.text];
+          } else {
+            lines = [lbl.text];
+          }
+
+          for (var wl = 0; wl < lines.length; wl++) {
+            var tNode = document.createElementNS(svgNS, 'text');
+            tNode.setAttribute('x', barX + 5);
+            tNode.setAttribute('y', currentY);
+            tNode.setAttribute('font-size', lfs);
+            tNode.setAttribute('text-anchor', 'start');
+            tNode.setAttribute('clip-path', 'url(#' + cpId + ')');
+            tNode.setAttribute('class', lblClass);
+            tNode.style.fill = lblFill;
+            tNode.style.pointerEvents = 'none';
+            tNode.textContent = lines[wl];
+            g.appendChild(tNode);
+            currentY += lineGap;
+          }
         }
       } else if (!nameFits && nameLabel) {
         // Vertically center the full label stack (name + sub + note) within the bar
@@ -4652,10 +4679,23 @@
       optNote = document.getElementById('opt-note');
 
       var optFlatMode = document.getElementById('opt-flat-mode');
+      var optFlatWrapLabel = document.getElementById('opt-flat-wrap-label');
+      var optFlatWrap = document.getElementById('opt-flat-wrap');
+      function _syncFlatWrapVisibility() {
+        if (optFlatWrapLabel) optFlatWrapLabel.style.display = flatMode ? '' : 'none';
+      }
       if (optFlatMode) {
         optFlatMode.addEventListener('change', function() {
           flatMode = this.checked;
+          if (!flatMode) { flatTextWrap = false; if (optFlatWrap) optFlatWrap.checked = false; }
+          _syncFlatWrapVisibility();
           refreshTaskTable();
+          renderGantt();
+        });
+      }
+      if (optFlatWrap) {
+        optFlatWrap.addEventListener('change', function() {
+          flatTextWrap = this.checked;
           renderGantt();
         });
       }
@@ -5434,9 +5474,10 @@
       var tlEl = document.getElementById('opt-today');
       if (tlEl) tlEl.checked = showTodayLine;
 
-      // Sync flat mode checkbox
+      // Sync flat mode checkbox and wrap visibility
       var fmEl = document.getElementById('opt-flat-mode');
       if (fmEl) fmEl.checked = flatMode;
+      if (typeof _syncFlatWrapVisibility === 'function') _syncFlatWrapVisibility();
 
       // Sync group tint slider
       if (s.groupTint !== undefined) {
