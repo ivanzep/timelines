@@ -879,7 +879,7 @@ var SETTINGS_KEYS = [
   'showDependencies', 'snapValue', 'toolbarCollapsed',
   'ganttRollupMarkersVisible',
   'matchHdrToGroupColor', 'showRollupTicks', 'showGroupBars',
-  'showDateColumns'
+  'showDateColumns', 'showDurationColumn'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -918,7 +918,8 @@ var SETTINGS_DESCRIPTIONS = {
   matchHdrToGroupColor: 'Group header background uses the group bar colour when true (true/false)',
   showRollupTicks:      'Show vertical tick lines at rollup bar start/end (true/false)',
   showGroupBars:        'Show rollup bars on group header rows (true/false)',
-  showDateColumns:      'Show START / END date columns beside the label column in the Gantt view (true/false)'
+  showDateColumns:      'Show START / END date columns beside the label column in the Gantt view (true/false)',
+  showDurationColumn:   'Show DURATION column (days) beside END / label column in the Gantt view (true/false)'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.

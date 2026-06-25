@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.21  2026-06-25 08:30
+  V1.21  2026-06-25 09:45
     • Gantt view: collapsible date columns (START / END) appear between the task
       label column and the timeline. Toggle via "Date Cols" checkbox in the toolbar.
       Group header rows show the earliest start and latest end across all tasks in the
@@ -18,7 +18,13 @@
       START or END cell to open a native date picker; confirming updates the bar,
       milestone, or flag and the task list entry instantly. Group header rows are
       read-only (they show aggregate min/max across all tasks in the group).
-    • showDateColumns persisted to GANTT SETTINGS tab (requires Code_V1.20.gs).
+    • DURATION column (Xd days): independent toggle "Duration" in toolbar. Appears
+      to the right of END date (or directly after label column if date cols are off).
+      Shows aggregate span for group header rows, individual task duration for task rows.
+      Print mode has its own "Duration" checkbox; duration column is 50px in print.
+    • Print mode group header colors now respect matchHdrToGroupColor, groupHeaderTint,
+      and groupHeaderTextColor — matching the Gantt view appearance exactly.
+    • showDateColumns and showDurationColumn persisted to GANTT SETTINGS tab (requires Code_V1.20.gs).
 
   V1.20  2026-06-25 06:43
     • Task display params (color override, bar type, style, symbol) are now keyed
@@ -744,6 +750,7 @@
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-rollup-ticks" checked /> Bar Ticks</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-show-group-bars" checked /> Group Bars</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-date-cols" /> Date Cols</label>
+              <label style="padding-left:8px;"><input type="checkbox" id="opt-dur-col" /> Duration</label>
             </div>
           </div>
 
@@ -1091,6 +1098,8 @@
     var showGroupBars      = true;     // when false, rollup bars on group header rows are hidden
     var showDateColumns    = false;    // when true, START and END date columns appear between label col and timeline
     var DATE_COL_W         = 160;      // total width of both date columns (80px each)
+    var showDurationColumn = false;    // when true, DURATION column appears to the right of END (or label if no date cols)
+    var DURATION_COL_W     = 60;       // width of the duration column
     var taskRowTint        = 50;       // 0–100: opacity of grey alternating stripe in task label column (0=none, 50=default)
     var currentTab   = 'gantt'; // 'gantt' | 'tasks' | 'milestones' | 'flags'
     var taskTypeFilter = null;  // null = all | 'milestone' | 'flag'
@@ -1197,6 +1206,11 @@
       var m = String(d.getMonth() + 1).padStart(2, '0');
       var day = String(d.getDate()).padStart(2, '0');
       return y + '/' + m + '/' + day;
+    }
+    function fmtDuration(start, end) {
+      if (!(start instanceof Date) || !(end instanceof Date)) return '';
+      var d = Math.round((end - start) / 86400000);
+      return d + 'd';
     }
     function showDateEdit(taskId, field, clientX, clientY) {
       var inp = document.getElementById('gantt-date-input');
@@ -2324,7 +2338,7 @@
       var lastTickEnd = nextTickDate(ticks[ticks.length - 1], currentScale);
 
       var leftLabelWidth = userLabelWidth;
-      var sideWidth = leftLabelWidth + (showDateColumns ? DATE_COL_W : 0);
+      var sideWidth = leftLabelWidth + (showDateColumns ? DATE_COL_W : 0) + (showDurationColumn ? DURATION_COL_W : 0);
       // Update CSS grid column width (label col + optional date cols, then timeline)
       var ganttGrid = document.getElementById('gantt-grid');
       if (ganttGrid) ganttGrid.style.gridTemplateColumns = sideWidth + 'px max-content';
@@ -2448,60 +2462,88 @@
       upd.textContent = 'UPDATED: ' + updDateStr;
       svg.appendChild(upd);
 
-      // Date column headers (START / END) — only when date columns are enabled
-      if (showDateColumns) {
+      // Date / duration column headers — only when enabled
+      if (showDateColumns || showDurationColumn) {
         var lw = geom.leftLabelWidth;
-        var colW = DATE_COL_W / 2; // 80px each
+        var colW = DATE_COL_W / 2; // 80px each date col
 
-        // Vertical divider separating label col from date cols
+        // Vertical divider separating label col from date/duration area
         var divL = document.createElementNS(svgNS, 'line');
         divL.setAttribute('x1', lw); divL.setAttribute('y1', 0);
         divL.setAttribute('x2', lw); divL.setAttribute('y2', h);
         divL.setAttribute('stroke', '#94a3b8'); divL.setAttribute('stroke-width', 1);
         svg.appendChild(divL);
 
-        // START column background + header
-        var startBg = document.createElementNS(svgNS, 'rect');
-        startBg.setAttribute('x', lw); startBg.setAttribute('y', 0);
-        startBg.setAttribute('width', colW); startBg.setAttribute('height', h);
-        startBg.setAttribute('fill', darkMode ? '#1e293b' : '#f8fafc');
-        svg.appendChild(startBg);
+        if (showDateColumns) {
+          // START column background + header
+          var startBg = document.createElementNS(svgNS, 'rect');
+          startBg.setAttribute('x', lw); startBg.setAttribute('y', 0);
+          startBg.setAttribute('width', colW); startBg.setAttribute('height', h);
+          startBg.setAttribute('fill', darkMode ? '#1e293b' : '#f8fafc');
+          svg.appendChild(startBg);
 
-        var startHdr = document.createElementNS(svgNS, 'text');
-        startHdr.setAttribute('x', lw + colW / 2);
-        startHdr.setAttribute('y', h / 2 + 4);
-        startHdr.setAttribute('text-anchor', 'middle');
-        startHdr.setAttribute('font-size', '10');
-        startHdr.setAttribute('font-weight', '700');
-        startHdr.setAttribute('fill', mutedFill);
-        startHdr.setAttribute('letter-spacing', '0.08em');
-        startHdr.textContent = 'START';
-        svg.appendChild(startHdr);
+          var startHdr = document.createElementNS(svgNS, 'text');
+          startHdr.setAttribute('x', lw + colW / 2);
+          startHdr.setAttribute('y', h / 2 + 4);
+          startHdr.setAttribute('text-anchor', 'middle');
+          startHdr.setAttribute('font-size', '10');
+          startHdr.setAttribute('font-weight', '700');
+          startHdr.setAttribute('fill', mutedFill);
+          startHdr.setAttribute('letter-spacing', '0.08em');
+          startHdr.textContent = 'START';
+          svg.appendChild(startHdr);
 
-        // Divider between START and END
-        var midL = document.createElementNS(svgNS, 'line');
-        midL.setAttribute('x1', lw + colW); midL.setAttribute('y1', 0);
-        midL.setAttribute('x2', lw + colW); midL.setAttribute('y2', h);
-        midL.setAttribute('stroke', '#cbd5e1'); midL.setAttribute('stroke-width', 0.5);
-        svg.appendChild(midL);
+          // Divider between START and END
+          var midL = document.createElementNS(svgNS, 'line');
+          midL.setAttribute('x1', lw + colW); midL.setAttribute('y1', 0);
+          midL.setAttribute('x2', lw + colW); midL.setAttribute('y2', h);
+          midL.setAttribute('stroke', '#cbd5e1'); midL.setAttribute('stroke-width', 0.5);
+          svg.appendChild(midL);
 
-        // END column background + header
-        var endBg = document.createElementNS(svgNS, 'rect');
-        endBg.setAttribute('x', lw + colW); endBg.setAttribute('y', 0);
-        endBg.setAttribute('width', colW); endBg.setAttribute('height', h);
-        endBg.setAttribute('fill', darkMode ? '#1e293b' : '#f8fafc');
-        svg.appendChild(endBg);
+          // END column background + header
+          var endBg = document.createElementNS(svgNS, 'rect');
+          endBg.setAttribute('x', lw + colW); endBg.setAttribute('y', 0);
+          endBg.setAttribute('width', colW); endBg.setAttribute('height', h);
+          endBg.setAttribute('fill', darkMode ? '#1e293b' : '#f8fafc');
+          svg.appendChild(endBg);
 
-        var endHdr = document.createElementNS(svgNS, 'text');
-        endHdr.setAttribute('x', lw + colW + colW / 2);
-        endHdr.setAttribute('y', h / 2 + 4);
-        endHdr.setAttribute('text-anchor', 'middle');
-        endHdr.setAttribute('font-size', '10');
-        endHdr.setAttribute('font-weight', '700');
-        endHdr.setAttribute('fill', mutedFill);
-        endHdr.setAttribute('letter-spacing', '0.08em');
-        endHdr.textContent = 'END';
-        svg.appendChild(endHdr);
+          var endHdr = document.createElementNS(svgNS, 'text');
+          endHdr.setAttribute('x', lw + colW + colW / 2);
+          endHdr.setAttribute('y', h / 2 + 4);
+          endHdr.setAttribute('text-anchor', 'middle');
+          endHdr.setAttribute('font-size', '10');
+          endHdr.setAttribute('font-weight', '700');
+          endHdr.setAttribute('fill', mutedFill);
+          endHdr.setAttribute('letter-spacing', '0.08em');
+          endHdr.textContent = 'END';
+          svg.appendChild(endHdr);
+        }
+
+        if (showDurationColumn) {
+          var durX = lw + (showDateColumns ? DATE_COL_W : 0);
+          var durDivider = document.createElementNS(svgNS, 'line');
+          durDivider.setAttribute('x1', durX); durDivider.setAttribute('y1', 0);
+          durDivider.setAttribute('x2', durX); durDivider.setAttribute('y2', h);
+          durDivider.setAttribute('stroke', '#94a3b8'); durDivider.setAttribute('stroke-width', 0.5);
+          svg.appendChild(durDivider);
+
+          var durBg = document.createElementNS(svgNS, 'rect');
+          durBg.setAttribute('x', durX); durBg.setAttribute('y', 0);
+          durBg.setAttribute('width', DURATION_COL_W); durBg.setAttribute('height', h);
+          durBg.setAttribute('fill', darkMode ? '#1e293b' : '#f8fafc');
+          svg.appendChild(durBg);
+
+          var durHdr = document.createElementNS(svgNS, 'text');
+          durHdr.setAttribute('x', durX + DURATION_COL_W / 2);
+          durHdr.setAttribute('y', h / 2 + 4);
+          durHdr.setAttribute('text-anchor', 'middle');
+          durHdr.setAttribute('font-size', '10');
+          durHdr.setAttribute('font-weight', '700');
+          durHdr.setAttribute('fill', mutedFill);
+          durHdr.setAttribute('letter-spacing', '0.08em');
+          durHdr.textContent = 'DUR';
+          svg.appendChild(durHdr);
+        }
       }
 
       cellCorner.appendChild(svg);
@@ -2690,10 +2732,10 @@
         sep.setAttribute('stroke-width', isGH ? 2 : 0.5);
         svg.appendChild(sep);
 
-        // Date columns (START / END) — rendered after label area
-        if (showDateColumns) {
-          var colW = DATE_COL_W / 2;
-          var midY = yTop + geom.rowHeight / 2 + 4;
+        // Date columns (START / END) and/or DURATION — rendered after label area
+        if (showDateColumns || showDurationColumn) {
+          var colW   = DATE_COL_W / 2;
+          var midY   = yTop + geom.rowHeight / 2 + 4;
           var dateFill = isGH ? groupHeaderTextColor : (darkMode ? '#94a3b8' : '#475569');
           var dateFs = Math.max(9, geom.rowHeight > 30 ? 11 : 10);
 
@@ -2708,69 +2750,88 @@
             }
           }
 
-          // Vertical divider: label col | date cols
+          // Vertical divider: label col | first extra col
           var dv1 = document.createElementNS(svgNS, 'line');
           dv1.setAttribute('x1', lw); dv1.setAttribute('y1', yTop);
           dv1.setAttribute('x2', lw); dv1.setAttribute('y2', yTop + geom.rowHeight);
           dv1.setAttribute('stroke', '#94a3b8'); dv1.setAttribute('stroke-width', 1);
           svg.appendChild(dv1);
 
-          // START date text
-          if (dStart) {
-            var sTxt = document.createElementNS(svgNS, 'text');
-            sTxt.setAttribute('x', lw + colW / 2);
-            sTxt.setAttribute('y', midY);
-            sTxt.setAttribute('text-anchor', 'middle');
-            sTxt.setAttribute('font-size', dateFs);
-            sTxt.setAttribute('fill', dateFill);
-            sTxt.textContent = fmtShortDate(dStart);
-            svg.appendChild(sTxt);
+          if (showDateColumns) {
+            // START date text
+            if (dStart) {
+              var sTxt = document.createElementNS(svgNS, 'text');
+              sTxt.setAttribute('x', lw + colW / 2);
+              sTxt.setAttribute('y', midY);
+              sTxt.setAttribute('text-anchor', 'middle');
+              sTxt.setAttribute('font-size', dateFs);
+              sTxt.setAttribute('fill', dateFill);
+              sTxt.textContent = fmtShortDate(dStart);
+              svg.appendChild(sTxt);
+            }
+
+            // Mid divider: START | END
+            var dv2 = document.createElementNS(svgNS, 'line');
+            dv2.setAttribute('x1', lw + colW); dv2.setAttribute('y1', yTop);
+            dv2.setAttribute('x2', lw + colW); dv2.setAttribute('y2', yTop + geom.rowHeight);
+            dv2.setAttribute('stroke', '#cbd5e1'); dv2.setAttribute('stroke-width', 0.5);
+            svg.appendChild(dv2);
+
+            // END date text
+            if (dEnd) {
+              var eTxt = document.createElementNS(svgNS, 'text');
+              eTxt.setAttribute('x', lw + colW + colW / 2);
+              eTxt.setAttribute('y', midY);
+              eTxt.setAttribute('text-anchor', 'middle');
+              eTxt.setAttribute('font-size', dateFs);
+              eTxt.setAttribute('fill', dateFill);
+              eTxt.textContent = fmtShortDate(dEnd);
+              svg.appendChild(eTxt);
+            }
+
+            // Editable hit-rects for task rows (not group headers)
+            if (!isGH && row.taskId) {
+              (function(tid, rowYTop, cW) {
+                var sHit = document.createElementNS(svgNS, 'rect');
+                sHit.setAttribute('x', lw); sHit.setAttribute('y', rowYTop);
+                sHit.setAttribute('width', cW); sHit.setAttribute('height', geom.rowHeight);
+                sHit.setAttribute('fill', 'transparent');
+                sHit.style.cursor = 'pointer';
+                sHit.addEventListener('mouseenter', function() { sHit.setAttribute('fill', 'rgba(2,132,199,0.08)'); });
+                sHit.addEventListener('mouseleave', function() { sHit.setAttribute('fill', 'transparent'); });
+                sHit.addEventListener('click', function(e) { e.stopPropagation(); showDateEdit(tid, 'start', e.clientX, e.clientY); });
+                svg.appendChild(sHit);
+
+                var eHit = document.createElementNS(svgNS, 'rect');
+                eHit.setAttribute('x', lw + cW); eHit.setAttribute('y', rowYTop);
+                eHit.setAttribute('width', cW); eHit.setAttribute('height', geom.rowHeight);
+                eHit.setAttribute('fill', 'transparent');
+                eHit.style.cursor = 'pointer';
+                eHit.addEventListener('mouseenter', function() { eHit.setAttribute('fill', 'rgba(2,132,199,0.08)'); });
+                eHit.addEventListener('mouseleave', function() { eHit.setAttribute('fill', 'transparent'); });
+                eHit.addEventListener('click', function(e) { e.stopPropagation(); showDateEdit(tid, 'end', e.clientX, e.clientY); });
+                svg.appendChild(eHit);
+              })(row.taskId, yTop, colW);
+            }
           }
 
-          // Mid divider: START | END
-          var dv2 = document.createElementNS(svgNS, 'line');
-          dv2.setAttribute('x1', lw + colW); dv2.setAttribute('y1', yTop);
-          dv2.setAttribute('x2', lw + colW); dv2.setAttribute('y2', yTop + geom.rowHeight);
-          dv2.setAttribute('stroke', '#cbd5e1'); dv2.setAttribute('stroke-width', 0.5);
-          svg.appendChild(dv2);
+          // Duration column
+          if (showDurationColumn && dStart && dEnd) {
+            var durX = lw + (showDateColumns ? DATE_COL_W : 0);
+            var durDivLine = document.createElementNS(svgNS, 'line');
+            durDivLine.setAttribute('x1', durX); durDivLine.setAttribute('y1', yTop);
+            durDivLine.setAttribute('x2', durX); durDivLine.setAttribute('y2', yTop + geom.rowHeight);
+            durDivLine.setAttribute('stroke', '#94a3b8'); durDivLine.setAttribute('stroke-width', 0.5);
+            svg.appendChild(durDivLine);
 
-          // END date text
-          if (dEnd) {
-            var eTxt = document.createElementNS(svgNS, 'text');
-            eTxt.setAttribute('x', lw + colW + colW / 2);
-            eTxt.setAttribute('y', midY);
-            eTxt.setAttribute('text-anchor', 'middle');
-            eTxt.setAttribute('font-size', dateFs);
-            eTxt.setAttribute('fill', dateFill);
-            eTxt.textContent = fmtShortDate(dEnd);
-            svg.appendChild(eTxt);
-          }
-
-          // Editable hit-rects for task rows (not group headers)
-          if (!isGH && row.taskId) {
-            (function(tid, rowYTop, cW) {
-              // START hit rect
-              var sHit = document.createElementNS(svgNS, 'rect');
-              sHit.setAttribute('x', lw); sHit.setAttribute('y', rowYTop);
-              sHit.setAttribute('width', cW); sHit.setAttribute('height', geom.rowHeight);
-              sHit.setAttribute('fill', 'transparent');
-              sHit.style.cursor = 'pointer';
-              sHit.addEventListener('mouseenter', function() { sHit.setAttribute('fill', 'rgba(2,132,199,0.08)'); });
-              sHit.addEventListener('mouseleave', function() { sHit.setAttribute('fill', 'transparent'); });
-              sHit.addEventListener('click', function(e) { e.stopPropagation(); showDateEdit(tid, 'start', e.clientX, e.clientY); });
-              svg.appendChild(sHit);
-
-              // END hit rect
-              var eHit = document.createElementNS(svgNS, 'rect');
-              eHit.setAttribute('x', lw + cW); eHit.setAttribute('y', rowYTop);
-              eHit.setAttribute('width', cW); eHit.setAttribute('height', geom.rowHeight);
-              eHit.setAttribute('fill', 'transparent');
-              eHit.style.cursor = 'pointer';
-              eHit.addEventListener('mouseenter', function() { eHit.setAttribute('fill', 'rgba(2,132,199,0.08)'); });
-              eHit.addEventListener('mouseleave', function() { eHit.setAttribute('fill', 'transparent'); });
-              eHit.addEventListener('click', function(e) { e.stopPropagation(); showDateEdit(tid, 'end', e.clientX, e.clientY); });
-              svg.appendChild(eHit);
-            })(row.taskId, yTop, colW);
+            var durTxt = document.createElementNS(svgNS, 'text');
+            durTxt.setAttribute('x', durX + DURATION_COL_W / 2);
+            durTxt.setAttribute('y', midY);
+            durTxt.setAttribute('text-anchor', 'middle');
+            durTxt.setAttribute('font-size', dateFs);
+            durTxt.setAttribute('fill', dateFill);
+            durTxt.textContent = fmtDuration(dStart, dEnd);
+            svg.appendChild(durTxt);
           }
         }
       }
@@ -4715,6 +4776,13 @@
         renderGantt();
       });
 
+      // Show/hide duration column
+      var durColEl = document.getElementById('opt-dur-col');
+      if (durColEl) durColEl.addEventListener('change', function() {
+        showDurationColumn = this.checked;
+        renderGantt();
+      });
+
       // Today line toggle
       var optTodayEl = document.getElementById('opt-today');
       if (optTodayEl) optTodayEl.addEventListener('change', function() {
@@ -5248,6 +5316,7 @@
         showRollupTicks:       showRollupTicks ? 'true' : 'false',
         showGroupBars:         showGroupBars ? 'true' : 'false',
         showDateColumns:       showDateColumns ? 'true' : 'false',
+        showDurationColumn:    showDurationColumn ? 'true' : 'false',
         currentScale:        currentScale,
         zoomLevel:           zoomLevel,
         chartStart:          chartStartInput ? chartStartInput.value : '',
@@ -5405,6 +5474,11 @@
         showDateColumns = (s.showDateColumns === 'true');
         var dcEl = document.getElementById('opt-date-cols');
         if (dcEl) dcEl.checked = showDateColumns;
+      }
+      if (s.showDurationColumn !== undefined) {
+        showDurationColumn = (s.showDurationColumn === 'true');
+        var durEl = document.getElementById('opt-dur-col');
+        if (durEl) durEl.checked = showDurationColumn;
       }
 
       // Sync scale
@@ -5903,9 +5977,10 @@
       var NS = 'http://www.w3.org/2000/svg';
       var mL   = opts.mL || 0;
       var mT   = opts.mT || 0;
-      var rawLw = opts.labelW;          // label column only
-      var dcW   = opts.dateColW || 0;   // date columns width (0 when hidden)
-      var lw    = rawLw + dcW;          // total left panel = label + date cols; timeline starts at mL+lw
+      var rawLw = opts.labelW;               // label column only
+      var dcW   = opts.dateColW  || 0;       // date columns width (0 when hidden)
+      var durW  = opts.durColW   || 0;       // duration column width (0 when hidden)
+      var lw    = rawLw + dcW + durW;        // total left panel; timeline starts at mL+lw
       var tw  = opts.timelineW;
       var rH  = opts.rulerH;
       var rowH = opts.rowH;
@@ -5983,8 +6058,8 @@
       // ── Ruler — scale-aware to match chart setting ─────────────
       var rulerY = hdrY + opts.headerH;
       var scale  = opts.scale; // 'day' | 'week' | 'month' | 'quarter' | 'year'
-      rect(mL,      rulerY, rawLw, rH, '#e2e8f0');
-      rect(mL+lw,  rulerY, tw,    rH, '#f1f5f9');
+      rect(mL,     rulerY, rawLw, rH, '#e2e8f0');
+      rect(mL+lw,  rulerY, tw,   rH, '#f1f5f9');
       // Date column headers (START / END) when enabled
       if (dcW > 0) {
         var pHColW = dcW / 2;
@@ -5994,6 +6069,14 @@
         txt('END',   {x:mL+rawLw+pHColW+pHColW/2, y:rulerY+rH/2+hdrFs*0.4, 'text-anchor':'middle', 'font-size':hdrFs, fill:'#475569', 'font-weight':'700'});
         line(mL+rawLw,         rulerY, mL+rawLw,         rulerY+rH, '#94a3b8', 0.75);
         line(mL+rawLw+pHColW,  rulerY, mL+rawLw+pHColW,  rulerY+rH, '#94a3b8', 0.5);
+      }
+      // Duration column header when enabled
+      if (durW > 0) {
+        var durHdrX = mL + rawLw + dcW;
+        var durHdrFs = Math.max(4, fs - 2);
+        rect(durHdrX, rulerY, durW, rH, '#e2e8f0');
+        txt('DUR', {x:durHdrX + durW/2, y:rulerY+rH/2+durHdrFs*0.4, 'text-anchor':'middle', 'font-size':durHdrFs, fill:'#475569', 'font-weight':'700'});
+        line(durHdrX, rulerY, durHdrX, rulerY+rH, '#94a3b8', 0.75);
       }
 
       if (scale === 'day' || scale === 'week') {
@@ -6140,20 +6223,17 @@
       line(mL, rulerY+rH, mL+opts.usableW, rulerY+rH, '#94a3b8', 1);
 
       // ── Body rows — three layers: fills → grid lines → bars/labels ──
-      var tintHex = groupTintHex(false);
 
-      // Layer 1: row background fills only
+      // Layer 1: row background fills — use same group color settings as Gantt view
       for (var ri = 0; ri < opts.rowSlice.length; ri++) {
         var row = opts.rowSlice[ri];
         var ry  = bodyY + ri * rowH;
-        if (row.type === 'gh') {
-          var ghColor = groupColors[row.disc] || '#64748b';
-          rect(mL, ry, lw, rowH, ghColor + tintHex);
-          rect(mL, ry, 4, rowH, ghColor);
-        } else if (row.type === 'disc') {
-          var dcColor = groupColors[row.disc] || '#64748b';
-          rect(mL, ry, lw, rowH, dcColor + tintHex);
-          rect(mL, ry, 4, rowH, dcColor);
+        if (row.type === 'gh' || row.type === 'disc') {
+          var ghGroupColor = groupColors[row.disc] || '#64748b';
+          var ghBgColor    = matchHdrToGroupColor ? ghGroupColor : groupHeaderColor;
+          var ghOp         = (groupHeaderTint / 100).toFixed(3);
+          rect(mL, ry, lw, rowH, ghBgColor, {'fill-opacity': ghOp});
+          rect(mL, ry, 4, rowH, ghGroupColor);
         } else {
           if (ri % 2 === 1) rect(mL, ry, opts.usableW, rowH, '#f8fafc');
           var tColor = groupColors[row.task.group] || '#64748b';
@@ -6185,9 +6265,10 @@
 
         if (row.type === 'gh') {
           // ── Group header row ──
-          var ghColor = groupColors[row.disc] || '#64748b';
+          var ghColor    = groupColors[row.disc] || '#64748b';
+          var ghTxtColor = groupHeaderTextColor || '#1e293b';
           txt(_truncate(row.disc, rawLw - 12, fs + 1),
-              {x:mL+8, y:ry+rowH/2+fs*0.38, 'font-size':Math.min(fs+1,10), 'font-weight':'700', fill:'#1e293b'});
+              {x:mL+8, y:ry+rowH/2+fs*0.38, 'font-size':Math.min(fs+1,10), 'font-weight':'700', fill:ghTxtColor});
           var grMin = null, grMax = null;
           for (var gi = 0; gi < tasks.length; gi++) {
             if (tasks[gi].group === row.disc) {
@@ -6196,21 +6277,29 @@
               if (!grMax || te > grMax) grMax = te;
             }
           }
-          // Date columns for group header
-          if (dcW > 0) {
-            var pDColW = dcW / 2;
-            if (grMin) txt(fmtShortDate(grMin), {x:mL+rawLw+pDColW/2,        y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#1e293b'});
-            if (grMax) txt(fmtShortDate(grMax), {x:mL+rawLw+pDColW+pDColW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#1e293b'});
-            line(mL+rawLw,        ry, mL+rawLw,        ry+rowH, '#94a3b8', 0.5);
-            line(mL+rawLw+pDColW, ry, mL+rawLw+pDColW, ry+rowH, '#94a3b8', 0.4);
+          // Date / duration columns for group header
+          if (dcW > 0 || durW > 0) {
+            line(mL+rawLw, ry, mL+rawLw, ry+rowH, '#94a3b8', 0.5);
+            if (dcW > 0) {
+              var pDColW = dcW / 2;
+              if (grMin) txt(fmtShortDate(grMin), {x:mL+rawLw+pDColW/2,        y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:ghTxtColor});
+              if (grMax) txt(fmtShortDate(grMax), {x:mL+rawLw+pDColW+pDColW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:ghTxtColor});
+              line(mL+rawLw+pDColW, ry, mL+rawLw+pDColW, ry+rowH, '#94a3b8', 0.4);
+            }
+            if (durW > 0 && grMin && grMax) {
+              var pDurX = mL + rawLw + dcW;
+              line(pDurX, ry, pDurX, ry+rowH, '#94a3b8', 0.4);
+              txt(fmtDuration(grMin, grMax), {x:pDurX+durW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:ghTxtColor});
+            }
           }
           if (showGroupBars && grMin && grMax) {
             var gx1 = _pDateToX(grMin, opts.sliceMin, opts.sliceMax, tw);
             var gx2 = _pDateToX(grMax, opts.sliceMin, opts.sliceMax, tw);
             var gxC1 = Math.max(0, gx1), gxC2 = Math.min(tw, gx2);
+            var ghBarOpacity = (groupHeaderTint / 100).toFixed(3);
             if (gxC2 > gxC1)
               mk('rect', {x:mL+lw+gxC1, y:ry+3, width:gxC2-gxC1, height:rowH-6, rx:2,
-                          fill:ghColor + tintHex, 'clip-path':'url(#'+clipId+')'});
+                          fill:ghColor, 'fill-opacity':ghBarOpacity, 'clip-path':'url(#'+clipId+')'});
           }
 
           // Collapsed milestone/flag markers — mirrors interactive chart behaviour
@@ -6247,21 +6336,29 @@
 
         } else if (row.type === 'disc') {
           // ── Flat mode disc row ──
-          var dcColor = groupColors[row.disc] || '#64748b';
+          var dcColor    = groupColors[row.disc] || '#64748b';
+          var dcTxtColor = groupHeaderTextColor || '#1e293b';
           txt(_truncate(row.disc, rawLw - 12, fs + 1),
-              {x:mL+8, y:ry+rowH/2+fs*0.38, 'font-size':Math.min(fs+1,10), 'font-weight':'700', fill:'#1e293b'});
-          // Date columns for disc row
-          if (dcW > 0) {
-            var pDColWd = dcW / 2;
+              {x:mL+8, y:ry+rowH/2+fs*0.38, 'font-size':Math.min(fs+1,10), 'font-weight':'700', fill:dcTxtColor});
+          // Date / duration columns for disc row
+          if (dcW > 0 || durW > 0) {
             var dMin = null, dMax = null;
             if (row.tasks) { row.tasks.forEach(function(t2) {
               if (!dMin || t2.start < dMin) dMin = t2.start;
               if (!dMax || t2.end   > dMax) dMax = t2.end;
             }); }
-            if (dMin) txt(fmtShortDate(dMin), {x:mL+rawLw+pDColWd/2,          y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#1e293b'});
-            if (dMax) txt(fmtShortDate(dMax), {x:mL+rawLw+pDColWd+pDColWd/2,  y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#1e293b'});
-            line(mL+rawLw,         ry, mL+rawLw,         ry+rowH, '#94a3b8', 0.5);
-            line(mL+rawLw+pDColWd, ry, mL+rawLw+pDColWd, ry+rowH, '#94a3b8', 0.4);
+            line(mL+rawLw, ry, mL+rawLw, ry+rowH, '#94a3b8', 0.5);
+            if (dcW > 0) {
+              var pDColWd = dcW / 2;
+              if (dMin) txt(fmtShortDate(dMin), {x:mL+rawLw+pDColWd/2,         y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
+              if (dMax) txt(fmtShortDate(dMax), {x:mL+rawLw+pDColWd+pDColWd/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
+              line(mL+rawLw+pDColWd, ry, mL+rawLw+pDColWd, ry+rowH, '#94a3b8', 0.4);
+            }
+            if (durW > 0 && dMin && dMax) {
+              var dDiscDurX = mL + rawLw + dcW;
+              line(dDiscDurX, ry, dDiscDurX, ry+rowH, '#94a3b8', 0.4);
+              txt(fmtDuration(dMin, dMax), {x:dDiscDurX+durW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
+            }
           }
           for (var di = 0; di < row.tasks.length; di++) {
             var dt = row.tasks[di];
@@ -6289,13 +6386,20 @@
           tLbl.textContent = t.name;
           svg.appendChild(tLbl);
 
-          // Date columns for task row
-          if (dcW > 0) {
-            var pTColW = dcW / 2;
-            if (t.start) txt(fmtShortDate(t.start), {x:mL+rawLw+pTColW/2,        y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#475569'});
-            if (t.end)   txt(fmtShortDate(t.end),   {x:mL+rawLw+pTColW+pTColW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#475569'});
-            line(mL+rawLw,        ry, mL+rawLw,        ry+rowH, '#94a3b8', 0.5);
-            line(mL+rawLw+pTColW, ry, mL+rawLw+pTColW, ry+rowH, '#94a3b8', 0.4);
+          // Date / duration columns for task row
+          if (dcW > 0 || durW > 0) {
+            line(mL+rawLw, ry, mL+rawLw, ry+rowH, '#94a3b8', 0.5);
+            if (dcW > 0) {
+              var pTColW = dcW / 2;
+              if (t.start) txt(fmtShortDate(t.start), {x:mL+rawLw+pTColW/2,        y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#475569'});
+              if (t.end)   txt(fmtShortDate(t.end),   {x:mL+rawLw+pTColW+pTColW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#475569'});
+              line(mL+rawLw+pTColW, ry, mL+rawLw+pTColW, ry+rowH, '#94a3b8', 0.4);
+            }
+            if (durW > 0 && t.start && t.end) {
+              var tDurX = mL + rawLw + dcW;
+              line(tDurX, ry, tDurX, ry+rowH, '#94a3b8', 0.4);
+              txt(fmtDuration(t.start, t.end), {x:tDurX+durW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:'#475569'});
+            }
           }
 
           // Bar
@@ -6465,9 +6569,13 @@
       // ── Borders ───────────────────────────────────────────────
       // Timeline left border (right edge of all left columns)
       line(mL+lw, rulerY, mL+lw, bodyY+opts.bodyH, '#94a3b8', 0.75);
-      // Label/date-col separator (only when date cols are shown)
-      if (dcW > 0) {
+      // Label | extra cols separator
+      if (dcW > 0 || durW > 0) {
         line(mL+rawLw, rulerY, mL+rawLw, bodyY+opts.bodyH, '#94a3b8', 0.75);
+      }
+      // Duration col left border (when date cols also present)
+      if (dcW > 0 && durW > 0) {
+        line(mL+rawLw+dcW, rulerY, mL+rawLw+dcW, bodyY+opts.bodyH, '#94a3b8', 0.5);
       }
 
       // ── Footer ────────────────────────────────────────────────
@@ -6518,8 +6626,10 @@
       var footerH  = 18;
       var bodyH    = usableH - headerH - rulerH - footerH;
       var prShowDateCols = (function() { var el = document.getElementById('pr-date-cols'); return el ? el.checked : false; })();
+      var prShowDurCol   = (function() { var el = document.getElementById('pr-dur-col');   return el ? el.checked : false; })();
       var prDateColW = prShowDateCols ? 120 : 0; // 60px START + 60px END in print
-      var timelineW = Math.max(60, usableW - labelW - prDateColW);
+      var prDurColW  = prShowDurCol   ? 50  : 0; // 50px for duration in print
+      var timelineW = Math.max(60, usableW - labelW - prDateColW - prDurColW);
 
       // Date bounds from tasks
       var allMin = new Date(tasks[0].start.getTime());
@@ -6569,7 +6679,7 @@
             pgW: pgW, pgH: pgH, mT: mT, mB: mB, mL: mL, mR: mR,
             usableW: usableW, usableH: usableH,
             headerH: headerH, rulerH: rulerH, footerH: footerH, bodyH: bodyH,
-            labelW: labelW, timelineW: timelineW, dateColW: prDateColW,
+            labelW: labelW, timelineW: timelineW, dateColW: prDateColW, durColW: prDurColW,
             rowH: rowH, fontSize: fontSize,
             rowSlice: rowSlice,
             sliceMin: sliceMin, sliceMax: sliceMax,
@@ -6577,6 +6687,7 @@
             showToday:    showTodayLine,
             showDeps:     (function() { var el = document.getElementById('pr-deps'); return el ? el.checked : showDependencies; })(),
             showDateCols: (function() { var el = document.getElementById('pr-date-cols'); return el ? el.checked : false; })(),
+            showDurCol:   (function() { var el = document.getElementById('pr-dur-col');   return el ? el.checked : false; })(),
             grpTint:      grpTint,
             scale:        currentScale,
             showName:     displayOptions.showName,
@@ -6647,6 +6758,8 @@
       });
       var prDateColsEl = document.getElementById('pr-date-cols');
       if (prDateColsEl) prDateColsEl.addEventListener('change', reRender);
+      var prDurColEl = document.getElementById('pr-dur-col');
+      if (prDurColEl) prDurColEl.addEventListener('change', reRender);
       ['pr-labelw','pr-rowh','pr-font'].forEach(function(id) {
         var el = document.getElementById(id);
         var valEl = document.getElementById(id + '-val');
@@ -7053,6 +7166,7 @@
 
       <label><input type="checkbox" id="pr-deps" checked /> Dependencies</label>
       <label><input type="checkbox" id="pr-date-cols" /> Date Cols</label>
+      <label><input type="checkbox" id="pr-dur-col" /> Duration</label>
 
       <button id="pr-print-btn">⬜ Print</button>
       <button id="pr-close-btn">✕ Close</button>
