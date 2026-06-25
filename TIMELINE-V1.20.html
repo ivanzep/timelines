@@ -1,10 +1,18 @@
 <!--
   ============================================================
   Interactive Project Timeline
-  File: TIMELINE-V1.19.html
+  File: TIMELINE-V1.20.html
 
   VERSION HISTORY
   ───────────────
+  V1.20  2026-06-25
+    • Task display params (color override, bar type, style, symbol) are now keyed
+      by persistent TASKID in the GANTT TASK PARAMS-DO NOT EDIT spreadsheet tab
+      instead of DISCIPLINE|TASKNAME. Properties survive task renames and discipline
+      changes without being reset. Requires Code_V1.20.gs.
+    • New tasks created in the UI receive their TASKID on the first Save + Reload;
+      until then, params for brand-new tasks are not persisted.
+
   V1.19  2026-06-17
     • Print mode: removed "LA COSTA HOTEL…" footer text from bottom-left corner.
     • Settings panel: "Match Hdr Color" toggle — when checked, each group header

@@ -9,7 +9,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 
 | File | Purpose |
 |------|---------|
-| `Code_V1.19.gs` | **Active backend** — deploy this. Adds `matchHdrToGroupColor` and `showRollupTicks` settings keys. |
+| `Code_V1.20.gs` | **Active backend** — deploy this. Task params (color, type, style, symbol) now keyed by TASKID; `showGroupBars` settings key added. |
+| `Code_V1.19.gs` | Previous backend. Keep for reference. |
 | `Code_V1.18.gs` | Previous backend. Keep for reference. |
 | `Code_V1.15.gs` | Previous backend. Keep for reference. |
 | `Code_V1.14.gs` | Previous backend. Keep for reference. |
