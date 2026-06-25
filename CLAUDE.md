@@ -9,7 +9,7 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 
 | File | Purpose |
 |------|---------|
-| `Code_V1.20.gs` | **Active backend** — deploy this. Task params (color, type, style, symbol) now keyed by TASKID; `showGroupBars` settings key added. |
+| `Code_V1.20.gs` | **Active backend** — deploy this. Task params (color, type, style, symbol) now keyed by TASKID; `showGroupBars` and `showDateColumns` settings keys added. |
 | `Code_V1.19.gs` | Previous backend. Keep for reference. |
 | `Code_V1.18.gs` | Previous backend. Keep for reference. |
 | `Code_V1.15.gs` | Previous backend. Keep for reference. |
@@ -29,7 +29,9 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 | `Code_V1.01.gs` | Previous backend. Keep for reference. |
 | `Code_V1.0.gs` | Original baseline. Keep for reference. |
 | `Code.gs` | Original base script. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.15.html` | **Active HTML frontend** — open this in browser. |
+| `TIMELINE-V1.21.html` | **Active HTML frontend** — open this in browser. Date columns (START/END) in Gantt view + print mode. |
+| `TIMELINE-V1.20.html` | Previous HTML version. Keep for reference. |
+| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.15.html` | Previous HTML version. Keep for reference. |
 | `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.14.html` | Previous HTML version. Keep for reference. |
 | `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.13.html` | Previous HTML version. Keep for reference. |
 | `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.12.html` | Previous HTML version. Keep for reference. |

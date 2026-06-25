@@ -43,6 +43,7 @@
 //      Result: colour, type, style, and symbol survive renames, discipline changes, AND
 //      accidental ID-tab loss. Backward-compatible with old KEY-only and TASKID-only tabs.
 //    • SETTINGS_KEYS also gains showGroupBars (new toggle from HTML V1.19/V1.20).
+    • SETTINGS_KEYS gains showDateColumns (persists START/END date column visibility from HTML V1.21).
 //
 //  V1.19  2026-06-17
 //    • SETTINGS_KEYS expanded with 2 new keys introduced in HTML V1.19:
@@ -877,7 +878,8 @@ var SETTINGS_KEYS = [
   'currentScale', 'zoomLevel', 'chartStart', 'chartEnd',
   'showDependencies', 'snapValue', 'toolbarCollapsed',
   'ganttRollupMarkersVisible',
-  'matchHdrToGroupColor', 'showRollupTicks', 'showGroupBars'
+  'matchHdrToGroupColor', 'showRollupTicks', 'showGroupBars',
+  'showDateColumns'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -915,7 +917,8 @@ var SETTINGS_DESCRIPTIONS = {
   ganttRollupMarkersVisible: 'Show milestone & flag markers on collapsed Gantt rollup bars (true/false)',
   matchHdrToGroupColor: 'Group header background uses the group bar colour when true (true/false)',
   showRollupTicks:      'Show vertical tick lines at rollup bar start/end (true/false)',
-  showGroupBars:        'Show rollup bars on group header rows (true/false)'
+  showGroupBars:        'Show rollup bars on group header rows (true/false)',
+  showDateColumns:      'Show START / END date columns beside the label column in the Gantt view (true/false)'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.
