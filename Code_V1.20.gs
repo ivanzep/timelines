@@ -31,7 +31,7 @@
 //
 //  VERSION HISTORY
 //  ───────────────
-//  V1.20  2026-06-25 06:43
+//  V1.20  2026-06-25 21:50
 //    • GANTT TASK PARAMS tab now stores TASKID and KEY (DISC|TASKNAME) columns together.
 //      readTaskParams() builds two indexes: byId (integer taskId) and byKey (normKey string).
 //      doGet() merges using byId[t.taskId] || byKey[normKey] — taskId is primary (rename-safe)
