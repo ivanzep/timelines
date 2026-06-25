@@ -31,7 +31,7 @@
 //
 //  VERSION HISTORY
 //  ───────────────
-//  V1.20  2026-06-25 16:30
+//  V1.20  2026-06-25 20:53
 //    • GANTT TASK PARAMS tab re-keyed from DISCIPLINE|TASKNAME to TASKID.
 //      readTaskParams() returns a map keyed by integer taskId instead of normKey.
 //      writeTaskParams() writes TASKID as the row key; rows without a taskId are skipped.
