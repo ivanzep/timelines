@@ -5,15 +5,19 @@
 
   VERSION HISTORY
   ───────────────
-  V1.21  2026-06-25 06:43
+  V1.21  2026-06-25 08:30
     • Gantt view: collapsible date columns (START / END) appear between the task
       label column and the timeline. Toggle via "Date Cols" checkbox in the toolbar.
       Group header rows show the earliest start and latest end across all tasks in the
-      group. Task rows show the individual task start and end dates (MMM D format).
+      group. Task rows show the individual task start and end dates (YYYY/MM/DD format).
       The date-column area width (160 px) is separate from the user-adjustable label
       column so resizing the label column does not affect the date columns.
     • Print mode: "Date Cols" checkbox in the print control bar shows/hides the same
-      start/end columns on every printed page.
+      start/end columns on every printed page. Dates shown in YYYY/MM/DD format.
+    • Date cells for individual task rows are editable in the Gantt view: click a
+      START or END cell to open a native date picker; confirming updates the bar,
+      milestone, or flag and the task list entry instantly. Group header rows are
+      read-only (they show aggregate min/max across all tasks in the group).
     • showDateColumns persisted to GANTT SETTINGS tab (requires Code_V1.20.gs).
 
   V1.20  2026-06-25 06:43
@@ -980,6 +984,21 @@
     min-width:160px;
   "></div>
 
+  <!-- ── Gantt date-cell inline editor ──────────────────────── -->
+  <input type="date" id="gantt-date-input" style="
+    display:none;
+    position:fixed;
+    z-index:4000;
+    font-size:12px;
+    padding:2px 4px;
+    border:2px solid #0284c7;
+    border-radius:4px;
+    background:#ffffff;
+    color:#0f172a;
+    box-shadow:0 2px 8px rgba(2,132,199,0.25);
+    cursor:text;
+  " />
+
   <!-- ===== Google Sheets Setup Modal ===== -->
   <div class="sheets-overlay" id="sheets-overlay">
     <div class="sheets-modal">
@@ -1174,9 +1193,52 @@
     }
     function fmtShortDate(d) {
       if (!(d instanceof Date)) return '';
-      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return months[d.getMonth()] + ' ' + d.getDate();
+      var y = d.getFullYear();
+      var m = String(d.getMonth() + 1).padStart(2, '0');
+      var day = String(d.getDate()).padStart(2, '0');
+      return y + '/' + m + '/' + day;
     }
+    function showDateEdit(taskId, field, clientX, clientY) {
+      var inp = document.getElementById('gantt-date-input');
+      if (!inp) return;
+      var task = null;
+      for (var i = 0; i < tasks.length; i++) {
+        if (tasks[i].id === taskId) { task = tasks[i]; break; }
+      }
+      if (!task) return;
+      var d = field === 'start' ? task.start : task.end;
+      if (!d) return;
+      inp.value = formatDate(d); // YYYY-MM-DD for input[type=date]
+      var colW = DATE_COL_W / 2;
+      inp.style.width  = colW + 'px';
+      inp.style.left   = Math.max(0, clientX - colW / 2) + 'px';
+      inp.style.top    = (clientY - 14) + 'px';
+      inp.style.display = 'block';
+
+      function commit() {
+        inp.style.display = 'none';
+        inp.onchange = null; inp.onblur = null; inp.onkeydown = null;
+        var nd = parseDate(inp.value);
+        if (!nd) return;
+        if (field === 'start') {
+          task.start = nd;
+          if (task.end < nd) task.end = new Date(nd.getTime() + 86400000 * 7);
+        } else {
+          task.end = nd;
+          if (task.start > nd) task.start = new Date(nd.getTime());
+        }
+        renderGantt();
+        refreshTaskTable();
+      }
+      inp.onchange  = commit;
+      inp.onkeydown = function(e) {
+        if (e.key === 'Enter')  { inp.blur(); }
+        if (e.key === 'Escape') { inp.style.display = 'none'; inp.onchange = null; inp.onblur = null; inp.onkeydown = null; }
+      };
+      inp.onblur = function() { setTimeout(function() { if (inp.style.display !== 'none') commit(); }, 150); };
+      setTimeout(function() { inp.focus(); if (inp.showPicker) inp.showPicker(); }, 0);
+    }
+
     function addDays(d, days) {
       var nd = new Date(d.getTime());
       nd.setDate(nd.getDate() + days);
@@ -2653,7 +2715,7 @@
           dv1.setAttribute('stroke', '#94a3b8'); dv1.setAttribute('stroke-width', 1);
           svg.appendChild(dv1);
 
-          // START date
+          // START date text
           if (dStart) {
             var sTxt = document.createElementNS(svgNS, 'text');
             sTxt.setAttribute('x', lw + colW / 2);
@@ -2672,7 +2734,7 @@
           dv2.setAttribute('stroke', '#cbd5e1'); dv2.setAttribute('stroke-width', 0.5);
           svg.appendChild(dv2);
 
-          // END date
+          // END date text
           if (dEnd) {
             var eTxt = document.createElementNS(svgNS, 'text');
             eTxt.setAttribute('x', lw + colW + colW / 2);
@@ -2682,6 +2744,33 @@
             eTxt.setAttribute('fill', dateFill);
             eTxt.textContent = fmtShortDate(dEnd);
             svg.appendChild(eTxt);
+          }
+
+          // Editable hit-rects for task rows (not group headers)
+          if (!isGH && row.taskId) {
+            (function(tid, rowYTop, cW) {
+              // START hit rect
+              var sHit = document.createElementNS(svgNS, 'rect');
+              sHit.setAttribute('x', lw); sHit.setAttribute('y', rowYTop);
+              sHit.setAttribute('width', cW); sHit.setAttribute('height', geom.rowHeight);
+              sHit.setAttribute('fill', 'transparent');
+              sHit.style.cursor = 'pointer';
+              sHit.addEventListener('mouseenter', function() { sHit.setAttribute('fill', 'rgba(2,132,199,0.08)'); });
+              sHit.addEventListener('mouseleave', function() { sHit.setAttribute('fill', 'transparent'); });
+              sHit.addEventListener('click', function(e) { e.stopPropagation(); showDateEdit(tid, 'start', e.clientX, e.clientY); });
+              svg.appendChild(sHit);
+
+              // END hit rect
+              var eHit = document.createElementNS(svgNS, 'rect');
+              eHit.setAttribute('x', lw + cW); eHit.setAttribute('y', rowYTop);
+              eHit.setAttribute('width', cW); eHit.setAttribute('height', geom.rowHeight);
+              eHit.setAttribute('fill', 'transparent');
+              eHit.style.cursor = 'pointer';
+              eHit.addEventListener('mouseenter', function() { eHit.setAttribute('fill', 'rgba(2,132,199,0.08)'); });
+              eHit.addEventListener('mouseleave', function() { eHit.setAttribute('fill', 'transparent'); });
+              eHit.addEventListener('click', function(e) { e.stopPropagation(); showDateEdit(tid, 'end', e.clientX, e.clientY); });
+              svg.appendChild(eHit);
+            })(row.taskId, yTop, colW);
           }
         }
       }
