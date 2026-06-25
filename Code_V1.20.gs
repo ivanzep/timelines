@@ -31,13 +31,15 @@
 //
 //  VERSION HISTORY
 //  ───────────────
-//  V1.20  2026-06-25 20:53
-//    • GANTT TASK PARAMS tab re-keyed from DISCIPLINE|TASKNAME to TASKID.
-//      readTaskParams() returns a map keyed by integer taskId instead of normKey.
-//      writeTaskParams() writes TASKID as the row key; rows without a taskId are skipped.
-//      doGet() assigns persistent IDs FIRST, then looks up params by t.taskId.
-//      Result: colour override, bar type, style, and symbol all survive task renames
-//      and discipline changes — they no longer reset when description text changes.
+//  V1.20  2026-06-25 06:28
+//    • GANTT TASK PARAMS tab now stores TASKID and KEY (DISC|TASKNAME) columns together.
+//      readTaskParams() builds two indexes: byId (integer taskId) and byKey (normKey string).
+//      doGet() merges using byId[t.taskId] || byKey[normKey] — taskId is primary (rename-safe)
+//      and byKey is the fallback if IDs are regenerated or the IDs tab is lost.
+//      writeTaskParams() builds all rows BEFORE clearing the sheet so a failed save never
+//      wipes existing params; clearContents only runs when there is confirmed data to write.
+//      Result: colour, type, style, and symbol survive renames, discipline changes, AND
+//      accidental ID-tab loss. Backward-compatible with old KEY-only and TASKID-only tabs.
 //    • SETTINGS_KEYS also gains showGroupBars (new toggle from HTML V1.19/V1.20).
 //
 //  V1.19  2026-06-17
@@ -203,16 +205,13 @@ function doGet(e) {
     }
 
     // Merge per-task Gantt display params (colour override, type, style, symbol).
-    // readTaskParams() detects whether the tab is in new TASKID format or legacy KEY format
-    // and returns a format flag. Lookup uses taskId (new) or normKey (legacy) accordingly.
+    // readTaskParams() returns { byId, byKey } — two indexes into the same param objects.
+    // Lookup tries taskId first (rename-safe), then falls back to normKey(DISC|NAME)
+    // so params are found even if the IDs tab was regenerated or the tab is in legacy format.
     var paramsResult = readTaskParams();
     result.tasks.forEach(function(t) {
-      var p;
-      if (paramsResult.format === 'taskid') {
-        p = paramsResult.params[t.taskId];
-      } else if (paramsResult.format === 'key') {
-        p = paramsResult.params[normKey((t.group || '') + '|' + (t.name || ''))];
-      }
+      var taskKey = normKey((t.group || '') + '|' + (t.name || ''));
+      var p = paramsResult.byId[t.taskId] || paramsResult.byKey[taskKey];
       if (p) {
         if (p.color)  t.colorOverride = p.color;
         // Only allow task-params to set type='milestone' when the sheet MILESTONE column
@@ -752,18 +751,17 @@ function hideTaskIdsSheet() {
 //  All rows are rewritten on every Save (no partial updates).
 // ============================================================
 
-// Return { format: 'taskid'|'key'|null, params: { key: { color, type, style, symbol, deps } } }
+// Return { byId: { taskId: params }, byKey: { normKey: params } }
 //
-// Two tab formats are supported:
-//   New  (V1.20+) — col A header = TASKID: params keyed by integer taskId
-//   Legacy (pre-V1.20) — col A header = KEY: params keyed by normKey(DISC|TASKNAME)
+// Three tab formats are handled transparently:
+//   V1.20+ (new)   — headers: TASKID | KEY | COLOR | TYPE | STYLE | SYMBOL | DEPS
+//   V1.20 (early)  — headers: TASKID | COLOR | TYPE | STYLE | SYMBOL | DEPS  (no KEY col)
+//   Legacy (<V1.20) — headers: KEY | COLOR | TYPE | STYLE | SYMBOL | DEPS  (no TASKID col)
 //
-// The caller chooses the lookup strategy based on `format`:
-//   'taskid' → params[t.taskId]
-//   'key'    → params[normKey(t.group + '|' + t.name)]
-// This avoids any intermediate ID resolution and works correctly in both cases.
+// doGet merges via: byId[t.taskId] || byKey[normKey(t.group+'|'+t.name)]
+// taskId wins (rename-safe); key is the fallback if IDs were ever regenerated.
 function readTaskParams() {
-  var result = { format: null, params: {} };
+  var result = { byId: {}, byKey: {} };
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(TASK_PARAMS_SHEET);
   if (!sh || sh.getLastRow() < 2) return result;
@@ -772,58 +770,62 @@ function readTaskParams() {
 
   // Locate header row — col A must be TASKID (new) or KEY (legacy).
   var hRow = -1;
-  var legacy = false;
   for (var i = 0; i < Math.min(data.length, 5); i++) {
     var col0 = String(data[i][0]).trim().toUpperCase();
-    if (col0 === 'TASKID') { hRow = i; legacy = false; break; }
-    if (col0 === 'KEY')    { hRow = i; legacy = true;  break; }
+    if (col0 === 'TASKID' || col0 === 'KEY') { hRow = i; break; }
   }
   if (hRow < 0) return result;
 
   var cols = {};
   data[hRow].forEach(function(h, idx) { cols[String(h).trim().toUpperCase()] = idx; });
-  var colColor  = cols['COLOR']  !== undefined ? cols['COLOR']  : 1;
-  var colType   = cols['TYPE']   !== undefined ? cols['TYPE']   : 2;
-  var colStyle  = cols['STYLE']  !== undefined ? cols['STYLE']  : 3;
-  var colSymbol = cols['SYMBOL'] !== undefined ? cols['SYMBOL'] : 4;
-  var colDeps   = cols['DEPS']   !== undefined ? cols['DEPS']   : 5;
 
-  result.format = legacy ? 'key' : 'taskid';
+  var colId     = cols['TASKID'] !== undefined ? cols['TASKID'] : -1;
+  var colKey    = cols['KEY']    !== undefined ? cols['KEY']    : -1;
+  // Column positions differ between old (no KEY) and new (KEY inserted at col 1) formats.
+  // Header-name lookup handles both; the fallback indices cover the two known old schemas.
+  var colColor  = cols['COLOR']  !== undefined ? cols['COLOR']  : (colId >= 0 ? 1 : 1);
+  var colType   = cols['TYPE']   !== undefined ? cols['TYPE']   : (colId >= 0 ? 2 : 2);
+  var colStyle  = cols['STYLE']  !== undefined ? cols['STYLE']  : (colId >= 0 ? 3 : 3);
+  var colSymbol = cols['SYMBOL'] !== undefined ? cols['SYMBOL'] : (colId >= 0 ? 4 : 4);
+  var colDeps   = cols['DEPS']   !== undefined ? cols['DEPS']   : (colId >= 0 ? 5 : 5);
 
   for (var r = hRow + 1; r < data.length; r++) {
-    var raw = String(data[r][0] || '').trim();
-    if (!raw) continue;
-
-    // Key is either integer taskId (new) or normKey string (legacy) — store as-is
-    var key = legacy ? normKey(raw) : parseInt(raw, 10);
-    if (!key) continue;
-
-    result.params[key] = {
+    var params = {
       color:  String(data[r][colColor]  || '').trim(),
       type:   String(data[r][colType]   || '').trim().toLowerCase(),
       style:  String(data[r][colStyle]  || '').trim().toLowerCase(),
       symbol: String(data[r][colSymbol] || '').trim(),
       deps:   String(data[r][colDeps]   || '').trim()
     };
+
+    if (colId >= 0) {
+      var id = parseInt(String(data[r][colId] || '').trim(), 10);
+      if (id) result.byId[id] = params;
+    }
+    if (colKey >= 0) {
+      var k = normKey(String(data[r][colKey] || '').trim());
+      if (k) result.byKey[k] = params;
+    }
   }
   return result;
 }
 
 // Write all task display params to GANTT TASK PARAMS.
-// Rewrites the entire tab — one row per task.
-// Creates the tab if it doesn't exist.
-// Task IDs are NOT stored here — they live in GANTT TASK IDS tab.
+// Tab columns: TASKID | KEY | COLOR | TYPE | STYLE | SYMBOL | DEPS
+// KEY = normKey(DISC|TASKNAME) — human-readable backup; also used as fallback on Load
+// if task IDs are ever regenerated.
+// Rows are built before touching the sheet — if no tasks have a persistent ID yet,
+// the existing tab is left intact (no data-wipe on a failed save).
 function writeTaskParams(tasks) {
   if (!tasks || !tasks.length) return;
 
-  // Build rows BEFORE touching the sheet — if nothing has a taskId, leave
-  // the existing tab intact rather than wiping it and returning early.
-  var rows = [['TASKID', 'COLOR', 'TYPE', 'STYLE', 'SYMBOL', 'DEPS']];
+  var rows = [['TASKID', 'KEY', 'COLOR', 'TYPE', 'STYLE', 'SYMBOL', 'DEPS']];
 
   tasks.forEach(function(t) {
     var taskId = parseInt(t.taskId, 10);
     if (!taskId) return; // new tasks without a persistent ID are skipped
 
+    var key    = normKey((t.group || '') + '|' + (t.name || ''));
     var color  = String(t.colorOverride || '').trim();
     var type   = String(t.type  || 'bar').trim().toLowerCase();
     var style;
@@ -837,7 +839,7 @@ function writeTaskParams(tasks) {
     var symbol = String(t.symbol || '').trim();
     var deps   = String(t.dependencies || '').trim();
 
-    rows.push([taskId, color, type, style, symbol, deps]);
+    rows.push([taskId, key, color, type, style, symbol, deps]);
   });
 
   if (rows.length < 2) return; // nothing to write — do NOT clear the existing tab
@@ -847,7 +849,7 @@ function writeTaskParams(tasks) {
   if (!sh) sh = ss.insertSheet(TASK_PARAMS_SHEET);
 
   sh.clearContents();
-  sh.getRange(1, 1, rows.length, 6).setValues(rows);
+  sh.getRange(1, 1, rows.length, 7).setValues(rows);
   sh.hideSheet();
 }
 

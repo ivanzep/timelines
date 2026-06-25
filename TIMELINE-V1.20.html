@@ -5,11 +5,14 @@
 
   VERSION HISTORY
   ───────────────
-  V1.20  2026-06-25 20:53
+  V1.20  2026-06-25 06:28
     • Task display params (color override, bar type, style, symbol) are now keyed
       by persistent TASKID in the GANTT TASK PARAMS-DO NOT EDIT spreadsheet tab
       instead of DISCIPLINE|TASKNAME. Properties survive task renames and discipline
       changes without being reset. Requires Code_V1.20.gs.
+    • GANTT TASK PARAMS tab now stores both TASKID and KEY (DISC|TASKNAME) so params
+      are found via taskId (primary) or key fallback — colors survive even if the IDs
+      tab is regenerated. Backward-compatible with old KEY-only and TASKID-only formats.
     • New tasks created in the UI receive their TASKID on the first Save + Reload;
       until then, params for brand-new tasks are not persisted.
 
