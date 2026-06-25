@@ -1093,12 +1093,28 @@
     var sortState = { column: null, direction: 1 }; // 1=asc, -1=desc
 
     // Status values — exact match to spreadsheet STATUS dropdown
-    var STATUS_OPTIONS = [
-      '', 'IN PROGRESS', 'UPCOMING', 'DOWNSTREAM', 'PENDING', 'COMPLETED',
-      'CANCELLED', '75% COMPLETE', 'WAITING ON OTHERS', 'WITING ON THE CITY',
-      'UNDER REVIEW', 'URGENT', 'ON HOLD', 'STAND BY', 'NEEDS ATTENTION',
-      'TBD', 'NOTE', 'RECEIVED', 'APPROVED', 'DECLINED'
-    ];
+    // Status list — loaded dynamically from the backend on every Load.
+    // This default matches Code_V1.20.gs STATUS_COLORS and is used before the first Load.
+    var STATUS_COLOR_MAP = {
+      'IN PROGRESS':'#16a34a','UPCOMING':'#f59e0b','DOWNSTREAM':'#8b5cf6',
+      'PENDING':'#d9c34a','COMPLETED':'#94a3b8','CANCELLED':'#dc2626',
+      '75% COMPLETE':'#22c55e','WAITING ON OTHERS':'#f97316','WITING ON THE CITY':'#f97316',
+      'UNDER REVIEW':'#06b6d4','URGENT':'#dc2626','ON HOLD':'#94a3b8',
+      'STAND BY':'#94a3b8','NEEDS ATTENTION':'#f97316','TBD':'#94a3b8',
+      'NOTE':'#60a5fa','RECEIVED':'#22c55e','APPROVED':'#16a34a','DECLINED':'#dc2626'
+    };
+    var STATUS_OPTIONS = [''].concat(Object.keys(STATUS_COLOR_MAP));
+
+    // Called after every Load to replace the status list with what the backend currently has.
+    function _updateStatusList(incomingColors) {
+      if (!incomingColors || typeof incomingColors !== 'object') return;
+      var newMap = {};
+      Object.keys(incomingColors).forEach(function(k) {
+        newMap[k.trim().toUpperCase()] = incomingColors[k];
+      });
+      STATUS_COLOR_MAP = newMap;
+      STATUS_OPTIONS   = [''].concat(Object.keys(STATUS_COLOR_MAP));
+    }
 
     var displayOptions = {
       showName: true,
@@ -1986,7 +2002,6 @@
       var tdStatus = document.createElement('td');
       var statusSel = document.createElement('select'); statusSel.className = 'row-input';
       var currentStatus = (task.note || '').split('·')[0].trim().toUpperCase();
-      var STATUS_COLOR_MAP = {'IN PROGRESS':'#16a34a','UPCOMING':'#f59e0b','DOWNSTREAM':'#8b5cf6','PENDING':'#d9c34a','COMPLETED':'#94a3b8','CANCELLED':'#dc2626','75% COMPLETE':'#22c55e','WAITING ON OTHERS':'#f97316','WITING ON THE CITY':'#f97316','UNDER REVIEW':'#06b6d4','URGENT':'#dc2626','ON HOLD':'#94a3b8','STAND BY':'#94a3b8','NEEDS ATTENTION':'#f97316','TBD':'#94a3b8','NOTE':'#60a5fa','RECEIVED':'#22c55e','APPROVED':'#16a34a','DECLINED':'#dc2626'};
       function applyStatusSelectColor(sel, val) {
         var c = STATUS_COLOR_MAP[val];
         sel.style.color = c || '';
@@ -5085,12 +5100,11 @@
           var newNotes   = batchNotesIn  ? batchNotesIn.value                : '';
           var hasAction  = newStatus || applyColor || newDisc || newType || newStyle || newStart || newEnd || newNotes !== '';
           if (!hasAction) return;
-          var COLOR_MAP = {'IN PROGRESS':'#16a34a','UPCOMING':'#f59e0b','DOWNSTREAM':'#8b5cf6','PENDING':'#d9c34a','COMPLETED':'#94a3b8','CANCELLED':'#dc2626','75% COMPLETE':'#22c55e','WAITING ON OTHERS':'#f97316','WITING ON THE CITY':'#f97316','UNDER REVIEW':'#06b6d4','URGENT':'#dc2626','ON HOLD':'#94a3b8','STAND BY':'#94a3b8','NEEDS ATTENTION':'#f97316','TBD':'#94a3b8','NOTE':'#60a5fa','RECEIVED':'#22c55e','APPROVED':'#16a34a','DECLINED':'#dc2626'};
           tasks.forEach(function(t) {
             if (!selectedTaskIds[t.id]) return;
             if (newStatus) {
               t.note = newStatus;
-              if (COLOR_MAP[newStatus]) { t.color = COLOR_MAP[newStatus]; delete t.colorOverride; }
+              if (STATUS_COLOR_MAP[newStatus]) { t.color = STATUS_COLOR_MAP[newStatus]; delete t.colorOverride; }
             }
             if (applyColor && newColor) t.colorOverride = newColor;
             if (newDisc)  t.group = newDisc;
@@ -5761,6 +5775,9 @@
           if (data.meta.note !== undefined) projectMeta.note  = data.meta.note;
           syncMetaInputs();
         }
+
+        // Sync status list from backend before rebuilding the task table
+        if (data.statusColors) _updateStatusList(data.statusColors);
 
         // Apply saved settings first (before render so they take effect visually)
         if (data.settings) applySettings(data.settings);
@@ -7032,7 +7049,7 @@
 
     function renderTaskPrintPreview() {
       var opts = _tpGetOpts();
-      var COLOR_MAP = {'IN PROGRESS':'#16a34a','UPCOMING':'#f59e0b','DOWNSTREAM':'#8b5cf6','PENDING':'#d9c34a','COMPLETED':'#94a3b8','CANCELLED':'#dc2626','75% COMPLETE':'#22c55e','WAITING ON OTHERS':'#f97316','WITING ON THE CITY':'#f97316','UNDER REVIEW':'#06b6d4','URGENT':'#dc2626','ON HOLD':'#94a3b8','STAND BY':'#94a3b8','NEEDS ATTENTION':'#f97316','TBD':'#94a3b8','NOTE':'#60a5fa','RECEIVED':'#22c55e','APPROVED':'#16a34a','DECLINED':'#dc2626'};
+      var COLOR_MAP = STATUS_COLOR_MAP; // use the global — kept in sync with backend on every Load
       var area = document.getElementById('task-print-preview-area');
       area.innerHTML = '';
 

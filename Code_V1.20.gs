@@ -233,6 +233,7 @@ function doGet(e) {
     });
 
     result.settings = readSettings();
+    result.statusColors = STATUS_COLORS; // send full status→color map so frontend stays in sync
     try { result.spreadsheetName = SpreadsheetApp.getActiveSpreadsheet().getName(); } catch(e) {}
     return buildResponse(result);
 
