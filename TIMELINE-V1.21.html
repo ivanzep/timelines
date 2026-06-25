@@ -5548,10 +5548,15 @@
       var tlEl = document.getElementById('opt-today');
       if (tlEl) tlEl.checked = showTodayLine;
 
-      // Sync flat mode checkbox and wrap visibility
+      // Sync flat mode checkbox and dependent controls (Wrap + Bar H)
       var fmEl = document.getElementById('opt-flat-mode');
       if (fmEl) fmEl.checked = flatMode;
-      if (typeof _syncFlatWrapVisibility === 'function') _syncFlatWrapVisibility();
+      // _syncFlatWrapVisibility is scoped inside init() — do it inline here instead
+      var _flatShow = flatMode ? '' : 'none';
+      var _fwLblEl  = document.getElementById('opt-flat-wrap-label');
+      var _fbhLblEl = document.getElementById('opt-flat-barh-label');
+      if (_fwLblEl)  _fwLblEl.style.display  = _flatShow;
+      if (_fbhLblEl) _fbhLblEl.style.display  = _flatShow;
 
       // Sync group tint slider
       if (s.groupTint !== undefined) {
