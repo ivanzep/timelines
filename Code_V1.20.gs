@@ -202,11 +202,17 @@ function doGet(e) {
       try { hideTaskIdsSheet(); } catch(e) {}
     }
 
-    // Merge per-task Gantt display params (colour override, type, style, symbol)
-    // keyed by taskId — survives task renames and discipline changes.
-    var taskParams = readTaskParams(taskIds);
+    // Merge per-task Gantt display params (colour override, type, style, symbol).
+    // readTaskParams() detects whether the tab is in new TASKID format or legacy KEY format
+    // and returns a format flag. Lookup uses taskId (new) or normKey (legacy) accordingly.
+    var paramsResult = readTaskParams();
     result.tasks.forEach(function(t) {
-      var p = taskParams[t.taskId]; // integer taskId → params
+      var p;
+      if (paramsResult.format === 'taskid') {
+        p = paramsResult.params[t.taskId];
+      } else if (paramsResult.format === 'key') {
+        p = paramsResult.params[normKey((t.group || '') + '|' + (t.name || ''))];
+      }
       if (p) {
         if (p.color)  t.colorOverride = p.color;
         // Only allow task-params to set type='milestone' when the sheet MILESTONE column
@@ -746,58 +752,53 @@ function hideTaskIdsSheet() {
 //  All rows are rewritten on every Save (no partial updates).
 // ============================================================
 
-// Return a map of taskId (integer) → { color, type, style, symbol, deps }
-// Handles two tab formats:
-//   New (V1.20+): column A header = TASKID — key is the integer task ID directly.
-//   Legacy (pre-V1.20): column A header = KEY  — key is DISC|TASKNAME; resolved to
-//     taskId using the supplied taskIds map (optional; unresolvable rows are skipped).
-// Returns an empty object if the tab doesn't exist yet.
-function readTaskParams(taskIds) {
+// Return { format: 'taskid'|'key'|null, params: { key: { color, type, style, symbol, deps } } }
+//
+// Two tab formats are supported:
+//   New  (V1.20+) — col A header = TASKID: params keyed by integer taskId
+//   Legacy (pre-V1.20) — col A header = KEY: params keyed by normKey(DISC|TASKNAME)
+//
+// The caller chooses the lookup strategy based on `format`:
+//   'taskid' → params[t.taskId]
+//   'key'    → params[normKey(t.group + '|' + t.name)]
+// This avoids any intermediate ID resolution and works correctly in both cases.
+function readTaskParams() {
+  var result = { format: null, params: {} };
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(TASK_PARAMS_SHEET);
-  if (!sh || sh.getLastRow() < 2) return {};
+  if (!sh || sh.getLastRow() < 2) return result;
 
   var data = sh.getDataRange().getValues();
 
-  // Locate header row — col A must be either TASKID (new) or KEY (legacy).
+  // Locate header row — col A must be TASKID (new) or KEY (legacy).
   var hRow = -1;
-  var legacyKeyFormat = false;
+  var legacy = false;
   for (var i = 0; i < Math.min(data.length, 5); i++) {
     var col0 = String(data[i][0]).trim().toUpperCase();
-    if (col0 === 'TASKID') { hRow = i; legacyKeyFormat = false; break; }
-    if (col0 === 'KEY')    { hRow = i; legacyKeyFormat = true;  break; }
+    if (col0 === 'TASKID') { hRow = i; legacy = false; break; }
+    if (col0 === 'KEY')    { hRow = i; legacy = true;  break; }
   }
-  if (hRow < 0) return {};
+  if (hRow < 0) return result;
 
   var cols = {};
-  data[hRow].forEach(function(h, idx) {
-    cols[String(h).trim().toUpperCase()] = idx;
-  });
-  // Column 0 is either TASKID or KEY — same position in both formats
-  var colId     = 0;
+  data[hRow].forEach(function(h, idx) { cols[String(h).trim().toUpperCase()] = idx; });
   var colColor  = cols['COLOR']  !== undefined ? cols['COLOR']  : 1;
   var colType   = cols['TYPE']   !== undefined ? cols['TYPE']   : 2;
   var colStyle  = cols['STYLE']  !== undefined ? cols['STYLE']  : 3;
   var colSymbol = cols['SYMBOL'] !== undefined ? cols['SYMBOL'] : 4;
   var colDeps   = cols['DEPS']   !== undefined ? cols['DEPS']   : 5;
 
-  var params = {};
+  result.format = legacy ? 'key' : 'taskid';
+
   for (var r = hRow + 1; r < data.length; r++) {
-    var rawId = String(data[r][colId] || '').trim();
-    if (!rawId) continue;
+    var raw = String(data[r][0] || '').trim();
+    if (!raw) continue;
 
-    var id;
-    if (legacyKeyFormat) {
-      // Resolve DISC|TASKNAME key → taskId using the supplied map
-      var k = normKey(rawId);
-      id = (taskIds && taskIds.ids) ? taskIds.ids[k] : null;
-      if (!id) continue; // cannot resolve — skip
-    } else {
-      id = parseInt(rawId, 10);
-      if (!id) continue;
-    }
+    // Key is either integer taskId (new) or normKey string (legacy) — store as-is
+    var key = legacy ? normKey(raw) : parseInt(raw, 10);
+    if (!key) continue;
 
-    params[id] = {
+    result.params[key] = {
       color:  String(data[r][colColor]  || '').trim(),
       type:   String(data[r][colType]   || '').trim().toLowerCase(),
       style:  String(data[r][colStyle]  || '').trim().toLowerCase(),
@@ -805,7 +806,7 @@ function readTaskParams(taskIds) {
       deps:   String(data[r][colDeps]   || '').trim()
     };
   }
-  return params;
+  return result;
 }
 
 // Write all task display params to GANTT TASK PARAMS.
@@ -1060,7 +1061,7 @@ function testWriteSettings() {
     var s = readSettings();
     Logger.log('readSettings(): ' + JSON.stringify(s));
 
-    var p = readTaskParams(readTaskIds());
+    var p = readTaskParams();
     Logger.log('readTaskParams(): ' + JSON.stringify(p));
 
     SpreadsheetApp.flush();
