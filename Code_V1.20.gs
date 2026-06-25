@@ -31,13 +31,15 @@
 //
 //  VERSION HISTORY
 //  ───────────────
-//  V1.20  2026-06-25 06:28
+//  V1.20  2026-06-25 06:36
 //    • GANTT TASK PARAMS tab now stores TASKID and KEY (DISC|TASKNAME) columns together.
 //      readTaskParams() builds two indexes: byId (integer taskId) and byKey (normKey string).
 //      doGet() merges using byId[t.taskId] || byKey[normKey] — taskId is primary (rename-safe)
 //      and byKey is the fallback if IDs are regenerated or the IDs tab is lost.
 //      writeTaskParams() builds all rows BEFORE clearing the sheet so a failed save never
 //      wipes existing params; clearContents only runs when there is confirmed data to write.
+//      COLOR column now stores colorOverride || color so ALL task colors are persisted on
+//      every Save — the displayed colour is locked in regardless of its source.
 //      Result: colour, type, style, and symbol survive renames, discipline changes, AND
 //      accidental ID-tab loss. Backward-compatible with old KEY-only and TASKID-only tabs.
 //    • SETTINGS_KEYS also gains showGroupBars (new toggle from HTML V1.19/V1.20).
@@ -826,7 +828,9 @@ function writeTaskParams(tasks) {
     if (!taskId) return; // new tasks without a persistent ID are skipped
 
     var key    = normKey((t.group || '') + '|' + (t.name || ''));
-    var color  = String(t.colorOverride || '').trim();
+    // Save the effective displayed colour — override first, then status colour.
+    // This locks in every visible bar colour so it persists across reloads.
+    var color  = String(t.colorOverride || t.color || '').trim();
     var type   = String(t.type  || 'bar').trim().toLowerCase();
     var style;
     if (String(t.dashed) === 'true' || t.dashed === true) {
