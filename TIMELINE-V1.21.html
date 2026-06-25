@@ -2000,7 +2000,18 @@
       statusSel.addEventListener('change', function() {
         task.note = statusSel.value;
         applyStatusSelectColor(statusSel, statusSel.value);
-        if (STATUS_COLOR_MAP[statusSel.value]) { task.color = STATUS_COLOR_MAP[statusSel.value]; delete task.colorOverride; }
+        if (STATUS_COLOR_MAP[statusSel.value]) {
+          task.color = STATUS_COLOR_MAP[statusSel.value];
+          delete task.colorOverride;
+        } else if (statusSel.value === '') {
+          // Clearing status — also clear any colorOverride so the bar reverts to section/default color
+          delete task.colorOverride;
+        }
+        // Sync color picker and dot to the effective color so a subsequent picker interaction
+        // does not silently re-apply the now-stale pre-status-change color.
+        var effectiveColor = task.colorOverride || task.color || '#0284c7';
+        colorIn.value = effectiveColor;
+        dot.style.backgroundColor = effectiveColor;
         renderGantt();
       });
       tdStatus.appendChild(statusSel); tr.appendChild(tdStatus);
