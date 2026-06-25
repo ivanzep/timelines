@@ -233,7 +233,15 @@ function doGet(e) {
     });
 
     result.settings = readSettings();
-    result.statusColors = STATUS_COLORS; // send full status→color map so frontend stays in sync
+    // Build statusColors from STATUS_COLORS + any custom values found in the task list.
+    // This ensures statuses typed directly in the sheet (not in STATUS_COLORS) reach the frontend.
+    var allStatusColors = {};
+    Object.keys(STATUS_COLORS).forEach(function(k) { allStatusColors[k] = STATUS_COLORS[k]; });
+    result.tasks.forEach(function(t) {
+      var s = String(t.note || '').split('·')[0].trim().toUpperCase();
+      if (s && !allStatusColors[s]) allStatusColors[s] = '#64748b'; // slate default for unknown statuses
+    });
+    result.statusColors = allStatusColors;
     try { result.spreadsheetName = SpreadsheetApp.getActiveSpreadsheet().getName(); } catch(e) {}
     return buildResponse(result);
 
@@ -527,7 +535,7 @@ function saveBackToTaskList(payload) {
             moveRow[CI.milestone]  = (t.type === 'milestone');
             if (t.note) {
               var moveSc = t.note.split('·')[0].trim().toUpperCase();
-              if (STATUS_COLORS[moveSc]) moveRow[CI.status] = moveSc;
+              if (moveSc) moveRow[CI.status] = moveSc;
             }
             if (t.notes) moveRow[CI.notes] = t.notes;
             moveTasks.push({ oldRow: lookup[renamedOldKey], newRow: moveRow, targetDiscKey: normKey(discipline) });
@@ -552,9 +560,7 @@ function saveBackToTaskList(payload) {
         if (t.end)   sheet.getRange(sheetRow, CI.end   + 1).setValue(t.end);
         if (t.note) {
           var statusCandidate = t.note.split('·')[0].trim().toUpperCase();
-          if (STATUS_COLORS[statusCandidate]) {
-            sheet.getRange(sheetRow, CI.status + 1).setValue(statusCandidate);
-          }
+          if (statusCandidate) sheet.getRange(sheetRow, CI.status + 1).setValue(statusCandidate);
         }
         if (typeof t.notes !== 'undefined') sheet.getRange(sheetRow, CI.notes + 1).setValue(t.notes);
         sheet.getRange(sheetRow, CI.schedule  + 1).setValue(true);
@@ -574,7 +580,7 @@ function saveBackToTaskList(payload) {
         newRow[CI.milestone]  = (t.type === 'milestone');
         if (t.note) {
           var sc = t.note.split('·')[0].trim().toUpperCase();
-          if (STATUS_COLORS[sc]) newRow[CI.status] = sc;
+          if (sc) newRow[CI.status] = sc;
         }
         if (t.notes) newRow[CI.notes] = t.notes;
 
