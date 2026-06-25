@@ -740,6 +740,7 @@
               <label><input type="checkbox" id="opt-note" checked /> Status</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-flat-mode" /> Flat</label>
               <label id="opt-flat-wrap-label" style="display:none;padding-left:8px;"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
+              <label id="opt-flat-barh-label" style="display:none;padding-left:8px;gap:5px;">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" style="width:55px;accent-color:var(--accent);" /> <span id="opt-flat-barh-val">24</span>px</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-today" checked /> Today</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-deps" checked /> Deps</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Font <input type="number" id="gantt-font-size" value="12" min="6" max="24" style="width:44px;height:22px;padding:2px 4px;border-radius:6px;font-size:0.74rem;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" /></label>
@@ -1085,6 +1086,7 @@
     };
     var flatMode = false;
     var flatTextWrap = false;   // when true, wrap bar labels at word boundaries inside the bar (flat mode only)
+    var flatBarHeight = 24;     // bar height (px) in flat mode; row height = flatBarHeight + 8
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
     var showTodayLine = true;  // whether to draw the Today vertical line
@@ -1296,6 +1298,7 @@
     }
 
     function getEffectiveRowHeight() {
+      if (flatMode) return flatBarHeight + 8;
       var visible = (displayOptions.showName ? 1 : 0) +
                     (displayOptions.showPhase ? 1 : 0) +
                     (displayOptions.showNote ? 1 : 0);
@@ -4681,8 +4684,13 @@
       var optFlatMode = document.getElementById('opt-flat-mode');
       var optFlatWrapLabel = document.getElementById('opt-flat-wrap-label');
       var optFlatWrap = document.getElementById('opt-flat-wrap');
+      var optFlatBarhLabel = document.getElementById('opt-flat-barh-label');
+      var optFlatBarh = document.getElementById('opt-flat-barh');
+      var optFlatBarhVal = document.getElementById('opt-flat-barh-val');
       function _syncFlatWrapVisibility() {
-        if (optFlatWrapLabel) optFlatWrapLabel.style.display = flatMode ? '' : 'none';
+        var show = flatMode ? '' : 'none';
+        if (optFlatWrapLabel)  optFlatWrapLabel.style.display  = show;
+        if (optFlatBarhLabel)  optFlatBarhLabel.style.display  = show;
       }
       if (optFlatMode) {
         optFlatMode.addEventListener('change', function() {
@@ -4696,6 +4704,13 @@
       if (optFlatWrap) {
         optFlatWrap.addEventListener('change', function() {
           flatTextWrap = this.checked;
+          renderGantt();
+        });
+      }
+      if (optFlatBarh) {
+        optFlatBarh.addEventListener('input', function() {
+          flatBarHeight = parseInt(this.value, 10) || 24;
+          if (optFlatBarhVal) optFlatBarhVal.textContent = flatBarHeight;
           renderGantt();
         });
       }
@@ -5365,6 +5380,8 @@
         showTodayLine:       showTodayLine ? 'true' : 'false',
         darkMode:            darkMode      ? 'true' : 'false',
         flatMode:            flatMode      ? 'true' : 'false',
+        flatTextWrap:        flatTextWrap  ? 'true' : 'false',
+        flatBarHeight:       flatBarHeight,
         barTextColor:        barTextColor  !== null ? barTextColor : '',
         groupColors:         JSON.stringify(groupColors),
         collapsedGroups:           JSON.stringify(collapsedGroups),
@@ -5432,6 +5449,19 @@
       if (s.ganttBarFontSize  !== undefined) { ganttBarFontSize  = parseFloat(s.ganttBarFontSize)  || ganttBarFontSize; }
       if (s.showTodayLine     !== undefined) { showTodayLine     = toBool(s.showTodayLine); }
       if (s.flatMode          !== undefined) { flatMode          = toBool(s.flatMode); }
+      if (s.flatTextWrap      !== undefined) {
+        flatTextWrap = toBool(s.flatTextWrap);
+        var _fwEl = document.getElementById('opt-flat-wrap');
+        if (_fwEl) _fwEl.checked = flatTextWrap;
+      }
+      if (s.flatBarHeight     !== undefined) {
+        var _fbh = parseInt(s.flatBarHeight, 10);
+        if (_fbh >= 12 && _fbh <= 72) flatBarHeight = _fbh;
+        var _fbhEl = document.getElementById('opt-flat-barh');
+        var _fbhVEl = document.getElementById('opt-flat-barh-val');
+        if (_fbhEl) _fbhEl.value = flatBarHeight;
+        if (_fbhVEl) _fbhVEl.textContent = flatBarHeight;
+      }
       if (s.darkMode          !== undefined) {
         darkMode = toBool(s.darkMode);
         document.body.classList.toggle('dark', darkMode);

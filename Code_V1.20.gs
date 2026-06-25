@@ -879,7 +879,8 @@ var SETTINGS_KEYS = [
   'showDependencies', 'snapValue', 'toolbarCollapsed',
   'ganttRollupMarkersVisible',
   'matchHdrToGroupColor', 'showRollupTicks', 'showGroupBars',
-  'showDateColumns', 'showDurationColumn'
+  'showDateColumns', 'showDurationColumn',
+  'flatTextWrap', 'flatBarHeight'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -919,7 +920,9 @@ var SETTINGS_DESCRIPTIONS = {
   showRollupTicks:      'Show vertical tick lines at rollup bar start/end (true/false)',
   showGroupBars:        'Show rollup bars on group header rows (true/false)',
   showDateColumns:      'Show START / END date columns beside the label column in the Gantt view (true/false)',
-  showDurationColumn:   'Show DURATION column (days) beside END / label column in the Gantt view (true/false)'
+  showDurationColumn:   'Show DURATION column (days) beside END / label column in the Gantt view (true/false)',
+  flatTextWrap:         'Wrap bar label text at word boundaries in flat mode (true/false)',
+  flatBarHeight:        'Bar height in pixels in flat mode (12–72, default 24)'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.
