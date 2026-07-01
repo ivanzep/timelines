@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.22  2026-07-01 22:40
+  V1.22  2026-07-01 22:55
     • Flat mode: bar labels moved above each bar (top-left, outside bar body). Row height
       automatically expands to reserve a label area above the bar so labels never overlap
       the bar in the row above. ClipPath horizontally constrains each label to its bar's
@@ -1132,8 +1132,9 @@
       showNote: true
     };
     var flatMode = false;
-    var flatTextWrap = false;   // when true, wrap bar labels at word boundaries inside the bar (flat mode only)
-    var flatBarHeight = 24;     // bar height (px) in flat mode; row height = flatBarHeight + 8
+    var flatTextWrap = false;   // legacy; labels above bars always wrap now
+    var flatBarHeight = 24;     // bar height (px) in flat mode; row height = flatBarHeight + labelArea + 8
+    var _flatMaxLabelLines = 1; // pre-computed in renderGantt(); drives label area height in flat mode
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
     var showTodayLine = true;  // whether to draw the Today vertical line
@@ -1345,7 +1346,7 @@
     }
 
     function getEffectiveRowHeight() {
-      if (flatMode) { var _fLabelH = Math.round(ganttBarFontSize * 1.4) + 4; return flatBarHeight + _fLabelH + 8; }
+      if (flatMode) { var _fLabelH = _flatMaxLabelLines * (ganttBarFontSize + 2) + 4; return flatBarHeight + _fLabelH + 8; }
       var visible = (displayOptions.showName ? 1 : 0) +
                     (displayOptions.showPhase ? 1 : 0) +
                     (displayOptions.showNote ? 1 : 0);
@@ -2407,6 +2408,40 @@
       // Update resizer handle position (tracks label col edge, not date cols)
       var resizerEl = document.getElementById('gantt-label-resizer');
       if (resizerEl) resizerEl.style.left = (leftLabelWidth - 4) + 'px';
+      // Pre-pass (flat mode only): compute max wrapped-line count across all bars so the
+      // label area above each bar is tall enough to show the full text without clipping.
+      _flatMaxLabelLines = 1;
+      if (flatMode && tasks.length) {
+        var _ppBW  = ticks.length * unitWidth;
+        var _ppTot = (lastTickEnd - firstTick) || 1;
+        var _ppCW  = ganttBarFontSize * 0.6;
+        for (var _ppi = 0; _ppi < tasks.length; _ppi++) {
+          var _ppt = tasks[_ppi];
+          if (_ppt.type !== 'bar' || !_ppt.start || !_ppt.end) continue;
+          var _ppX1  = (_ppt.start - firstTick) / _ppTot * _ppBW;
+          var _ppX2  = (_ppt.end   - firstTick) / _ppTot * _ppBW;
+          var _ppBwW = Math.max(8, Math.abs(_ppX2 - _ppX1));
+          var _ppInW = _ppBwW - 10;
+          if (_ppInW <= 0) continue;
+          var _ppLbls = [];
+          if (displayOptions.showName  && _ppt.name)                      _ppLbls.push(_ppt.name);
+          if (displayOptions.showPhase && (_ppt.sub || _ppt.group))       _ppLbls.push(_ppt.sub || _ppt.group);
+          if (displayOptions.showNote  && _ppt.note)                      _ppLbls.push(_ppt.note);
+          var _ppLines = 0;
+          for (var _ppli = 0; _ppli < _ppLbls.length; _ppli++) {
+            var _ppWds = _ppLbls[_ppli].split(' ');
+            var _ppCur = '';
+            for (var _ppwi = 0; _ppwi < _ppWds.length; _ppwi++) {
+              var _ppT = _ppCur ? _ppCur + ' ' + _ppWds[_ppwi] : _ppWds[_ppwi];
+              if (_ppT.length * _ppCW <= _ppInW) { _ppCur = _ppT; }
+              else { if (_ppCur) _ppLines++; _ppCur = _ppWds[_ppwi]; }
+            }
+            if (_ppCur) _ppLines++;
+          }
+          if (_ppLines > _flatMaxLabelLines) _flatMaxLabelLines = Math.min(_ppLines, 5);
+        }
+      }
+
       var topAxisHeight = 60;
       var rowHeight = getEffectiveRowHeight();
       var rowGap = 2;
@@ -3264,7 +3299,7 @@
       var x2 = dateToX(task.end);
       var barX = Math.min(x1, x2);
       var barW = Math.max(8, Math.abs(x2 - x1));
-      var _flatLabelH = flatMode ? (Math.round(ganttBarFontSize * 1.4) + 4) : 0;
+      var _flatLabelH = flatMode ? (_flatMaxLabelLines * (ganttBarFontSize + 2) + 4) : 0;
       var barH = flatMode ? flatBarHeight : (geom.rowHeight - 8);
       var barY = yTop + (flatMode ? _flatLabelH + 4 : 4);
 
@@ -6541,8 +6576,8 @@
               txt(fmtDuration(dMin, dMax), {x:dDiscDurX+durW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
             }
           }
-          // In flat mode, reserve a label area above the bar (same logic as interactive chart)
-          var _pLabelAreaH = opts.flatMode ? (Math.round(fs * 1.4) + 4) : 0;
+          // In flat mode, reserve a label area sized to the max wrapped-line count (same as chart)
+          var _pLabelAreaH = opts.flatMode ? (_flatMaxLabelLines * (fs + 2) + 4) : 0;
           var _fbH = opts.flatMode ? Math.min(opts.flatBarHeight || 24, rowH - _pLabelAreaH - 4) : rowH - 4;
           var _fbY = ry + (opts.flatMode ? _pLabelAreaH + 2 : Math.floor((rowH - _fbH) / 2));
           for (var di = 0; di < row.tasks.length; di++) {
