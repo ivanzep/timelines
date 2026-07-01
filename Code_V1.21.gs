@@ -31,7 +31,7 @@
 //
 //  VERSION HISTORY
 //  ───────────────
-//  V1.21  2026-07-01
+//  V1.21  2026-07-01 22:33
 //    • No backend logic changes. Version bump to accompany TIMELINE-V1.22.html (flat mode
 //      labels moved above bars). Backend unchanged; redeploy not required.
 //
