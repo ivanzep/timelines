@@ -5,12 +5,15 @@
 
   VERSION HISTORY
   ───────────────
-  V1.22  2026-07-01 22:33
+  V1.22  2026-07-01 22:40
     • Flat mode: bar labels moved above each bar (top-left, outside bar body). Row height
       automatically expands to reserve a label area above the bar so labels never overlap
       the bar in the row above. ClipPath horizontally constrains each label to its bar's
       x-span. Labels use the chart text colour (not bar-contrast) since they sit on the
       row background. Same layout applied in print mode.
+    • Flat mode labels always word-wrap to fit within the bar's horizontal span (no longer
+      requires the Wrap toggle). Text that exceeds bar width flows to a new line; lines that
+      exceed the label area height are clipped by the clipPath.
 
   V1.21  2026-06-25 21:50
     • Gantt view: collapsible date columns (START / END) appear between the task
@@ -3366,9 +3369,9 @@
           // Labels are above the bar — use chart text colour, not bar-contrast colour
           var lblFill = barTextColor !== null ? barTextColor : (darkMode ? '#e2e8f0' : '#1e293b');
 
-          // Build lines: wrap if toggle on, otherwise single line
+          // Build lines: always wrap to bar width so text never extends beyond the bar
           var lines;
-          if (flatTextWrap && innerW > 0) {
+          if (innerW > 0) {
             lines = [];
             var words = lbl.text.split(' ');
             var cur = '';
@@ -6556,7 +6559,7 @@
             if (opts.flatMode && dbW >= 16 && opts.showName) {
               var innerW = dbW - 10;
               var lblLines = [dt.name];
-              if (opts.flatTextWrap && innerW > 0) {
+              if (innerW > 0) {
                 var charW = fs * 0.6;
                 var words = dt.name.split(' ');
                 var cur = '', wlines = [];
