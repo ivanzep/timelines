@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.22  2026-07-01 22:55
+  V1.22  2026-07-01 23:15
     • Flat mode: bar labels moved above each bar (top-left, outside bar body). Row height
       automatically expands to reserve a label area above the bar so labels never overlap
       the bar in the row above. ClipPath horizontally constrains each label to its bar's
@@ -3379,8 +3379,7 @@
       var nameFits = !nameLabel || ((nameLabel.text.length * ganttBarFontSize * 0.6) <= (barW - 12));
 
       if (flatMode && labelsToShow.length > 0 && barW >= 16) {
-        // ── FLAT MODE: labels above bar (top-left), clipped to bar x-span ──
-        // Per-bar clipPath constrains label text to the bar's horizontal footprint
+        // ── FLAT MODE: labels above bar, bottom-aligned so last line is flush to bar top ──
         var cpId = 'fbc_' + task.id;
         var defsEl = svg.querySelector('defs');
         if (!defsEl) {
@@ -3390,21 +3389,20 @@
         var cp = document.createElementNS(svgNS, 'clipPath');
         cp.setAttribute('id', cpId);
         var cpR = document.createElementNS(svgNS, 'rect');
-        // clip covers the label area (above the bar), full height = _flatLabelH
         cpR.setAttribute('x', barX + 2); cpR.setAttribute('y', yTop);
         cpR.setAttribute('width', Math.max(0, barW - 4)); cpR.setAttribute('height', _flatLabelH);
         cp.appendChild(cpR); defsEl.appendChild(cp);
 
-        var innerW = barW - 10; // usable width for text
+        var innerW = barW - 10;
+        var lblFill = barTextColor !== null ? barTextColor : (darkMode ? '#e2e8f0' : '#1e293b');
+
+        // Pass 1: collect all rendered lines with their metadata
+        var flatLines = [];
         for (var li = 0; li < labelsToShow.length; li++) {
           var lbl = labelsToShow[li];
           var lfs = fontSizes[lbl.kind];
           var charW = lfs * 0.6;
           var lblClass = lbl.kind === 'name' ? 'task-label-big' : (lbl.kind === 'sub' ? 'task-label-sub' : (lbl.text === 'APPROVAL' ? 'approval-text' : 'task-label-note'));
-          // Labels are above the bar — use chart text colour, not bar-contrast colour
-          var lblFill = barTextColor !== null ? barTextColor : (darkMode ? '#e2e8f0' : '#1e293b');
-
-          // Build lines: always wrap to bar width so text never extends beyond the bar
           var lines;
           if (innerW > 0) {
             lines = [];
@@ -3420,21 +3418,26 @@
           } else {
             lines = [lbl.text];
           }
-
           for (var wl = 0; wl < lines.length; wl++) {
-            var tNode = document.createElementNS(svgNS, 'text');
-            tNode.setAttribute('x', barX + 5);
-            tNode.setAttribute('y', currentY);
-            tNode.setAttribute('font-size', lfs);
-            tNode.setAttribute('text-anchor', 'start');
-            tNode.setAttribute('clip-path', 'url(#' + cpId + ')');
-            tNode.setAttribute('class', lblClass);
-            tNode.style.fill = lblFill;
-            tNode.style.pointerEvents = 'none';
-            tNode.textContent = lines[wl];
-            g.appendChild(tNode);
-            currentY += lineGap;
+            flatLines.push({ text: lines[wl], lfs: lfs, cls: lblClass });
           }
+        }
+
+        // Pass 2: bottom-align — last line baseline sits just above the bar top
+        var flatLineStartY = barY - 4 - (flatLines.length - 1) * lineGap;
+        for (var fli = 0; fli < flatLines.length; fli++) {
+          var fl = flatLines[fli];
+          var tNode = document.createElementNS(svgNS, 'text');
+          tNode.setAttribute('x', barX + 5);
+          tNode.setAttribute('y', flatLineStartY + fli * lineGap);
+          tNode.setAttribute('font-size', fl.lfs);
+          tNode.setAttribute('text-anchor', 'start');
+          tNode.setAttribute('clip-path', 'url(#' + cpId + ')');
+          tNode.setAttribute('class', fl.cls);
+          tNode.style.fill = lblFill;
+          tNode.style.pointerEvents = 'none';
+          tNode.textContent = fl.text;
+          g.appendChild(tNode);
         }
       } else if (!nameFits && nameLabel) {
         // Vertically center the full label stack (name + sub + note) within the bar
@@ -6622,7 +6625,8 @@
                 ? opts.barTextColor
                 : (darkMode ? '#e2e8f0' : '#1e293b');
               var lgap = fs + 2;
-              var lblY0 = ry + fs + 2; // first line baseline sits in label area
+              // Bottom-align: last line baseline sits just above the bar top (_fbY)
+              var lblY0 = _fbY - 4 - (lblLines.length - 1) * lgap;
               for (var wl = 0; wl < lblLines.length; wl++) {
                 var ltEl = document.createElementNS(NS, 'text');
                 ltEl.setAttribute('x', mL + lw + dbC1 + 5);
