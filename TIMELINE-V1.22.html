@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.22  2026-07-02 14:15
+  V1.22  2026-07-02 17:45
     • Flat mode: bar labels moved above each bar (top-left, outside bar body). Row height
       automatically expands to reserve a label area above the bar so labels never overlap
       the bar in the row above. ClipPath horizontally constrains each label to its bar's
@@ -1374,7 +1374,7 @@
     }
 
     function getEffectiveRowHeight() {
-      if (flatMode) { var _fLabelH = _flatMaxLabelLines > 0 ? (_flatMaxLabelLines * Math.ceil(ganttBarFontSize * 1.2) + 2) : 0; return flatBarHeight + 2 * _fLabelH + 4; }
+      if (flatMode) { var _fLabelH = _flatMaxLabelLines > 0 ? (_flatMaxLabelLines * ganttBarFontSize + 2) : 0; return flatBarHeight + 2 * _fLabelH + 2; }
       var visible = (displayOptions.showName ? 1 : 0) +
                     (displayOptions.showPhase ? 1 : 0) +
                     (displayOptions.showNote ? 1 : 0);
@@ -2450,13 +2450,30 @@
           if (_ppt.type !== 'bar' || !_ppt.start || !_ppt.end) continue;
           var _ppDisc = _ppt.group || '';
           if (_ppDiscIdx[_ppDisc] === undefined) _ppDiscIdx[_ppDisc] = 0;
-          // Compute bar pixel width and inside-fit check
+          // Compute bar pixel width
           var _ppX1  = (_ppt.start - firstTick) / _ppTot * _ppBW;
           var _ppX2  = (_ppt.end   - firstTick) / _ppTot * _ppBW;
           var _ppBwW = Math.max(8, Math.abs(_ppX2 - _ppX1));
           var _ppInW = _ppBwW - 10;
-          var _ppPrimary = displayOptions.showName && _ppt.name ? _ppt.name : '';
-          var _ppFitsInside = !flatLabelsOutside && _ppPrimary && (_ppPrimary.length * _ppCW <= _ppInW);
+          // Inside-fit: count wrapped lines for all visible labels; fits if total × fontSize ≤ barH
+          var _ppLblsA = [];
+          if (displayOptions.showName  && _ppt.name)                _ppLblsA.push(_ppt.name);
+          if (displayOptions.showPhase && (_ppt.sub || _ppt.group)) _ppLblsA.push(_ppt.sub || _ppt.group);
+          if (displayOptions.showNote  && _ppt.note)                _ppLblsA.push(_ppt.note);
+          var _ppFitsInside = false;
+          if (!flatLabelsOutside && _ppLblsA.length > 0 && _ppInW > 0) {
+            var _ppTotL = 0;
+            for (var _pplx = 0; _pplx < _ppLblsA.length; _pplx++) {
+              var _ppWs = _ppLblsA[_pplx].split(' '), _ppLC = '';
+              for (var _ppwx = 0; _ppwx < _ppWs.length; _ppwx++) {
+                var _ppTT = _ppLC ? _ppLC + ' ' + _ppWs[_ppwx] : _ppWs[_ppwx];
+                if (_ppTT.length * _ppCW <= _ppInW) { _ppLC = _ppTT; }
+                else { if (_ppLC) _ppTotL++; _ppLC = _ppWs[_ppwx]; }
+              }
+              if (_ppLC) _ppTotL++;
+            }
+            _ppFitsInside = _ppTotL > 0 && _ppTotL * ganttBarFontSize <= flatBarHeight;
+          }
           if (_ppFitsInside) {
             _flatLabelPlacementMap[_ppt.id] = 'inside';
             // no contribution to outside label area height
@@ -3350,7 +3367,7 @@
       var x2 = dateToX(task.end);
       var barX = Math.min(x1, x2);
       var barW = Math.max(8, Math.abs(x2 - x1));
-      var _flatLabelH = (flatMode && _flatMaxLabelLines > 0) ? (_flatMaxLabelLines * Math.ceil(ganttBarFontSize * 1.2) + 2) : 0;
+      var _flatLabelH = (flatMode && _flatMaxLabelLines > 0) ? (_flatMaxLabelLines * ganttBarFontSize + 2) : 0;
       var barH = flatMode ? flatBarHeight : (geom.rowHeight - 8);
       var barY = yTop + (flatMode ? _flatLabelH + 2 : 4);
 
@@ -3404,7 +3421,7 @@
       // Position labels vertically — flat mode: above bar; otherwise center in bar
       if (flatMode) {
         currentY = yTop + ganttBarFontSize + 2;  // baseline sits in the label area above the bar
-        lineGap  = Math.ceil(ganttBarFontSize * 1.2);
+        lineGap  = ganttBarFontSize;
       } else if (labelsToShow.length === 1) {
         currentY = barY + barH/2 + 4;
       } else if (labelsToShow.length === 2) {
@@ -3432,7 +3449,23 @@
       if (flatMode && labelsToShow.length > 0 && barW >= 16) {
         var _placement = _flatLabelPlacementMap[task.id] || 'above';
         if (_placement === 'inside') {
-          // ── FLAT MODE: label fits — render inside the bar (centered), clipped to bar rect ──
+          // ── FLAT MODE inside: wrap labels, center the block vertically in the bar ──
+          var inInW = barW - 10;
+          var inLines = [];
+          for (var ili = 0; ili < labelsToShow.length; ili++) {
+            var iLbl = labelsToShow[ili];
+            var iLfs = fontSizes[iLbl.kind];
+            if (inInW > 0) {
+              var iWds = iLbl.text.split(' '), iCur = '';
+              for (var iwi = 0; iwi < iWds.length; iwi++) {
+                var iT = iCur ? iCur + ' ' + iWds[iwi] : iWds[iwi];
+                if (iT.length * (iLfs * 0.6) <= inInW) { iCur = iT; }
+                else { if (iCur) inLines.push({t: iCur, lfs: iLfs}); iCur = iWds[iwi]; }
+              }
+              if (iCur) inLines.push({t: iCur, lfs: iLfs});
+            } else { inLines.push({t: iLbl.text, lfs: iLfs}); }
+          }
+          if (!inLines.length && labelsToShow.length) inLines.push({t: labelsToShow[0].text, lfs: fontSizes[labelsToShow[0].kind]});
           var inCpId = 'fbi_' + task.id;
           var inDefsEl = svg.querySelector('defs');
           if (!inDefsEl) { inDefsEl = document.createElementNS(svgNS, 'defs'); svg.insertBefore(inDefsEl, svg.firstChild); }
@@ -3444,20 +3477,19 @@
           inCp.appendChild(inCpR); inDefsEl.appendChild(inCp);
           var inFill = barTextColor !== null ? barTextColor : (isLightColor(task.colorOverride || task.color || '#0284c7') ? '#1c1917' : '#ffffff');
           if (task.dashed) inFill = barTextColor !== null ? barTextColor : (darkMode ? '#e2e8f0' : '#1e293b');
-          var inN = labelsToShow.length;
+          var inN = inLines.length;
           var inStartY = barY + barH/2 - ((inN - 1) * lineGap) / 2 + ganttBarFontSize * 0.35;
-          for (var ili = 0; ili < labelsToShow.length; ili++) {
-            var iLbl = labelsToShow[ili];
-            var iLfs = fontSizes[iLbl.kind];
+          for (var fli2 = 0; fli2 < inLines.length; fli2++) {
+            var inL = inLines[fli2];
             var iTxt = document.createElementNS(svgNS, 'text');
             iTxt.setAttribute('x', barX + 5);
-            iTxt.setAttribute('y', inStartY + ili * lineGap);
-            iTxt.setAttribute('font-size', iLfs);
+            iTxt.setAttribute('y', inStartY + fli2 * lineGap);
+            iTxt.setAttribute('font-size', inL.lfs);
             iTxt.setAttribute('text-anchor', 'start');
             iTxt.setAttribute('clip-path', 'url(#' + inCpId + ')');
             iTxt.style.fill = inFill;
             iTxt.style.pointerEvents = 'none';
-            iTxt.textContent = iLbl.text;
+            iTxt.textContent = inL.t;
             g.appendChild(iTxt);
           }
         } else {
@@ -3514,9 +3546,9 @@
         //                    below: top-aligned (first line close to bar bottom)
         var flatLineStartY;
         if (_lblAbove) {
-          flatLineStartY = barY - 3 - (flatLines.length - 1) * lineGap;
+          flatLineStartY = barY - 4 - (flatLines.length - 1) * lineGap;
         } else {
-          flatLineStartY = barY + barH + Math.max(2, Math.ceil(lineGap * 0.4));
+          flatLineStartY = barY + barH + lineGap; // gap = lineGap so ascenders clear the clip start (barY+barH+1)
         }
         for (var fli = 0; fli < flatLines.length; fli++) {
           var fl = flatLines[fli];
@@ -6713,7 +6745,7 @@
             }
           }
           // In flat mode: two label areas (above + below), alternating placement per task
-          var _lgap = Math.ceil(fs * 1.2);
+          var _lgap = fs;
           var _pLabelAreaH = (opts.flatMode && _flatMaxLabelLines > 0) ? (_flatMaxLabelLines * _lgap + 2) : 0;
           var _fbH = opts.flatMode ? Math.max(4, Math.min(opts.flatBarHeight || 24, rowH - 2 * _pLabelAreaH - 4)) : rowH - 4;
           var _fbY = ry + (opts.flatMode ? _pLabelAreaH + 2 : Math.floor((rowH - _fbH) / 2));
@@ -6729,9 +6761,9 @@
             var dbBarEl = mk('rect', {x:mL+lw+dbC1, y:_fbY, width:dbW, height:_fbH, rx:2,
                         fill: dt.dashed ? 'none' : dbColor, opacity:'0.85', 'clip-path':'url(#'+clipId+')'});
             if (dt.dashed) {
-              dbBarEl.setAttribute('stroke', dbColor);
-              dbBarEl.setAttribute('stroke-width', '2');
-              dbBarEl.setAttribute('stroke-dasharray', '5,3');
+              dbBarEl.setAttribute('stroke', '#dc2626');
+              dbBarEl.setAttribute('stroke-width', '1.5');
+              dbBarEl.setAttribute('stroke-dasharray', '4,3');
             }
             // Bar labels
             if (opts.flatMode && dbW >= 16 && (opts.showName || opts.showPhase || opts.showNote)) {
@@ -6740,7 +6772,23 @@
                 ? opts.barTextColor
                 : (darkMode ? '#e2e8f0' : '#1e293b');
               if (_pPlacement === 'inside') {
-                // Centered inside the bar, clipped to bar rect
+                // Centered inside bar; wrap labels to bar width
+                var piInW = dbW - 10;
+                var piLines = [];
+                var piLbls = [];
+                if (opts.showName  && dt.name)              piLbls.push(dt.name);
+                if (opts.showPhase && (dt.sub || dt.group)) piLbls.push(dt.sub || dt.group);
+                if (opts.showNote  && dt.note)              piLbls.push(dt.note);
+                for (var pili = 0; pili < piLbls.length; pili++) {
+                  var piWds = piLbls[pili].split(' '), piCur = '';
+                  for (var piwi = 0; piwi < piWds.length; piwi++) {
+                    var piT = piCur ? piCur + ' ' + piWds[piwi] : piWds[piwi];
+                    if (piT.length * (fs * 0.6) <= piInW) { piCur = piT; }
+                    else { if (piCur) piLines.push(piCur); piCur = piWds[piwi]; }
+                  }
+                  if (piCur) piLines.push(piCur);
+                }
+                if (!piLines.length && piLbls.length) piLines.push(piLbls[0]);
                 var piCpId = 'pfbi_p' + opts.pageNum + '_' + di;
                 var piCpEl = document.createElementNS(NS, 'clipPath');
                 piCpEl.setAttribute('id', piCpId);
@@ -6749,12 +6797,9 @@
                 piCpR.setAttribute('width', dbW); piCpR.setAttribute('height', _fbH);
                 piCpEl.appendChild(piCpR); defs.appendChild(piCpEl);
                 var piFill = dt.dashed ? pLblFill : ((opts.barTextColor !== null && opts.barTextColor) ? opts.barTextColor : (isLightColor(dbColor) ? '#1c1917' : '#ffffff'));
-                var piLbls = [];
-                if (opts.showName  && dt.name)              piLbls.push(dt.name);
-                if (opts.showPhase && (dt.sub || dt.group)) piLbls.push(dt.sub || dt.group);
-                if (opts.showNote  && dt.note)              piLbls.push(dt.note);
-                var piStartY = _fbY + _fbH/2 - ((piLbls.length - 1) * _lgap) / 2 + fs * 0.35;
-                for (var pii = 0; pii < piLbls.length; pii++) {
+                var piN = piLines.length;
+                var piStartY = _fbY + _fbH/2 - ((piN - 1) * _lgap) / 2 + fs * 0.35;
+                for (var pii = 0; pii < piLines.length; pii++) {
                   var piEl = document.createElementNS(NS, 'text');
                   piEl.setAttribute('x', mL+lw+dbC1+5);
                   piEl.setAttribute('y', piStartY + pii * _lgap);
@@ -6762,25 +6807,27 @@
                   piEl.setAttribute('text-anchor', 'start');
                   piEl.setAttribute('fill', piFill);
                   piEl.setAttribute('clip-path', 'url(#' + piCpId + ')');
-                  piEl.textContent = piLbls[pii];
+                  piEl.textContent = piLines[pii];
                   svg.appendChild(piEl);
                 }
               } else {
                 var _pAbove = (_pPlacement !== 'below');
                 var innerW = dbW - 10 + _pFov;
-                var lblLines = dt.name ? [dt.name] : [];
-                if (innerW > 0 && lblLines.length) {
-                  var charW = fs * 0.6;
-                  var words = lblLines[0].split(' ');
-                  var cur = '', wlines = [];
-                  for (var wi = 0; wi < words.length; wi++) {
-                    var test = cur ? cur + ' ' + words[wi] : words[wi];
-                    if (test.length * charW <= innerW + _pFov) { cur = test; }
-                    else { if (cur) wlines.push(cur); cur = words[wi]; }
+                var lblLbls = [];
+                if (opts.showName  && dt.name)              lblLbls.push(dt.name);
+                if (opts.showPhase && (dt.sub || dt.group)) lblLbls.push(dt.sub || dt.group);
+                if (opts.showNote  && dt.note)              lblLbls.push(dt.note);
+                var lblLines = [];
+                for (var lbx = 0; lbx < lblLbls.length; lbx++) {
+                  var lbWds = lblLbls[lbx].split(' '), lbCur = '';
+                  for (var lbwi = 0; lbwi < lbWds.length; lbwi++) {
+                    var lbT = lbCur ? lbCur + ' ' + lbWds[lbwi] : lbWds[lbwi];
+                    if (lbT.length * (fs * 0.6) <= innerW) { lbCur = lbT; }
+                    else { if (lbCur) lblLines.push(lbCur); lbCur = lbWds[lbwi]; }
                   }
-                  if (cur) wlines.push(cur);
-                  if (wlines.length) lblLines = wlines;
+                  if (lbCur) lblLines.push(lbCur);
                 }
+                if (!lblLines.length && lblLbls.length) lblLines.push(lblLbls[0]);
                 if (lblLines.length) {
                   var bcpId = 'pfbc_p' + opts.pageNum + '_' + di;
                   var bcpEl = document.createElementNS(NS, 'clipPath');
@@ -6793,8 +6840,8 @@
                   bcpEl.appendChild(bcpR);
                   defs.appendChild(bcpEl);
                   var lblY0 = _pAbove
-                    ? _fbY - 3 - (lblLines.length - 1) * _lgap
-                    : _fbY + _fbH + Math.max(2, Math.ceil(_lgap * 0.4));
+                    ? _fbY - 4 - (lblLines.length - 1) * _lgap
+                    : _fbY + _fbH + _lgap;
                   for (var wl = 0; wl < lblLines.length; wl++) {
                     var ltEl = document.createElementNS(NS, 'text');
                     ltEl.setAttribute('x', mL + lw + dbC1 + 5);
@@ -6876,9 +6923,9 @@
                 'clip-path':'url(#'+clipId+')'
               });
               if (t.dashed) {
-                barEl.setAttribute('stroke', barColor);
-                barEl.setAttribute('stroke-width', '2');
-                barEl.setAttribute('stroke-dasharray', '5,3');
+                barEl.setAttribute('stroke', '#dc2626');
+                barEl.setAttribute('stroke-width', '1.5');
+                barEl.setAttribute('stroke-dasharray', '4,3');
               }
 
               // Bar labels — respect displayOptions
