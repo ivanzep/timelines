@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.22  2026-07-02 00:10
+  V1.22  2026-07-02 11:30
     • Flat mode: bar labels moved above each bar (top-left, outside bar body). Row height
       automatically expands to reserve a label area above the bar so labels never overlap
       the bar in the row above. ClipPath horizontally constrains each label to its bar's
@@ -14,6 +14,18 @@
     • Flat mode labels always word-wrap to fit within the bar's horizontal span (no longer
       requires the Wrap toggle). Text that exceeds bar width flows to a new line; lines that
       exceed the label area height are clipped by the clipPath.
+    • Alternating above/below label placement in flat mode; labels for even-indexed tasks
+      (per discipline) go above their bar, odd-indexed go below. Pre-pass computes
+      _flatMaxLabelLines and _flatLabelPlacementMap before rendering. Row height includes
+      two label areas (one above, one below each bar row).
+    • flatLabelOverflow slider (0–400 px): widens the label clip rect beyond the bar's
+      right edge; persisted to settings; applied in both interactive and print modes.
+    • Flat mode line spacing tightened: lineGap now ceil(fontSize × 1.2) instead of
+      fontSize + 2, reducing inter-line padding ~40 % at typical sizes.
+    • Print mode flat row height: slider max raised to 200 px; openPrintPreview auto-sets
+      initial rowH from getEffectiveRowHeight() (no longer capped at 44 px); _fbH
+      guarded with Math.max(4, …) to prevent negative bar heights when label areas
+      are large relative to the print row height.
 
   V1.21  2026-06-25 21:50
     • Gantt view: collapsible date columns (START / END) appear between the task
@@ -1349,7 +1361,7 @@
     }
 
     function getEffectiveRowHeight() {
-      if (flatMode) { var _fLabelH = _flatMaxLabelLines * (ganttBarFontSize + 2) + 4; return flatBarHeight + 2 * _fLabelH + 8; }
+      if (flatMode) { var _fLabelH = _flatMaxLabelLines * Math.ceil(ganttBarFontSize * 1.2) + 4; return flatBarHeight + 2 * _fLabelH + 8; }
       var visible = (displayOptions.showName ? 1 : 0) +
                     (displayOptions.showPhase ? 1 : 0) +
                     (displayOptions.showNote ? 1 : 0);
@@ -3310,7 +3322,7 @@
       var x2 = dateToX(task.end);
       var barX = Math.min(x1, x2);
       var barW = Math.max(8, Math.abs(x2 - x1));
-      var _flatLabelH = flatMode ? (_flatMaxLabelLines * (ganttBarFontSize + 2) + 4) : 0;
+      var _flatLabelH = flatMode ? (_flatMaxLabelLines * Math.ceil(ganttBarFontSize * 1.2) + 4) : 0;
       var barH = flatMode ? flatBarHeight : (geom.rowHeight - 8);
       var barY = yTop + (flatMode ? _flatLabelH + 4 : 4);
 
@@ -3364,7 +3376,7 @@
       // Position labels vertically — flat mode: above bar; otherwise center in bar
       if (flatMode) {
         currentY = yTop + ganttBarFontSize + 2;  // baseline sits in the label area above the bar
-        lineGap  = ganttBarFontSize + 2;
+        lineGap  = Math.ceil(ganttBarFontSize * 1.2);
       } else if (labelsToShow.length === 1) {
         currentY = barY + barH/2 + 4;
       } else if (labelsToShow.length === 2) {
@@ -6624,8 +6636,8 @@
             }
           }
           // In flat mode: two label areas (above + below), alternating placement per task
-          var _pLabelAreaH = opts.flatMode ? (_flatMaxLabelLines * (fs + 2) + 4) : 0;
-          var _fbH = opts.flatMode ? Math.min(opts.flatBarHeight || 24, rowH - 2 * _pLabelAreaH - 4) : rowH - 4;
+          var _pLabelAreaH = opts.flatMode ? (_flatMaxLabelLines * Math.ceil(fs * 1.2) + 4) : 0;
+          var _fbH = opts.flatMode ? Math.max(4, Math.min(opts.flatBarHeight || 24, rowH - 2 * _pLabelAreaH - 4)) : rowH - 4;
           var _fbY = ry + (opts.flatMode ? _pLabelAreaH + 2 : Math.floor((rowH - _fbH) / 2));
           var _pFov = opts.flatLabelOverflow || 0;
           for (var di = 0; di < row.tasks.length; di++) {
@@ -6668,7 +6680,7 @@
               var autoFill = (opts.barTextColor !== null && opts.barTextColor)
                 ? opts.barTextColor
                 : (darkMode ? '#e2e8f0' : '#1e293b');
-              var lgap = fs + 2;
+              var lgap = Math.ceil(fs * 1.2);
               var lblY0 = _pAbove
                 ? _fbY - 4 - (lblLines.length - 1) * lgap   // above: bottom-aligned
                 : _fbY + _fbH + lgap;                         // below: top-aligned
@@ -7031,7 +7043,7 @@
       overlay.style.display = 'flex';
 
       // Mirror chart row height (clamped to slider range)
-      var chartRowH = Math.min(44, Math.max(14, getEffectiveRowHeight()));
+      var chartRowH = Math.min(200, Math.max(14, getEffectiveRowHeight()));
       var rowhEl = document.getElementById('pr-rowh');
       rowhEl.value = chartRowH;
       document.getElementById('pr-rowh-val').textContent = chartRowH;
@@ -7448,7 +7460,7 @@
       </label>
 
       <label>Row ht
-        <input type="range" id="pr-rowh" min="14" max="44" value="22" />
+        <input type="range" id="pr-rowh" min="14" max="200" value="22" />
         <span class="pr-val" id="pr-rowh-val">22</span>px
       </label>
 
