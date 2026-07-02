@@ -9,7 +9,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 
 | File | Purpose |
 |------|---------|
-| `Code_V1.21.gs` | **Active backend** — deploy this. Version bump only; no logic changes from V1.20. |
+| `Code_V1.22.gs` | **Active backend** — deploy this. No logic changes from V1.21; version bump only. |
+| `Code_V1.21.gs` | Previous backend. Keep for reference. |
 | `Code_V1.20.gs` | Previous backend. Keep for reference. |
 | `Code_V1.19.gs` | Previous backend. Keep for reference. |
 | `Code_V1.18.gs` | Previous backend. Keep for reference. |
@@ -30,7 +31,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 | `Code_V1.01.gs` | Previous backend. Keep for reference. |
 | `Code_V1.0.gs` | Original baseline. Keep for reference. |
 | `Code.gs` | Original base script. Keep for reference. |
-| `TIMELINE-V1.22.html` | **Active HTML frontend** — open this in browser. Flat mode labels above bars. |
+| `TIMELINE-V1.23.html` | **Active HTML frontend** — open this in browser. Status Colors toggle + per-group flat row heights. |
+| `TIMELINE-V1.22.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.21.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.20.html` | Previous HTML version. Keep for reference. |
 | `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.15.html` | Previous HTML version. Keep for reference. |
@@ -141,6 +143,7 @@ Section colors: one row per discipline → `groupColor.DISCIPLINE_NAME : #hexcol
 ---
 
 ## Version History
+- **V1.23** (2026-07-02) — HTML only. **Status Colors toggle**: "Status Colors" checkbox in the toolbar switches all bar / milestone / flag fills between assigned colors (`colorOverride → task.color`) and status-derived colors (`STATUS_COLOR_MAP[task.status]`). `_effectiveBarColor(task)` helper centralises the colour logic; all rendering paths (interactive bars, milestones, flags, collapsed markers, flat disc rows, print individual task rows, print collapsed markers) and the task-table colour dot are wired to it. Toggle persisted to settings as `useStatusColors`. Backend unchanged. Also includes per-group variable flat-mode row heights: each discipline row height is computed from its own max outside-label line count (`_flatMaxLabelLines` changed from global scalar to per-group dict); `geom.rowYOffsets[]` replaces the old uniform stride; all rendering updated to use per-row heights.
 - **V1.22** (2026-07-01) — HTML only. Flat mode bar labels repositioned **above** each bar instead of inside it. `getEffectiveRowHeight()` now adds a label area (`Math.round(ganttBarFontSize * 1.4) + 4` px) above the bar so rows are tall enough to accommodate the label without overlapping the bar row above. `renderTaskBar` flat-mode branch: `barY` shifted down by `_flatLabelH`; labels rendered at `yTop + ganttBarFontSize + 2` (above bar baseline); `lineGap` set to `ganttBarFontSize + 2`; clipPath covers only the label area (horizontally constrained to bar x-span). Label fill uses chart text colour (not bar-contrast) since labels sit on the row background. Same layout mirrored in `_buildPrintPageEl` disc rows. Backend unchanged (no redeploy needed).
 - **V1.15** (2026-05-22) — HTML only. Shift+click multi-select on Gantt bars, milestones, and flags. `ganttMultiSelected` object tracks selected IDs. `onBarMouseDown` handles three cases: shift+click (toggle in multi-set, rebuild `drag.multiOriginals`), plain click on multi-selected item (start multi-drag), plain click on unselected item (clear selection, single drag). `onMouseMove` checks `drag.isMulti` and moves all tasks in `multiOriginals` by the same day delta, preserving bar durations. Multi-selected items render with amber stroke/glow (`.task-bar.multi-selected` CSS class). Status bar shows count + ESC hint when 2+ items selected. ESC key and background click clear `ganttMultiSelected`. Also includes all V1.14 features: Milestones/Flags tabs, independent collapse states per tab, global ◉ Markers toggle, print mode parity, 4 new settings keys.
 - **V1.14** (2026-05-22) — HTML + backend. Milestones tab and Flags tab: filtered task-list views alongside the existing Tasks tab. Four independent collapse-state variables (`collapsedGroups`, `milestonesCollapsedGroups`, `flagsCollapsedGroups`, `ganttCollapsedGroups`). Global ◉ Markers toggle button shows/hides milestone & flag markers on collapsed rollup bars; button only visible when any group is collapsed. Print mode updated to respect Gantt collapse state, flag shapes, and markers toggle. Four new settings keys in `SETTINGS_KEYS`: `ganttCollapsedGroups`, `milestonesCollapsedGroups`, `flagsCollapsedGroups`, `ganttRollupMarkersVisible`. Fixed `applySettings()` scope bug (inline `getElementById` replaces closure call).
