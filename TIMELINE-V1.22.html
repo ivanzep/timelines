@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.22  2026-07-02 11:30
+  V1.22  2026-07-02 14:15
     • Flat mode: bar labels moved above each bar (top-left, outside bar body). Row height
       automatically expands to reserve a label area above the bar so labels never overlap
       the bar in the row above. ClipPath horizontally constrains each label to its bar's
@@ -26,6 +26,17 @@
       initial rowH from getEffectiveRowHeight() (no longer capped at 44 px); _fbH
       guarded with Math.max(4, …) to prevent negative bar heights when label areas
       are large relative to the print row height.
+    • Smart label placement in flat mode: labels are rendered inside their bar when the
+      primary label fits on one line (no wrapping); labels that don't fit go outside
+      (above/below alternating). "Outside" toolbar toggle forces all labels outside to
+      restore the previous always-outside behaviour. Applies to both interactive and
+      print modes; flatLabelsOutside persisted to settings.
+    • Print mode: dashed bar style now renders correctly in flat disc rows (stroke +
+      stroke-dasharray applied to the rect element).
+    • Padding reduction: inner label-area padding reduced (+ 2 instead of + 4), outer
+      row padding reduced (+ 4 instead of + 8); below-label gap tightened to
+      max(2, ceil(lineGap × 0.4)) from lineGap; above-label gap reduced from −4 to −3.
+      Row height collapses to flatBarHeight + 4 when all labels render inside the bar.
 
   V1.21  2026-06-25 21:50
     • Gantt view: collapsible date columns (START / END) appear between the task
@@ -785,6 +796,7 @@
               <label id="opt-flat-wrap-label" style="display:none;padding-left:8px;"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
               <label id="opt-flat-barh-label" style="display:none;padding-left:8px;gap:5px;">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" style="width:55px;accent-color:var(--accent);" /> <span id="opt-flat-barh-val">24</span>px</label>
               <label id="opt-flat-overflow-label" style="display:none;padding-left:8px;gap:5px;">Overflow <input type="range" id="opt-flat-overflow" min="0" max="400" value="0" step="10" style="width:55px;accent-color:var(--accent);" /> <span id="opt-flat-overflow-val">0</span>px</label>
+              <label id="opt-flat-outside-label" style="display:none;padding-left:8px;"><input type="checkbox" id="opt-flat-outside" /> Outside</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-today" checked /> Today</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-deps" checked /> Deps</label>
               <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Font <input type="number" id="gantt-font-size" value="12" min="6" max="24" style="width:44px;height:22px;padding:2px 4px;border-radius:6px;font-size:0.74rem;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" /></label>
@@ -1148,8 +1160,9 @@
     var flatTextWrap = false;        // legacy; labels always wrap now
     var flatBarHeight = 24;          // bar height (px) in flat mode
     var flatLabelOverflow = 0;       // extra px the label clip extends right of bar end
+    var flatLabelsOutside = false;   // when true: always place labels outside bar (above/below); default: inside if fits
     var _flatMaxLabelLines = 1;      // pre-computed each render; drives label area height
-    var _flatLabelPlacementMap = {}; // task.id → 'above'|'below'; set by pre-pass each render
+    var _flatLabelPlacementMap = {}; // task.id → 'above'|'below'|'inside'; set by pre-pass each render
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
     var showTodayLine = true;  // whether to draw the Today vertical line
@@ -1361,7 +1374,7 @@
     }
 
     function getEffectiveRowHeight() {
-      if (flatMode) { var _fLabelH = _flatMaxLabelLines * Math.ceil(ganttBarFontSize * 1.2) + 4; return flatBarHeight + 2 * _fLabelH + 8; }
+      if (flatMode) { var _fLabelH = _flatMaxLabelLines > 0 ? (_flatMaxLabelLines * Math.ceil(ganttBarFontSize * 1.2) + 2) : 0; return flatBarHeight + 2 * _fLabelH + 4; }
       var visible = (displayOptions.showName ? 1 : 0) +
                     (displayOptions.showPhase ? 1 : 0) +
                     (displayOptions.showNote ? 1 : 0);
@@ -2431,38 +2444,53 @@
         var _ppBW  = ticks.length * unitWidth;
         var _ppTot = (lastTickEnd - firstTick) || 1;
         var _ppCW  = ganttBarFontSize * 0.6;
-        var _ppDiscIdx = {}; // per-discipline alternating counter
+        var _ppDiscIdx = {}; // per-discipline alternating counter (counts only outside-placed bars)
         for (var _ppi = 0; _ppi < tasks.length; _ppi++) {
           var _ppt = tasks[_ppi];
           if (_ppt.type !== 'bar' || !_ppt.start || !_ppt.end) continue;
-          // Assign alternating placement
           var _ppDisc = _ppt.group || '';
           if (_ppDiscIdx[_ppDisc] === undefined) _ppDiscIdx[_ppDisc] = 0;
-          _flatLabelPlacementMap[_ppt.id] = (_ppDiscIdx[_ppDisc] % 2 === 0) ? 'above' : 'below';
-          _ppDiscIdx[_ppDisc]++;
-          // Count wrapped lines (using bar width + overflow allowance)
+          // Compute bar pixel width and inside-fit check
           var _ppX1  = (_ppt.start - firstTick) / _ppTot * _ppBW;
           var _ppX2  = (_ppt.end   - firstTick) / _ppTot * _ppBW;
           var _ppBwW = Math.max(8, Math.abs(_ppX2 - _ppX1));
-          var _ppInW = _ppBwW - 10 + flatLabelOverflow;
-          if (_ppInW <= 0) continue;
-          var _ppLbls = [];
-          if (displayOptions.showName  && _ppt.name)                _ppLbls.push(_ppt.name);
-          if (displayOptions.showPhase && (_ppt.sub || _ppt.group)) _ppLbls.push(_ppt.sub || _ppt.group);
-          if (displayOptions.showNote  && _ppt.note)                _ppLbls.push(_ppt.note);
-          var _ppLines = 0;
-          for (var _ppli = 0; _ppli < _ppLbls.length; _ppli++) {
-            var _ppWds = _ppLbls[_ppli].split(' ');
-            var _ppCur = '';
-            for (var _ppwi = 0; _ppwi < _ppWds.length; _ppwi++) {
-              var _ppT = _ppCur ? _ppCur + ' ' + _ppWds[_ppwi] : _ppWds[_ppwi];
-              if (_ppT.length * _ppCW <= _ppInW) { _ppCur = _ppT; }
-              else { if (_ppCur) _ppLines++; _ppCur = _ppWds[_ppwi]; }
+          var _ppInW = _ppBwW - 10;
+          var _ppPrimary = displayOptions.showName && _ppt.name ? _ppt.name : '';
+          var _ppFitsInside = !flatLabelsOutside && _ppPrimary && (_ppPrimary.length * _ppCW <= _ppInW);
+          if (_ppFitsInside) {
+            _flatLabelPlacementMap[_ppt.id] = 'inside';
+            // no contribution to outside label area height
+          } else {
+            // Assign alternating above/below for outside placement
+            _flatLabelPlacementMap[_ppt.id] = (_ppDiscIdx[_ppDisc] % 2 === 0) ? 'above' : 'below';
+            _ppDiscIdx[_ppDisc]++;
+            // Count wrapped lines (using bar width + overflow allowance)
+            var _ppExtInW = _ppBwW - 10 + flatLabelOverflow;
+            if (_ppExtInW <= 0) continue;
+            var _ppLbls = [];
+            if (displayOptions.showName  && _ppt.name)                _ppLbls.push(_ppt.name);
+            if (displayOptions.showPhase && (_ppt.sub || _ppt.group)) _ppLbls.push(_ppt.sub || _ppt.group);
+            if (displayOptions.showNote  && _ppt.note)                _ppLbls.push(_ppt.note);
+            var _ppLines = 0;
+            for (var _ppli = 0; _ppli < _ppLbls.length; _ppli++) {
+              var _ppWds = _ppLbls[_ppli].split(' ');
+              var _ppCur = '';
+              for (var _ppwi = 0; _ppwi < _ppWds.length; _ppwi++) {
+                var _ppT = _ppCur ? _ppCur + ' ' + _ppWds[_ppwi] : _ppWds[_ppwi];
+                if (_ppT.length * _ppCW <= _ppExtInW) { _ppCur = _ppT; }
+                else { if (_ppCur) _ppLines++; _ppCur = _ppWds[_ppwi]; }
+              }
+              if (_ppCur) _ppLines++;
             }
-            if (_ppCur) _ppLines++;
+            if (_ppLines > _flatMaxLabelLines) _flatMaxLabelLines = Math.min(_ppLines, 5);
           }
-          if (_ppLines > _flatMaxLabelLines) _flatMaxLabelLines = Math.min(_ppLines, 5);
         }
+        // If ALL bars fit inside, no outside area needed — collapse it
+        var _ppAnyOutside = false;
+        for (var _ppk in _flatLabelPlacementMap) {
+          if (_flatLabelPlacementMap[_ppk] !== 'inside') { _ppAnyOutside = true; break; }
+        }
+        if (!_ppAnyOutside) _flatMaxLabelLines = 0;
       }
 
       var topAxisHeight = 60;
@@ -3322,9 +3350,9 @@
       var x2 = dateToX(task.end);
       var barX = Math.min(x1, x2);
       var barW = Math.max(8, Math.abs(x2 - x1));
-      var _flatLabelH = flatMode ? (_flatMaxLabelLines * Math.ceil(ganttBarFontSize * 1.2) + 4) : 0;
+      var _flatLabelH = (flatMode && _flatMaxLabelLines > 0) ? (_flatMaxLabelLines * Math.ceil(ganttBarFontSize * 1.2) + 2) : 0;
       var barH = flatMode ? flatBarHeight : (geom.rowHeight - 8);
-      var barY = yTop + (flatMode ? _flatLabelH + 4 : 4);
+      var barY = yTop + (flatMode ? _flatLabelH + 2 : 4);
 
       // Store the actual date-derived x positions (not the clamped bar edges) so
       // dependency arrows always originate at the real end-date and terminate at the
@@ -3402,8 +3430,39 @@
       var nameFits = !nameLabel || ((nameLabel.text.length * ganttBarFontSize * 0.6) <= (barW - 12));
 
       if (flatMode && labelsToShow.length > 0 && barW >= 16) {
-        // ── FLAT MODE: alternating above/below placement; label clip extends by flatLabelOverflow ──
-        var _lblAbove = (_flatLabelPlacementMap[task.id] !== 'below'); // default above
+        var _placement = _flatLabelPlacementMap[task.id] || 'above';
+        if (_placement === 'inside') {
+          // ── FLAT MODE: label fits — render inside the bar (centered), clipped to bar rect ──
+          var inCpId = 'fbi_' + task.id;
+          var inDefsEl = svg.querySelector('defs');
+          if (!inDefsEl) { inDefsEl = document.createElementNS(svgNS, 'defs'); svg.insertBefore(inDefsEl, svg.firstChild); }
+          var inCp = document.createElementNS(svgNS, 'clipPath');
+          inCp.setAttribute('id', inCpId);
+          var inCpR = document.createElementNS(svgNS, 'rect');
+          inCpR.setAttribute('x', barX); inCpR.setAttribute('y', barY);
+          inCpR.setAttribute('width', barW); inCpR.setAttribute('height', barH);
+          inCp.appendChild(inCpR); inDefsEl.appendChild(inCp);
+          var inFill = barTextColor !== null ? barTextColor : (isLightColor(task.colorOverride || task.color || '#0284c7') ? '#1c1917' : '#ffffff');
+          if (task.dashed) inFill = barTextColor !== null ? barTextColor : (darkMode ? '#e2e8f0' : '#1e293b');
+          var inN = labelsToShow.length;
+          var inStartY = barY + barH/2 - ((inN - 1) * lineGap) / 2 + ganttBarFontSize * 0.35;
+          for (var ili = 0; ili < labelsToShow.length; ili++) {
+            var iLbl = labelsToShow[ili];
+            var iLfs = fontSizes[iLbl.kind];
+            var iTxt = document.createElementNS(svgNS, 'text');
+            iTxt.setAttribute('x', barX + 5);
+            iTxt.setAttribute('y', inStartY + ili * lineGap);
+            iTxt.setAttribute('font-size', iLfs);
+            iTxt.setAttribute('text-anchor', 'start');
+            iTxt.setAttribute('clip-path', 'url(#' + inCpId + ')');
+            iTxt.style.fill = inFill;
+            iTxt.style.pointerEvents = 'none';
+            iTxt.textContent = iLbl.text;
+            g.appendChild(iTxt);
+          }
+        } else {
+        // ── FLAT MODE: outside placement (above/below alternating) ──
+        var _lblAbove = (_placement !== 'below');
         var cpId = 'fbc_' + task.id;
         var defsEl = svg.querySelector('defs');
         if (!defsEl) {
@@ -3416,7 +3475,7 @@
         // Clip spans bar x-span + overflow; y covers the appropriate label area
         var cpClipX = barX + 2;
         var cpClipW = Math.max(0, barW - 4 + flatLabelOverflow);
-        var cpClipY = _lblAbove ? yTop : (barY + barH + 2);
+        var cpClipY = _lblAbove ? yTop : (barY + barH + 1);
         cpR.setAttribute('x', cpClipX); cpR.setAttribute('y', cpClipY);
         cpR.setAttribute('width', cpClipW); cpR.setAttribute('height', _flatLabelH);
         cp.appendChild(cpR); defsEl.appendChild(cp);
@@ -3451,13 +3510,13 @@
           }
         }
 
-        // Pass 2: position lines — above: bottom-aligned (last line flush to bar top)
-        //                          below: top-aligned (first line flush to bar bottom)
+        // Pass 2: position — above: bottom-aligned (last line flush to bar top)
+        //                    below: top-aligned (first line close to bar bottom)
         var flatLineStartY;
         if (_lblAbove) {
-          flatLineStartY = barY - 4 - (flatLines.length - 1) * lineGap;
+          flatLineStartY = barY - 3 - (flatLines.length - 1) * lineGap;
         } else {
-          flatLineStartY = barY + barH + lineGap; // first line just below bar bottom
+          flatLineStartY = barY + barH + Math.max(2, Math.ceil(lineGap * 0.4));
         }
         for (var fli = 0; fli < flatLines.length; fli++) {
           var fl = flatLines[fli];
@@ -3473,6 +3532,7 @@
           tNode.textContent = fl.text;
           g.appendChild(tNode);
         }
+        } // end else (outside placement)
       } else if (!nameFits && nameLabel) {
         // Vertically center the full label stack (name + sub + note) within the bar
         var outStartY;
@@ -4825,11 +4885,14 @@
       var optFlatOverflowLabel = document.getElementById('opt-flat-overflow-label');
       var optFlatOverflow = document.getElementById('opt-flat-overflow');
       var optFlatOverflowVal = document.getElementById('opt-flat-overflow-val');
+      var optFlatOutsideLabel = document.getElementById('opt-flat-outside-label');
+      var optFlatOutside = document.getElementById('opt-flat-outside');
       function _syncFlatWrapVisibility() {
         var show = flatMode ? '' : 'none';
         if (optFlatWrapLabel)     optFlatWrapLabel.style.display     = show;
         if (optFlatBarhLabel)     optFlatBarhLabel.style.display     = show;
         if (optFlatOverflowLabel) optFlatOverflowLabel.style.display = show;
+        if (optFlatOutsideLabel)  optFlatOutsideLabel.style.display  = show;
       }
       if (optFlatMode) {
         optFlatMode.addEventListener('change', function() {
@@ -4857,6 +4920,12 @@
         optFlatOverflow.addEventListener('input', function() {
           flatLabelOverflow = parseInt(this.value, 10) || 0;
           if (optFlatOverflowVal) optFlatOverflowVal.textContent = flatLabelOverflow;
+          renderGantt();
+        });
+      }
+      if (optFlatOutside) {
+        optFlatOutside.addEventListener('change', function() {
+          flatLabelsOutside = this.checked;
           renderGantt();
         });
       }
@@ -5538,6 +5607,7 @@
         flatTextWrap:        flatTextWrap  ? 'true' : 'false',
         flatBarHeight:       flatBarHeight,
         flatLabelOverflow:   flatLabelOverflow,
+        flatLabelsOutside:   flatLabelsOutside ? 'true' : 'false',
         barTextColor:        barTextColor  !== null ? barTextColor : '',
         groupColors:         JSON.stringify(groupColors),
         collapsedGroups:           JSON.stringify(collapsedGroups),
@@ -5626,6 +5696,11 @@
         if (_fovEl)  _fovEl.value = flatLabelOverflow;
         if (_fovVEl) _fovVEl.textContent = flatLabelOverflow;
       }
+      if (s.flatLabelsOutside !== undefined) {
+        flatLabelsOutside = toBool(s.flatLabelsOutside);
+        var _floEl = document.getElementById('opt-flat-outside');
+        if (_floEl) _floEl.checked = flatLabelsOutside;
+      }
       if (s.darkMode          !== undefined) {
         darkMode = toBool(s.darkMode);
         document.body.classList.toggle('dark', darkMode);
@@ -5676,9 +5751,11 @@
       var _fwLblEl   = document.getElementById('opt-flat-wrap-label');
       var _fbhLblEl  = document.getElementById('opt-flat-barh-label');
       var _fovLblEl  = document.getElementById('opt-flat-overflow-label');
+      var _foLblEl   = document.getElementById('opt-flat-outside-label');
       if (_fwLblEl)  _fwLblEl.style.display  = _flatShow;
       if (_fbhLblEl) _fbhLblEl.style.display  = _flatShow;
       if (_fovLblEl) _fovLblEl.style.display  = _flatShow;
+      if (_foLblEl)  _foLblEl.style.display   = _flatShow;
 
       // Sync group tint slider
       if (s.groupTint !== undefined) {
@@ -6636,7 +6713,8 @@
             }
           }
           // In flat mode: two label areas (above + below), alternating placement per task
-          var _pLabelAreaH = opts.flatMode ? (_flatMaxLabelLines * Math.ceil(fs * 1.2) + 4) : 0;
+          var _lgap = Math.ceil(fs * 1.2);
+          var _pLabelAreaH = (opts.flatMode && _flatMaxLabelLines > 0) ? (_flatMaxLabelLines * _lgap + 2) : 0;
           var _fbH = opts.flatMode ? Math.max(4, Math.min(opts.flatBarHeight || 24, rowH - 2 * _pLabelAreaH - 4)) : rowH - 4;
           var _fbY = ry + (opts.flatMode ? _pLabelAreaH + 2 : Math.floor((rowH - _fbH) / 2));
           var _pFov = opts.flatLabelOverflow || 0;
@@ -6648,52 +6726,87 @@
             var dbC1 = Math.max(0, dbx1), dbC2 = Math.min(tw, dbx2);
             var dbW  = Math.max(3, dbC2 - dbC1);
             var dbColor = dt.colorOverride || dt.color || '#0284c7';
-            mk('rect', {x:mL+lw+dbC1, y:_fbY, width:dbW, height:_fbH, rx:2,
-                        fill:dbColor, opacity:'0.85', 'clip-path':'url(#'+clipId+')'});
-            // Bar labels: alternating above/below using pre-computed placement map
-            if (opts.flatMode && dbW >= 16 && opts.showName) {
-              var _pAbove = (_flatLabelPlacementMap[dt.id] !== 'below');
-              var innerW = dbW - 10 + _pFov;
-              var lblLines = [dt.name];
-              if (innerW > 0) {
-                var charW = fs * 0.6;
-                var words = dt.name.split(' ');
-                var cur = '', wlines = [];
-                for (var wi = 0; wi < words.length; wi++) {
-                  var test = cur ? cur + ' ' + words[wi] : words[wi];
-                  if (test.length * charW <= innerW) { cur = test; }
-                  else { if (cur) wlines.push(cur); cur = words[wi]; }
-                }
-                if (cur) wlines.push(cur);
-                if (wlines.length) lblLines = wlines;
-              }
-              var bcpId = 'pfbc_p' + opts.pageNum + '_' + di;
-              var bcpEl = document.createElementNS(NS, 'clipPath');
-              bcpEl.setAttribute('id', bcpId);
-              var bcpR = document.createElementNS(NS, 'rect');
-              bcpR.setAttribute('x', mL + lw + dbC1 + 2);
-              bcpR.setAttribute('y', _pAbove ? ry : _fbY + _fbH + 2);
-              bcpR.setAttribute('width', Math.max(0, dbW - 4 + _pFov));
-              bcpR.setAttribute('height', _pLabelAreaH);
-              bcpEl.appendChild(bcpR);
-              defs.appendChild(bcpEl);
-              var autoFill = (opts.barTextColor !== null && opts.barTextColor)
+            var dbBarEl = mk('rect', {x:mL+lw+dbC1, y:_fbY, width:dbW, height:_fbH, rx:2,
+                        fill: dt.dashed ? 'none' : dbColor, opacity:'0.85', 'clip-path':'url(#'+clipId+')'});
+            if (dt.dashed) {
+              dbBarEl.setAttribute('stroke', dbColor);
+              dbBarEl.setAttribute('stroke-width', '2');
+              dbBarEl.setAttribute('stroke-dasharray', '5,3');
+            }
+            // Bar labels
+            if (opts.flatMode && dbW >= 16 && (opts.showName || opts.showPhase || opts.showNote)) {
+              var _pPlacement = _flatLabelPlacementMap[dt.id] || 'above';
+              var pLblFill = (opts.barTextColor !== null && opts.barTextColor)
                 ? opts.barTextColor
                 : (darkMode ? '#e2e8f0' : '#1e293b');
-              var lgap = Math.ceil(fs * 1.2);
-              var lblY0 = _pAbove
-                ? _fbY - 4 - (lblLines.length - 1) * lgap   // above: bottom-aligned
-                : _fbY + _fbH + lgap;                         // below: top-aligned
-              for (var wl = 0; wl < lblLines.length; wl++) {
-                var ltEl = document.createElementNS(NS, 'text');
-                ltEl.setAttribute('x', mL + lw + dbC1 + 5);
-                ltEl.setAttribute('y', lblY0 + wl * lgap);
-                ltEl.setAttribute('font-size', fs);
-                ltEl.setAttribute('text-anchor', 'start');
-                ltEl.setAttribute('fill', autoFill);
-                ltEl.setAttribute('clip-path', 'url(#' + bcpId + ')');
-                ltEl.textContent = lblLines[wl];
-                svg.appendChild(ltEl);
+              if (_pPlacement === 'inside') {
+                // Centered inside the bar, clipped to bar rect
+                var piCpId = 'pfbi_p' + opts.pageNum + '_' + di;
+                var piCpEl = document.createElementNS(NS, 'clipPath');
+                piCpEl.setAttribute('id', piCpId);
+                var piCpR = document.createElementNS(NS, 'rect');
+                piCpR.setAttribute('x', mL+lw+dbC1); piCpR.setAttribute('y', _fbY);
+                piCpR.setAttribute('width', dbW); piCpR.setAttribute('height', _fbH);
+                piCpEl.appendChild(piCpR); defs.appendChild(piCpEl);
+                var piFill = dt.dashed ? pLblFill : ((opts.barTextColor !== null && opts.barTextColor) ? opts.barTextColor : (isLightColor(dbColor) ? '#1c1917' : '#ffffff'));
+                var piLbls = [];
+                if (opts.showName  && dt.name)              piLbls.push(dt.name);
+                if (opts.showPhase && (dt.sub || dt.group)) piLbls.push(dt.sub || dt.group);
+                if (opts.showNote  && dt.note)              piLbls.push(dt.note);
+                var piStartY = _fbY + _fbH/2 - ((piLbls.length - 1) * _lgap) / 2 + fs * 0.35;
+                for (var pii = 0; pii < piLbls.length; pii++) {
+                  var piEl = document.createElementNS(NS, 'text');
+                  piEl.setAttribute('x', mL+lw+dbC1+5);
+                  piEl.setAttribute('y', piStartY + pii * _lgap);
+                  piEl.setAttribute('font-size', fs);
+                  piEl.setAttribute('text-anchor', 'start');
+                  piEl.setAttribute('fill', piFill);
+                  piEl.setAttribute('clip-path', 'url(#' + piCpId + ')');
+                  piEl.textContent = piLbls[pii];
+                  svg.appendChild(piEl);
+                }
+              } else {
+                var _pAbove = (_pPlacement !== 'below');
+                var innerW = dbW - 10 + _pFov;
+                var lblLines = dt.name ? [dt.name] : [];
+                if (innerW > 0 && lblLines.length) {
+                  var charW = fs * 0.6;
+                  var words = lblLines[0].split(' ');
+                  var cur = '', wlines = [];
+                  for (var wi = 0; wi < words.length; wi++) {
+                    var test = cur ? cur + ' ' + words[wi] : words[wi];
+                    if (test.length * charW <= innerW + _pFov) { cur = test; }
+                    else { if (cur) wlines.push(cur); cur = words[wi]; }
+                  }
+                  if (cur) wlines.push(cur);
+                  if (wlines.length) lblLines = wlines;
+                }
+                if (lblLines.length) {
+                  var bcpId = 'pfbc_p' + opts.pageNum + '_' + di;
+                  var bcpEl = document.createElementNS(NS, 'clipPath');
+                  bcpEl.setAttribute('id', bcpId);
+                  var bcpR = document.createElementNS(NS, 'rect');
+                  bcpR.setAttribute('x', mL + lw + dbC1 + 2);
+                  bcpR.setAttribute('y', _pAbove ? ry : _fbY + _fbH + 1);
+                  bcpR.setAttribute('width', Math.max(0, dbW - 4 + _pFov));
+                  bcpR.setAttribute('height', _pLabelAreaH);
+                  bcpEl.appendChild(bcpR);
+                  defs.appendChild(bcpEl);
+                  var lblY0 = _pAbove
+                    ? _fbY - 3 - (lblLines.length - 1) * _lgap
+                    : _fbY + _fbH + Math.max(2, Math.ceil(_lgap * 0.4));
+                  for (var wl = 0; wl < lblLines.length; wl++) {
+                    var ltEl = document.createElementNS(NS, 'text');
+                    ltEl.setAttribute('x', mL + lw + dbC1 + 5);
+                    ltEl.setAttribute('y', lblY0 + wl * _lgap);
+                    ltEl.setAttribute('font-size', fs);
+                    ltEl.setAttribute('text-anchor', 'start');
+                    ltEl.setAttribute('fill', pLblFill);
+                    ltEl.setAttribute('clip-path', 'url(#' + bcpId + ')');
+                    ltEl.textContent = lblLines[wl];
+                    svg.appendChild(ltEl);
+                  }
+                }
               }
             }
           }
@@ -7020,10 +7133,11 @@
             showPhase:    displayOptions.showPhase,
             showNote:     displayOptions.showNote,
             barTextColor: barTextColor,
-            flatMode:         flatMode,
-            flatBarHeight:    flatBarHeight,
-            flatTextWrap:     flatTextWrap,
-            flatLabelOverflow: flatLabelOverflow
+            flatMode:          flatMode,
+            flatBarHeight:     flatBarHeight,
+            flatTextWrap:      flatTextWrap,
+            flatLabelOverflow: flatLabelOverflow,
+            flatLabelsOutside: flatLabelsOutside
           });
 
           container.appendChild(pageEl);
