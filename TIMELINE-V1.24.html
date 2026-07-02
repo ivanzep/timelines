@@ -315,6 +315,15 @@
     label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 3px; }
     input[type="text"], input[type="date"], select, textarea { width: 100%; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--bg-alt); color: var(--text); font-size: 0.82rem; outline: none; font-family: inherit; }
     input[type="text"]:focus, input[type="date"]:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15); }
+    /* Scoped overrides (0,2,1) beat global (0,1,1) — no bubbles in the task table */
+    .task-table-wrapper input[type="text"],
+    .task-table-wrapper input[type="date"],
+    .task-table-wrapper input[type="number"],
+    .task-table-wrapper select { border-radius: 0; border: none; background: transparent; padding: 2px 4px; box-shadow: none; width: 100%; }
+    .task-table-wrapper input[type="text"]:focus,
+    .task-table-wrapper input[type="date"]:focus,
+    .task-table-wrapper input[type="number"]:focus,
+    .task-table-wrapper select:focus { border-color: transparent; box-shadow: none; outline: 2px solid var(--accent); outline-offset: -2px; background: rgba(2,132,199,0.07); }
     input[type="color"] { width: 38px; height: 26px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-alt); padding: 2px; cursor: pointer; }
     button { border-radius: 999px; border: 1px solid var(--border-strong); padding: 5px 11px; font-size: 0.78rem; cursor: pointer; background: var(--bg-alt); color: var(--text); display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, border-color 0.15s, transform 0.1s; }
     button.primary { background: linear-gradient(180deg, #0ea5e9, #0284c7); border-color: #0284c7; color: #ffffff; font-weight: 600; }
@@ -2902,16 +2911,6 @@
           wNotch.setAttribute('stroke', '#e2e8f0'); wNotch.setAttribute('stroke-width', 0.5);
           svg.appendChild(wNotch);
 
-          if (shouldLabelTick(ti, ticks, currentScale, geom.unitWidth)) {
-            var wLbl = document.createElementNS(svgNS, 'text');
-            var wLblX = tx + Math.min(geom.unitWidth / 2, 16);
-            wLbl.setAttribute('x', wLblX);
-            wLbl.setAttribute('y', wRowTop + Math.round((h - wRowTop) * 0.72));
-            wLbl.setAttribute('class', 'axis-label');
-            wLbl.setAttribute('text-anchor', 'middle');
-            wLbl.textContent = ticks[ti].getDate() + '';
-            svg.appendChild(wLbl);
-          }
         }
 
       } else {
