@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.22  2026-07-02 17:45
+  V1.22  2026-07-02 18:00
     • Flat mode: bar labels moved above each bar (top-left, outside bar body). Row height
       automatically expands to reserve a label area above the bar so labels never overlap
       the bar in the row above. ClipPath horizontally constrains each label to its bar's
@@ -3487,6 +3487,7 @@
             iTxt.setAttribute('font-size', inL.lfs);
             iTxt.setAttribute('text-anchor', 'start');
             iTxt.setAttribute('clip-path', 'url(#' + inCpId + ')');
+            iTxt.setAttribute('font-weight', 'bold');
             iTxt.style.fill = inFill;
             iTxt.style.pointerEvents = 'none';
             iTxt.textContent = inL.t;
@@ -6806,6 +6807,7 @@
                   piEl.setAttribute('font-size', fs);
                   piEl.setAttribute('text-anchor', 'start');
                   piEl.setAttribute('fill', piFill);
+                  piEl.setAttribute('font-weight', 'bold');
                   piEl.setAttribute('clip-path', 'url(#' + piCpId + ')');
                   piEl.textContent = piLines[pii];
                   svg.appendChild(piEl);
