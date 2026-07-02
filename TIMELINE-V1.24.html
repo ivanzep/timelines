@@ -418,7 +418,7 @@
     th[data-sort]:hover { background: var(--border); }
     .sort-indicator { color: var(--accent); margin-left: 4px; font-size: 11px; }
     tr:last-child td { border-bottom: none; }
-    tr:nth-child(even) td { background: rgba(0,0,0,0.018); }
+    .task-table-wrapper.zebra tr:nth-child(even) td { background: rgba(0,0,0,0.018); }
     tr.selected-row td { background: rgba(2,132,199,0.10) !important; }
     tr:hover td { background: rgba(2,132,199,0.05) !important; }
     tr.dragging { opacity: 0.4; }
@@ -995,6 +995,7 @@
           <button id="expand-all-btn"   class="secondary" title="Expand all groups">⊞ Expand All</button>
           <button id="collapse-all-btn" class="secondary" title="Collapse all groups">⊟ Collapse All</button>
           <button id="hide-tasks-btn"   class="secondary" title="Show / hide task list">▼ Hide Tasks</button>
+          <button id="zebra-btn"       class="secondary active" title="Toggle alternating row colors">▤ Zebra</button>
           <button id="add-task-btn"     class="primary">+ Add Task</button>
           <button id="add-milestone-btn" class="secondary">+ Add Milestone</button>
           <button id="add-flag-btn"     class="secondary">+ Add Flag</button>
@@ -1074,6 +1075,7 @@
               <th style="width:24px;"><input type="checkbox" id="select-all-cb" style="width:14px;height:14px;cursor:pointer;" title="Select / deselect all" /></th>
               <th style="width:28px;"></th>
               <th style="width:18px;"></th>
+              <th data-sort="color" style="width:34px;">COLOR</th>
               <th data-sort="name">TASK</th>
               <th data-sort="group">DISCIPLINE</th>
               <th data-sort="type">TYPE</th>
@@ -1082,7 +1084,6 @@
               <th>DURATION (WKS)</th>
               <th data-sort="symbol">SYMBOL</th>
               <th data-sort="note">STATUS</th>
-              <th data-sort="color">COLOR</th>
               <th>STYLE</th>
               <th>NOTES</th>
               <th style="min-width:42px">DEPS</th>
@@ -1263,6 +1264,7 @@
     var showDurationColumn = false;    // when true, DURATION column appears to the right of END (or label if no date cols)
     var DURATION_COL_W     = 60;       // width of the duration column
     var taskRowTint        = 50;       // 0–100: opacity of grey alternating stripe in task label column (0=none, 50=default)
+    var tableZebra         = true;     // alternating row tint in task properties table
     var currentTab   = 'gantt'; // 'gantt' | 'tasks' | 'milestones' | 'flags'
     var taskTypeFilter = null;  // null = all | 'milestone' | 'flag'
     var collapsedGroups          = {};  // task list tab collapse state
@@ -2046,6 +2048,21 @@
       tdDot.appendChild(dot);
       tr.appendChild(tdDot);
 
+      // Color override — placed before NAME so all color indicators align in one column
+      var tdColor = document.createElement('td');
+      var colorIn = document.createElement('input');
+      colorIn.type = 'color';
+      colorIn.className = 'row-color';
+      colorIn.title = 'Override bar colour (set to section colour to inherit)';
+      colorIn.value = task.colorOverride || task.color || '#0284c7';
+      colorIn.addEventListener('input', function() {
+        task.colorOverride = colorIn.value;
+        dot.style.backgroundColor = task.colorOverride;
+        renderGantt();
+      });
+      tdColor.appendChild(colorIn);
+      tr.appendChild(tdColor);
+
       tr.appendChild(makeInputCell(task, 'name', 'text', 'name-input'));
 
       // Discipline input
@@ -2156,21 +2173,6 @@
         renderGantt();
       });
       tdStatus.appendChild(statusSel); tr.appendChild(tdStatus);
-
-      // Color override — stored in GANTT TASK PARAMS; empty = inherit section color
-      var tdColor = document.createElement('td');
-      var colorIn = document.createElement('input');
-      colorIn.type = 'color';
-      colorIn.className = 'row-color';
-      colorIn.title = 'Override bar colour (set to section colour to inherit)';
-      colorIn.value = task.colorOverride || task.color || '#0284c7';
-      colorIn.addEventListener('input', function() {
-        task.colorOverride = colorIn.value;
-        dot.style.backgroundColor = task.colorOverride;
-        renderGantt();
-      });
-      tdColor.appendChild(colorIn);
-      tr.appendChild(tdColor);
 
       // Style
       var tdStyle = document.createElement('td');
@@ -5155,6 +5157,17 @@
           taskTableWrapper.style.display = taskTableVisible ? '' : 'none';
           if (statusTextEl) statusTextEl.style.display = taskTableVisible ? '' : 'none';
           hideTasksBtn.textContent = taskTableVisible ? '▼ Hide Tasks' : '▲ Show Tasks';
+        });
+      }
+
+      // Zebra toggle — alternating row tint in task table
+      if (taskTableWrapper) taskTableWrapper.classList.add('zebra');
+      var zebraBtn = document.getElementById('zebra-btn');
+      if (zebraBtn) {
+        zebraBtn.addEventListener('click', function() {
+          tableZebra = !tableZebra;
+          if (taskTableWrapper) taskTableWrapper.classList.toggle('zebra', tableZebra);
+          zebraBtn.classList.toggle('active', tableZebra);
         });
       }
 
