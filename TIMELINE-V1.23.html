@@ -3319,10 +3319,13 @@
 
     // Returns the fill colour for a task bar / milestone / flag, honouring the
     // "Status Colors" toggle. When off: colorOverride → task.color → default blue.
-    // When on: STATUS_COLOR_MAP[task.status] → slate fallback.
+    // When on: STATUS_COLOR_MAP[task.note] → slate fallback.
+    // task.note holds the status string (backend: barNote = status; UI: task.note = sel.value).
+    // Notes may carry extra text after '·' — split and take the first segment.
     function _effectiveBarColor(task) {
       if (useStatusColors) {
-        return STATUS_COLOR_MAP[(task.status || '').toUpperCase().trim()] || '#64748b';
+        var _s = (task.note || '').split('·')[0].toUpperCase().trim();
+        return STATUS_COLOR_MAP[_s] || '#64748b';
       }
       return task.colorOverride || task.color || '#0284c7';
     }
