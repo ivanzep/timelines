@@ -9,7 +9,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 
 | File | Purpose |
 |------|---------|
-| `Code_V1.23.gs` | **Active backend** — deploy this. Adds `flatLabelOverflow`, `flatLabelsOutside`, `useStatusColors` to SETTINGS_KEYS. |
+| `Code_V1.24.gs` | **Active backend** — deploy this. No logic changes from V1.23; version bump only. |
+| `Code_V1.23.gs` | Previous backend. Keep for reference. |
 | `Code_V1.22.gs` | Previous backend. Keep for reference. |
 | `Code_V1.21.gs` | Previous backend. Keep for reference. |
 | `Code_V1.20.gs` | Previous backend. Keep for reference. |
@@ -32,7 +33,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 | `Code_V1.01.gs` | Previous backend. Keep for reference. |
 | `Code_V1.0.gs` | Original baseline. Keep for reference. |
 | `Code.gs` | Original base script. Keep for reference. |
-| `TIMELINE-V1.23.html` | **Active HTML frontend** — open this in browser. Status Colors toggle + per-group flat row heights. |
+| `TIMELINE-V1.24.html` | **Active HTML frontend** — open this in browser. Task Properties restyled as Excel spreadsheet grid. |
+| `TIMELINE-V1.23.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.22.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.21.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.20.html` | Previous HTML version. Keep for reference. |
