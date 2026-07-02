@@ -2440,12 +2440,15 @@
         if (unitWidth >= 30) return true;
         if (unitWidth >= 15) return idx % 2 === 0;
         if (unitWidth >= 8)  return idx % 7 === 0;
-        return idx % 14 === 0;
+        if (unitWidth >= 4)  return idx % 14 === 0;
+        return false;
       }
       if (scale === 'week') {
         if (unitWidth >= 50) return true;
         if (unitWidth >= 25) return idx % 2 === 0;
-        return idx % 4 === 0;
+        if (unitWidth >= 12) return idx % 4 === 0;
+        if (unitWidth >= 6)  return idx % 8 === 0;
+        return false;  // month sub-row labels handle orientation at very small zoom
       }
       if (scale === 'month') {
         if (unitWidth >= 60) return true;
@@ -2846,24 +2849,92 @@
 
       var ticks = geom.ticks;
 
-      for (var t = 0; t < ticks.length; t++) {
-        var x = t * geom.unitWidth;
-        var emphasis = tickEmphasis(ticks[t], currentScale);
-        var mark = document.createElementNS(svgNS, 'line');
-        mark.setAttribute('x1', x); mark.setAttribute('y1', 22);
-        mark.setAttribute('x2', x); mark.setAttribute('y2', h);
-        mark.setAttribute('class', emphasis === 'year' ? 'grid-line-year' : (emphasis === 'quarter' ? 'grid-line-quarter' : (emphasis === 'month' ? 'grid-line-month' : 'grid-line')));
-        svg.appendChild(mark);
+      if (currentScale === 'week' || currentScale === 'day') {
+        // ── Two-sub-row ruler for week/day scale ──────────────────
+        // Year band:     y = 0 – 22   (already drawn above)
+        // Month sub-row: y = 22 – 38  (month names, month boundary lines)
+        // Week sub-row:  y = 38 – h   (week/day ticks and day numbers)
+        var mRowTop = 22, mRowBot = 38, wRowTop = 38;
 
-        if (shouldLabelTick(t, ticks, currentScale, geom.unitWidth)) {
-          var label = document.createElementNS(svgNS, 'text');
-          var labelX2 = x + Math.min(geom.unitWidth / 2, 30);
-          label.setAttribute('x', labelX2);
-          label.setAttribute('y', 40);
-          label.setAttribute('class', 'axis-label');
-          label.setAttribute('text-anchor', 'middle');
-          label.textContent = tickLabel(ticks[t], currentScale);
-          svg.appendChild(label);
+        // Divider between month and week sub-rows
+        var subDiv = document.createElementNS(svgNS, 'line');
+        subDiv.setAttribute('x1', 0); subDiv.setAttribute('y1', wRowTop);
+        subDiv.setAttribute('x2', w); subDiv.setAttribute('y2', wRowTop);
+        subDiv.setAttribute('stroke', '#cbd5e1'); subDiv.setAttribute('stroke-width', 0.5);
+        svg.appendChild(subDiv);
+
+        // Month segments: boundary lines + month name labels
+        var mCur = new Date(geom.minDate.getFullYear(), geom.minDate.getMonth(), 1);
+        while (mCur <= geom.maxDate) {
+          var mNext = new Date(mCur.getFullYear(), mCur.getMonth() + 1, 1);
+          var mx1 = Math.max(0, dateToX(mCur));
+          var mx2 = Math.min(w, dateToX(mNext));
+          var mSegW = mx2 - mx1;
+          // Month label centred in the segment
+          if (mSegW > 10) {
+            var mLbEl = document.createElementNS(svgNS, 'text');
+            mLbEl.setAttribute('x', mx1 + mSegW / 2);
+            mLbEl.setAttribute('y', mRowTop + Math.round((mRowBot - mRowTop) * 0.72));
+            mLbEl.setAttribute('class', 'axis-label');
+            mLbEl.setAttribute('text-anchor', 'middle');
+            mLbEl.textContent = MONTHS_SHORT[mCur.getMonth()];
+            svg.appendChild(mLbEl);
+          }
+          // Month boundary vertical line (extends from mRowTop to h)
+          if (mx1 > 0) {
+            var mBndLine = document.createElementNS(svgNS, 'line');
+            mBndLine.setAttribute('x1', mx1); mBndLine.setAttribute('y1', mRowTop);
+            mBndLine.setAttribute('x2', mx1); mBndLine.setAttribute('y2', h);
+            mBndLine.setAttribute('class', mCur.getMonth() === 0 ? 'grid-line-year' : 'grid-line-month');
+            svg.appendChild(mBndLine);
+          }
+          mCur = mNext;
+        }
+
+        // Week / day ticks (in the lower sub-row only)
+        for (var ti = 0; ti < ticks.length; ti++) {
+          var tx = ti * geom.unitWidth;
+          // Skip ticks that land exactly on a month boundary (already drawn above)
+          if (ticks[ti].getDate() === 1) continue;
+          var wNotch = document.createElementNS(svgNS, 'line');
+          wNotch.setAttribute('x1', tx); wNotch.setAttribute('y1', wRowTop);
+          wNotch.setAttribute('x2', tx); wNotch.setAttribute('y2', h);
+          wNotch.setAttribute('stroke', '#e2e8f0'); wNotch.setAttribute('stroke-width', 0.5);
+          svg.appendChild(wNotch);
+
+          if (shouldLabelTick(ti, ticks, currentScale, geom.unitWidth)) {
+            var wLbl = document.createElementNS(svgNS, 'text');
+            var wLblX = tx + Math.min(geom.unitWidth / 2, 16);
+            wLbl.setAttribute('x', wLblX);
+            wLbl.setAttribute('y', wRowTop + Math.round((h - wRowTop) * 0.72));
+            wLbl.setAttribute('class', 'axis-label');
+            wLbl.setAttribute('text-anchor', 'middle');
+            wLbl.textContent = ticks[ti].getDate() + '';
+            svg.appendChild(wLbl);
+          }
+        }
+
+      } else {
+        // ── Single-row tick layout for month / quarter / year scale ─
+        for (var t = 0; t < ticks.length; t++) {
+          var x = t * geom.unitWidth;
+          var emphasis = tickEmphasis(ticks[t], currentScale);
+          var mark = document.createElementNS(svgNS, 'line');
+          mark.setAttribute('x1', x); mark.setAttribute('y1', 22);
+          mark.setAttribute('x2', x); mark.setAttribute('y2', h);
+          mark.setAttribute('class', emphasis === 'year' ? 'grid-line-year' : (emphasis === 'quarter' ? 'grid-line-quarter' : (emphasis === 'month' ? 'grid-line-month' : 'grid-line')));
+          svg.appendChild(mark);
+
+          if (shouldLabelTick(t, ticks, currentScale, geom.unitWidth)) {
+            var label = document.createElementNS(svgNS, 'text');
+            var labelX2 = x + Math.min(geom.unitWidth / 2, 30);
+            label.setAttribute('x', labelX2);
+            label.setAttribute('y', 40);
+            label.setAttribute('class', 'axis-label');
+            label.setAttribute('text-anchor', 'middle');
+            label.textContent = tickLabel(ticks[t], currentScale);
+            svg.appendChild(label);
+          }
         }
       }
 
