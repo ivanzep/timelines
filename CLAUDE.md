@@ -9,7 +9,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 
 | File | Purpose |
 |------|---------|
-| `Code_V1.22.gs` | **Active backend** — deploy this. No logic changes from V1.21; version bump only. |
+| `Code_V1.23.gs` | **Active backend** — deploy this. Adds `flatLabelOverflow`, `flatLabelsOutside`, `useStatusColors` to SETTINGS_KEYS. |
+| `Code_V1.22.gs` | Previous backend. Keep for reference. |
 | `Code_V1.21.gs` | Previous backend. Keep for reference. |
 | `Code_V1.20.gs` | Previous backend. Keep for reference. |
 | `Code_V1.19.gs` | Previous backend. Keep for reference. |
