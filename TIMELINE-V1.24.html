@@ -1880,15 +1880,12 @@
           headTr.dataset.discipline = discipline;
           headTr.draggable = true;
 
-          var headTd = document.createElement('td');
-          headTd.colSpan = TOTAL_COLS;
-
           // Batch-select checkbox
           var groupCb = document.createElement('input');
           groupCb.type = 'checkbox';
           groupCb.checked = !!selectedGroups[discipline];
           groupCb.title = 'Select group for batch color edit';
-          groupCb.style.cssText = 'width:14px;height:14px;cursor:pointer;margin-right:6px;flex-shrink:0;vertical-align:middle;';
+          groupCb.style.cssText = 'width:14px;height:14px;cursor:pointer;flex-shrink:0;vertical-align:middle;display:block;margin:0 auto;';
           groupCb.addEventListener('click', function(e) { e.stopPropagation(); });
           groupCb.addEventListener('change', function(e) {
             e.stopPropagation();
@@ -1901,7 +1898,6 @@
           var headGrip = document.createElement('span');
           headGrip.className = 'grip-icon';
           headGrip.style.cursor = 'grab';
-          headGrip.style.marginRight = '6px';
           headGrip.innerHTML = '&#x22EE;&#x22EE;';
           headGrip.title = 'Drag to reorder group';
 
@@ -1917,7 +1913,7 @@
           var gcPicker = document.createElement('input');
           gcPicker.type = 'color';
           gcPicker.title = 'Section color — applied to header background and rollup bar';
-          gcPicker.style.cssText = 'width:22px;height:18px;padding:1px;margin-left:10px;vertical-align:middle;cursor:pointer;border-radius:4px;border:1px solid var(--border-strong);flex-shrink:0;';
+          gcPicker.style.cssText = 'width:22px;height:18px;padding:1px;vertical-align:middle;cursor:pointer;border-radius:4px;border:1px solid var(--border-strong);flex-shrink:0;display:block;margin:0 auto;';
           var initColor = groupColors[discipline] || (groupTasks[0] ? groupTasks[0].color : '#0284c7');
           if (!groupColors[discipline]) groupColors[discipline] = initColor;
           gcPicker.value = initColor;
@@ -1928,12 +1924,32 @@
           });
           gcPicker.addEventListener('click', function(e) { e.stopPropagation(); });
 
-          headTd.appendChild(groupCb);
-          headTd.appendChild(headGrip);
+          // Split into per-column cells so the group color picker aligns with the COLOR column
+          var headTdCb = document.createElement('td');
+          headTdCb.style.cssText = 'width:24px;text-align:center;';
+          headTdCb.appendChild(groupCb);
+          headTr.appendChild(headTdCb);
+
+          var headTdGrip = document.createElement('td');
+          headTdGrip.className = 'grip-cell';
+          headTdGrip.style.width = '28px';
+          headTdGrip.appendChild(headGrip);
+          headTr.appendChild(headTdGrip);
+
+          var headTdDot = document.createElement('td');
+          headTdDot.style.width = '18px';
+          headTr.appendChild(headTdDot);
+
+          var headTdColor = document.createElement('td');
+          headTdColor.style.cssText = 'width:34px;text-align:center;';
+          headTdColor.appendChild(gcPicker);
+          headTr.appendChild(headTdColor);
+
+          var headTd = document.createElement('td');
+          headTd.colSpan = TOTAL_COLS - 4;
           headTd.appendChild(toggle);
           headTd.appendChild(document.createTextNode(discipline));
           headTd.appendChild(countSpan);
-          headTd.appendChild(gcPicker);
           headTr.appendChild(headTd);
 
           // Collapse toggle — not when clicking grip, checkbox, or color picker
