@@ -5,7 +5,7 @@
 
   VERSION HISTORY
   ───────────────
-  V1.22  2026-07-02 18:00
+  V1.22  2026-07-02 18:30
     • Flat mode: bar labels moved above each bar (top-left, outside bar body). Row height
       automatically expands to reserve a label area above the bar so labels never overlap
       the bar in the row above. ClipPath horizontally constrains each label to its bar's
@@ -16,8 +16,8 @@
       exceed the label area height are clipped by the clipPath.
     • Alternating above/below label placement in flat mode; labels for even-indexed tasks
       (per discipline) go above their bar, odd-indexed go below. Pre-pass computes
-      _flatMaxLabelLines and _flatLabelPlacementMap before rendering. Row height includes
-      two label areas (one above, one below each bar row).
+      _flatMaxLabelLines (per-group dict) and _flatLabelPlacementMap before rendering.
+      Each disc row height is computed individually based on its own max outside-label line count.
     • flatLabelOverflow slider (0–400 px): widens the label clip rect beyond the bar's
       right edge; persisted to settings; applied in both interactive and print modes.
     • Flat mode line spacing tightened: lineGap now ceil(fontSize × 1.2) instead of
@@ -1161,7 +1161,7 @@
     var flatBarHeight = 24;          // bar height (px) in flat mode
     var flatLabelOverflow = 0;       // extra px the label clip extends right of bar end
     var flatLabelsOutside = false;   // when true: always place labels outside bar (above/below); default: inside if fits
-    var _flatMaxLabelLines = 1;      // pre-computed each render; drives label area height
+    var _flatMaxLabelLines = {};     // per-group: disc → max outside lines; pre-computed each render
     var _flatLabelPlacementMap = {}; // task.id → 'above'|'below'|'inside'; set by pre-pass each render
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
@@ -1222,7 +1222,7 @@
     var zoomLevel = 100;
     var currentScale = "month";
 
-    var geom = { minDate: null, maxDate: null, leftLabelWidth: 240, topAxisHeight: 60, rowHeight: 48, rowGap: 2, bodyWidth: 0, bodyHeight: 0, displayedRows: [], unitWidth: 0, ticks: [] };
+    var geom = { minDate: null, maxDate: null, leftLabelWidth: 240, topAxisHeight: 60, rowHeight: 48, rowGap: 2, bodyWidth: 0, bodyHeight: 0, displayedRows: [], rowYOffsets: [], unitWidth: 0, ticks: [] };
 
     // DOM refs
     var chartStartInput, chartEndInput, scaleSelect, snapSelect;
@@ -1373,8 +1373,13 @@
       displayOptions.showNote  = optNote.checked;
     }
 
-    function getEffectiveRowHeight() {
-      if (flatMode) { var _fLabelH = _flatMaxLabelLines > 0 ? (_flatMaxLabelLines * ganttBarFontSize + 2) : 0; return flatBarHeight + 2 * _fLabelH + 2; }
+    function getEffectiveRowHeight(group) {
+      if (flatMode) {
+        var _lines = group !== undefined ? (_flatMaxLabelLines[group] || 0) : 0;
+        if (group === undefined) { for (var _gk in _flatMaxLabelLines) { if ((_flatMaxLabelLines[_gk] || 0) > _lines) _lines = _flatMaxLabelLines[_gk]; } }
+        var _fLabelH = _lines > 0 ? (_lines * ganttBarFontSize + 2) : 0;
+        return flatBarHeight + 2 * _fLabelH + 2;
+      }
       var visible = (displayOptions.showName ? 1 : 0) +
                     (displayOptions.showPhase ? 1 : 0) +
                     (displayOptions.showNote ? 1 : 0);
@@ -2438,7 +2443,7 @@
       if (resizerEl) resizerEl.style.left = (leftLabelWidth - 4) + 'px';
       // Pre-pass (flat mode only): compute max wrapped-line count and assign alternating
       // above/below placement so adjacent task labels in the same disc row don't overlap.
-      _flatMaxLabelLines = 1;
+      _flatMaxLabelLines = {};
       _flatLabelPlacementMap = {};
       if (flatMode && tasks.length) {
         var _ppBW  = ticks.length * unitWidth;
@@ -2499,31 +2504,35 @@
               }
               if (_ppCur) _ppLines++;
             }
-            if (_ppLines > _flatMaxLabelLines) _flatMaxLabelLines = Math.min(_ppLines, 5);
+            if (_ppLines > (_flatMaxLabelLines[_ppDisc] || 0)) _flatMaxLabelLines[_ppDisc] = Math.min(_ppLines, 5);
           }
         }
-        // If ALL bars fit inside, no outside area needed — collapse it
-        var _ppAnyOutside = false;
-        for (var _ppk in _flatLabelPlacementMap) {
-          if (_flatLabelPlacementMap[_ppk] !== 'inside') { _ppAnyOutside = true; break; }
-        }
-        if (!_ppAnyOutside) _flatMaxLabelLines = 0;
+        // Per-group: discs where all tasks fit inside have _flatMaxLabelLines[disc] = undefined → treated as 0
       }
 
       var topAxisHeight = 60;
-      var rowHeight = getEffectiveRowHeight();
       var rowGap = 2;
       var displayedRows = getDisplayedRows();
+      // Compute per-row heights and cumulative y-offsets
+      var rowYOffsets = [], _cumY = 0;
+      for (var _ri = 0; _ri < displayedRows.length; _ri++) {
+        rowYOffsets.push(_cumY);
+        var _rDisc = displayedRows[_ri].discipline || '';
+        var _rLines = flatMode ? (_flatMaxLabelLines[_rDisc] || 0) : 0;
+        var _rLH = _rLines > 0 ? (_rLines * ganttBarFontSize + 2) : 0;
+        displayedRows[_ri].rowHeight = flatMode ? (flatBarHeight + 2 * _rLH + 2) : getEffectiveRowHeight();
+        _cumY += displayedRows[_ri].rowHeight + rowGap;
+      }
       var bodyWidth = ticks.length * unitWidth;
-      var bodyHeight = displayedRows.length * (rowHeight + rowGap);
+      var bodyHeight = Math.max(0, _cumY - rowGap);
 
       geom = {
         minDate: firstTick, maxDate: lastTickEnd,
         leftLabelWidth: leftLabelWidth, sideWidth: sideWidth, topAxisHeight: topAxisHeight,
-        rowHeight: rowHeight, rowGap: rowGap,
+        rowHeight: getEffectiveRowHeight(), rowGap: rowGap,
         bodyWidth: bodyWidth, bodyHeight: bodyHeight,
         unitWidth: unitWidth, ticks: ticks,
-        displayedRows: displayedRows
+        displayedRows: displayedRows, rowYOffsets: rowYOffsets
       };
 
       renderCornerSvg();
@@ -2819,12 +2828,13 @@
       for (var r = 0; r < geom.displayedRows.length; r++) {
         var row  = geom.displayedRows[r];
         var isGH = (row.type === 'gh' || row.type === 'disc');
-        var yTop = r * (geom.rowHeight + geom.rowGap);
+        var yTop = geom.rowYOffsets[r] || 0;
+        var rowH = row.rowHeight || geom.rowHeight;
 
         if (isGH) {
           var ghBg = document.createElementNS(svgNS, 'rect');
           ghBg.setAttribute('x', 0); ghBg.setAttribute('y', yTop);
-          ghBg.setAttribute('width', w); ghBg.setAttribute('height', geom.rowHeight);
+          ghBg.setAttribute('width', w); ghBg.setAttribute('height', rowH);
           var ghFill = matchHdrToGroupColor ? (groupColors[row.discipline] || groupHeaderColor) : groupHeaderColor;
           ghBg.setAttribute('fill', ghFill);
           ghBg.setAttribute('fill-opacity', (groupHeaderTint / 100).toFixed(3));
@@ -2833,7 +2843,7 @@
           if (r % 2 === 0) {
             var stripe = document.createElementNS(svgNS, 'rect');
             stripe.setAttribute('x', 0); stripe.setAttribute('y', yTop);
-            stripe.setAttribute('width', w); stripe.setAttribute('height', geom.rowHeight);
+            stripe.setAttribute('width', w); stripe.setAttribute('height', rowH);
             stripe.setAttribute('fill', darkMode ? '#263248' : '#e2e8f0');
             stripe.setAttribute('opacity', (taskRowTint / 100).toFixed(3));
             svg.appendChild(stripe);
@@ -2845,7 +2855,7 @@
         var maxCh = isGH ? 24 : 28;
         label.textContent = lbl.length > maxCh ? lbl.substring(0, maxCh) + '…' : lbl;
         label.setAttribute('x', isGH ? 22 : 20);
-        label.setAttribute('y', yTop + geom.rowHeight / 2 + 4);
+        label.setAttribute('y', yTop + rowH / 2 + 4);
         label.setAttribute('class', isGH ? 'gantt-gh-label' : 'row-label');
         if (isGH) label.style.fill = groupHeaderTextColor;
         if (!isGH && searchFilter.trim()) {
@@ -2859,11 +2869,11 @@
 
         // Collapse arrow for group-header rows (hierarchical mode only)
         if (row.type === 'gh') {
-          (function(disc, collapsed, rowYTop) {
+          (function(disc, collapsed, rowYTop, rh) {
             var arrow = document.createElementNS(svgNS, 'text');
             arrow.textContent = collapsed ? '▶' : '▼';
             arrow.setAttribute('x', 5);
-            arrow.setAttribute('y', rowYTop + geom.rowHeight / 2 + 4);
+            arrow.setAttribute('y', rowYTop + rh / 2 + 4);
             arrow.setAttribute('font-size', '9');
             arrow.setAttribute('fill', '#0369a1');
             arrow.style.cursor = 'pointer';
@@ -2874,7 +2884,7 @@
             hit.setAttribute('x', 0);
             hit.setAttribute('y', rowYTop);
             hit.setAttribute('width', w);
-            hit.setAttribute('height', geom.rowHeight);
+            hit.setAttribute('height', rh);
             hit.setAttribute('fill', 'transparent');
             hit.style.cursor = 'pointer';
             hit.addEventListener('click', function() {
@@ -2883,13 +2893,13 @@
               renderGantt();
             });
             svg.appendChild(hit);
-          })(row.discipline, !!ganttCollapsedGroups[row.discipline], yTop);
+          })(row.discipline, !!ganttCollapsedGroups[row.discipline], yTop, rowH);
 
         }
 
         var sep = document.createElementNS(svgNS, 'line');
-        sep.setAttribute('x1', 0); sep.setAttribute('y1', yTop + geom.rowHeight);
-        sep.setAttribute('x2', w); sep.setAttribute('y2', yTop + geom.rowHeight);
+        sep.setAttribute('x1', 0); sep.setAttribute('y1', yTop + rowH);
+        sep.setAttribute('x2', w); sep.setAttribute('y2', yTop + rowH);
         var sepColor = isGH
           ? (row.discipline && groupColors[row.discipline] ? groupColors[row.discipline] : (darkMode ? '#334155' : '#93c5fd'))
           : (darkMode ? '#263248' : '#e2e8f0');
@@ -2900,9 +2910,9 @@
         // Date columns (START / END) and/or DURATION — rendered after label area
         if (showDateColumns || showDurationColumn) {
           var colW   = DATE_COL_W / 2;
-          var midY   = yTop + geom.rowHeight / 2 + 4;
+          var midY   = yTop + rowH / 2 + 4;
           var dateFill = isGH ? groupHeaderTextColor : (darkMode ? '#94a3b8' : '#475569');
-          var dateFs = Math.max(9, geom.rowHeight > 30 ? 11 : 10);
+          var dateFs = Math.max(9, rowH > 30 ? 11 : 10);
 
           // Resolve dates for this row
           var dStart = null, dEnd = null;
@@ -2918,7 +2928,7 @@
           // Vertical divider: label col | first extra col
           var dv1 = document.createElementNS(svgNS, 'line');
           dv1.setAttribute('x1', lw); dv1.setAttribute('y1', yTop);
-          dv1.setAttribute('x2', lw); dv1.setAttribute('y2', yTop + geom.rowHeight);
+          dv1.setAttribute('x2', lw); dv1.setAttribute('y2', yTop + rowH);
           dv1.setAttribute('stroke', '#94a3b8'); dv1.setAttribute('stroke-width', 1);
           svg.appendChild(dv1);
 
@@ -2938,7 +2948,7 @@
             // Mid divider: START | END
             var dv2 = document.createElementNS(svgNS, 'line');
             dv2.setAttribute('x1', lw + colW); dv2.setAttribute('y1', yTop);
-            dv2.setAttribute('x2', lw + colW); dv2.setAttribute('y2', yTop + geom.rowHeight);
+            dv2.setAttribute('x2', lw + colW); dv2.setAttribute('y2', yTop + rowH);
             dv2.setAttribute('stroke', '#cbd5e1'); dv2.setAttribute('stroke-width', 0.5);
             svg.appendChild(dv2);
 
@@ -2956,10 +2966,10 @@
 
             // Editable hit-rects for task rows (not group headers)
             if (!isGH && row.taskId) {
-              (function(tid, rowYTop, cW) {
+              (function(tid, rowYTop, cW, rh) {
                 var sHit = document.createElementNS(svgNS, 'rect');
                 sHit.setAttribute('x', lw); sHit.setAttribute('y', rowYTop);
-                sHit.setAttribute('width', cW); sHit.setAttribute('height', geom.rowHeight);
+                sHit.setAttribute('width', cW); sHit.setAttribute('height', rh);
                 sHit.setAttribute('fill', 'transparent');
                 sHit.style.cursor = 'pointer';
                 sHit.addEventListener('mouseenter', function() { sHit.setAttribute('fill', 'rgba(2,132,199,0.08)'); });
@@ -2969,14 +2979,14 @@
 
                 var eHit = document.createElementNS(svgNS, 'rect');
                 eHit.setAttribute('x', lw + cW); eHit.setAttribute('y', rowYTop);
-                eHit.setAttribute('width', cW); eHit.setAttribute('height', geom.rowHeight);
+                eHit.setAttribute('width', cW); eHit.setAttribute('height', rh);
                 eHit.setAttribute('fill', 'transparent');
                 eHit.style.cursor = 'pointer';
                 eHit.addEventListener('mouseenter', function() { eHit.setAttribute('fill', 'rgba(2,132,199,0.08)'); });
                 eHit.addEventListener('mouseleave', function() { eHit.setAttribute('fill', 'transparent'); });
                 eHit.addEventListener('click', function(e) { e.stopPropagation(); showDateEdit(tid, 'end', e.clientX, e.clientY); });
                 svg.appendChild(eHit);
-              })(row.taskId, yTop, colW);
+              })(row.taskId, yTop, colW, rowH);
             }
           }
 
@@ -2985,7 +2995,7 @@
             var durX = lw + (showDateColumns ? DATE_COL_W : 0);
             var durDivLine = document.createElementNS(svgNS, 'line');
             durDivLine.setAttribute('x1', durX); durDivLine.setAttribute('y1', yTop);
-            durDivLine.setAttribute('x2', durX); durDivLine.setAttribute('y2', yTop + geom.rowHeight);
+            durDivLine.setAttribute('x2', durX); durDivLine.setAttribute('y2', yTop + rowH);
             durDivLine.setAttribute('stroke', '#94a3b8'); durDivLine.setAttribute('stroke-width', 0.5);
             svg.appendChild(durDivLine);
 
@@ -3020,17 +3030,18 @@
       svg.appendChild(bg);
 
       for (var r = 0; r < geom.displayedRows.length; r++) {
+        var _bsYTop = geom.rowYOffsets[r] || 0;
+        var _bsRowH = geom.displayedRows[r].rowHeight || geom.rowHeight;
         if (r % 2 === 0) {
-          var yTop = r * (geom.rowHeight + geom.rowGap);
           var stripe = document.createElementNS(svgNS, 'rect');
-          stripe.setAttribute('x', 0); stripe.setAttribute('y', yTop);
-          stripe.setAttribute('width', w); stripe.setAttribute('height', geom.rowHeight);
+          stripe.setAttribute('x', 0); stripe.setAttribute('y', _bsYTop);
+          stripe.setAttribute('width', w); stripe.setAttribute('height', _bsRowH);
           stripe.setAttribute('fill', darkMode ? '#1e293b' : '#f8fafc');
           svg.appendChild(stripe);
         }
         var sep = document.createElementNS(svgNS, 'line');
-        sep.setAttribute('x1', 0); sep.setAttribute('y1', r * (geom.rowHeight + geom.rowGap) + geom.rowHeight);
-        sep.setAttribute('x2', w); sep.setAttribute('y2', r * (geom.rowHeight + geom.rowGap) + geom.rowHeight);
+        sep.setAttribute('x1', 0); sep.setAttribute('y1', _bsYTop + _bsRowH);
+        sep.setAttribute('x2', w); sep.setAttribute('y2', _bsYTop + _bsRowH);
         sep.setAttribute('stroke', darkMode ? '#263248' : '#f1f5f9'); sep.setAttribute('stroke-width', 0.5);
         svg.appendChild(sep);
       }
@@ -3127,11 +3138,12 @@
           var rng = grpRanges[ghRow.discipline];
           if (!rng) continue;
           var grx1  = dateToX(rng.start), grx2 = dateToX(rng.end);
-          var gryT  = gr2 * (geom.rowHeight + geom.rowGap);
+          var gryT  = geom.rowYOffsets[gr2] || 0;
+          var ghRH  = ghRow.rowHeight || geom.rowHeight;
           var rollColor = (groupColors[ghRow.discipline]) || (rng.color) || '#0284c7';
           if (showGroupBars) {
-            var rollH = Math.max(10, geom.rowHeight - 14);
-            var rollY = gryT + (geom.rowHeight - rollH) / 2;
+            var rollH = Math.max(10, ghRH - 14);
+            var rollY = gryT + (ghRH - rollH) / 2;
             var rollup = document.createElementNS(svgNS, 'rect');
             rollup.setAttribute('x', Math.min(grx1, grx2));
             rollup.setAttribute('y', rollY);
@@ -3145,7 +3157,7 @@
             [grx1, grx2].forEach(function(cx) {
               var tick = document.createElementNS(svgNS, 'line');
               tick.setAttribute('x1', cx); tick.setAttribute('y1', gryT + 3);
-              tick.setAttribute('x2', cx); tick.setAttribute('y2', gryT + geom.rowHeight - 3);
+              tick.setAttribute('x2', cx); tick.setAttribute('y2', gryT + ghRH - 3);
               tick.setAttribute('stroke', rollColor); tick.setAttribute('stroke-width', 2);
               svg.appendChild(tick);
             });
@@ -3303,8 +3315,9 @@
       var x1   = dateToX(rng.start), x2 = dateToX(rng.end);
       var barX = Math.min(x1, x2);
       var barW = Math.max(8, Math.abs(x2 - x1));
-      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
-      var barH = geom.rowHeight - 8;
+      var yTop = geom.rowYOffsets[rowIdx] || 0;
+      var _dRH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
+      var barH = _dRH - 8;
       var barY = yTop + 4;
 
       var rect = document.createElementNS(svgNS, 'rect');
@@ -3362,13 +3375,16 @@
       var rowIdx = findRowIdx(task);
       if (rowIdx < 0) return;
 
-      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
+      var yTop = geom.rowYOffsets[rowIdx] || 0;
+      var _tbRowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
       var x1 = dateToX(task.start);
       var x2 = dateToX(task.end);
       var barX = Math.min(x1, x2);
       var barW = Math.max(8, Math.abs(x2 - x1));
-      var _flatLabelH = (flatMode && _flatMaxLabelLines > 0) ? (_flatMaxLabelLines * ganttBarFontSize + 2) : 0;
-      var barH = flatMode ? flatBarHeight : (geom.rowHeight - 8);
+      var _flatDisc = task.group || '';
+      var _flatLines = flatMode ? (_flatMaxLabelLines[_flatDisc] || 0) : 0;
+      var _flatLabelH = _flatLines > 0 ? (_flatLines * ganttBarFontSize + 2) : 0;
+      var barH = flatMode ? flatBarHeight : (_tbRowH - 8);
       var barY = yTop + (flatMode ? _flatLabelH + 2 : 4);
 
       // Store the actual date-derived x positions (not the clamped bar edges) so
@@ -3958,10 +3974,11 @@
     function renderMilestone(svg, task) {
       var rowIdx = findRowIdx(task);
       if (rowIdx < 0) return;
-      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
-      var yMid = yTop + geom.rowHeight / 2;
+      var yTop = geom.rowYOffsets[rowIdx] || 0;
+      var _mRowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
+      var yMid = yTop + _mRowH / 2;
       var x = dateToX(task.start);
-      var s = Math.min(10, geom.rowHeight / 2 - 2);
+      var s = Math.min(10, _mRowH / 2 - 2);
       // Register in barPositions so dependency arrows can connect to milestones.
       // Both x1 and x2 point to the same date x; arrows connect to that centre point.
       barPositions[task.id] = { x1: x, x2: x, midY: yMid };
@@ -4035,12 +4052,13 @@
     function renderFlag(svg, task) {
       var rowIdx = findRowIdx(task);
       if (rowIdx < 0) return;
-      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
-      var yMid = yTop + geom.rowHeight / 2;
+      var yTop = geom.rowYOffsets[rowIdx] || 0;
+      var _fRowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
+      var yMid = yTop + _fRowH / 2;
       var x = dateToX(task.start);
       // Register in barPositions so dependency arrows can connect to flags.
       barPositions[task.id] = { x1: x, x2: x, midY: yMid };
-      var poleH = Math.min(22, geom.rowHeight - 6);
+      var poleH = Math.min(22, _fRowH - 6);
       var topY = yMid - poleH / 2;
       var bottomY = yMid + poleH / 2;
       var flagH = Math.min(11, poleH * 0.55);
@@ -4140,9 +4158,10 @@
       var x = dateToX(task.start);
       // Clamp to visible chart area
       if (x < 0 || x > geom.bodyWidth) return;
-      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
-      var yMid = yTop + geom.rowHeight / 2;
-      var s = Math.max(4, Math.min(7, geom.rowHeight / 3)); // smaller than normal
+      var yTop = geom.rowYOffsets[rowIdx] || 0;
+      var _cmRowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
+      var yMid = yTop + _cmRowH / 2;
+      var s = Math.max(4, Math.min(7, _cmRowH / 3)); // smaller than normal
       barPositions[task.id] = { x1: x, x2: x, midY: yMid };
 
       var g = document.createElementNS(svgNS, 'g');
@@ -4186,9 +4205,10 @@
     function renderCollapsedFlag(svg, task, rowIdx) {
       var x = dateToX(task.start);
       if (x < 0 || x > geom.bodyWidth) return;
-      var yTop = rowIdx * (geom.rowHeight + geom.rowGap);
-      var yMid = yTop + geom.rowHeight / 2;
-      var poleH = Math.min(14, geom.rowHeight - 8);
+      var yTop = geom.rowYOffsets[rowIdx] || 0;
+      var _cfRowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
+      var yMid = yTop + _cfRowH / 2;
+      var poleH = Math.min(14, _cfRowH - 8);
       var topY   = yMid - poleH / 2;
       var botY   = yMid + poleH / 2;
       var flagH  = Math.min(7, poleH * 0.55);
@@ -6747,7 +6767,8 @@
           }
           // In flat mode: two label areas (above + below), alternating placement per task
           var _lgap = fs;
-          var _pLabelAreaH = (opts.flatMode && _flatMaxLabelLines > 0) ? (_flatMaxLabelLines * _lgap + 2) : 0;
+          var _pDiscLines = opts.flatMode ? ((_flatMaxLabelLines[row.disc] || 0)) : 0;
+          var _pLabelAreaH = _pDiscLines > 0 ? (_pDiscLines * _lgap + 2) : 0;
           var _fbH = opts.flatMode ? Math.max(4, Math.min(opts.flatBarHeight || 24, rowH - 2 * _pLabelAreaH - 4)) : rowH - 4;
           var _fbY = ry + (opts.flatMode ? _pLabelAreaH + 2 : Math.floor((rowH - _fbH) / 2));
           var _pFov = opts.flatLabelOverflow || 0;
