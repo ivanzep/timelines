@@ -327,10 +327,26 @@
     .zoom-display { min-width: 50px; text-align: center; font-size: 0.78rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
     .zoom-slider { width: 130px; accent-color: var(--accent); }
 
-    /* Display options checkboxes */
+    /* Display options checkboxes (legacy — kept for compatibility) */
     .checkbox-row { display: flex; gap: 12px; align-items: center; padding: 6px 10px; background: var(--bg-alt); border: 1px solid var(--border-strong); border-radius: 999px; }
     .checkbox-row label { display: flex; gap: 5px; align-items: center; font-size: 0.74rem; color: var(--text); margin: 0; text-transform: none; letter-spacing: normal; cursor: pointer; font-weight: 500; }
     .checkbox-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+
+    /* ── Settings bar (expanded toolbar) ───────────────── */
+    #toolbar-collapsible { flex-basis: 100%; }
+    .settings-bar { display:flex; align-items:stretch; gap:0; background:var(--bg-alt); border:1px solid var(--border-strong); border-radius:12px; overflow:hidden; flex-wrap:wrap; margin-top:4px; }
+    .sb-section { display:flex; flex-direction:column; gap:5px; padding:9px 13px 10px; }
+    .sb-section + .sb-section { border-left:1px solid var(--border); }
+    .sb-section.sb-sync { border-left:2px solid var(--border-strong); }
+    .sb-label { font-size:0.61rem; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--text-muted); padding-bottom:4px; border-bottom:1px solid var(--border); margin-bottom:1px; white-space:nowrap; }
+    .sb-row { display:flex; gap:5px; align-items:center; font-size:0.73rem; color:var(--text); white-space:nowrap; cursor:pointer; font-weight:500; margin:0; }
+    .sb-row input[type="checkbox"] { width:13px; height:13px; accent-color:var(--accent); cursor:pointer; margin:0; flex-shrink:0; }
+    .sb-slider-row { display:flex; gap:5px; align-items:center; font-size:0.71rem; color:var(--text); white-space:nowrap; }
+    .sb-slider { width:60px; accent-color:var(--accent); }
+    .sb-val { min-width:20px; font-size:0.68rem; color:var(--text-muted); font-variant-numeric:tabular-nums; text-align:right; }
+    .sb-color { width:24px; height:20px; padding:1px; border-radius:4px; border:1px solid var(--border-strong); cursor:pointer; }
+    .sb-number { width:40px; height:22px; padding:2px 4px; border-radius:6px; font-size:0.73rem; border:1px solid var(--border-strong); background:var(--panel-soft); color:var(--text); }
+    .sb-btn { width:100%; text-align:left; padding:3px 9px; font-size:0.71rem; margin:0; }
 
     /* GANTT - sticky grid layout */
     .gantt-container { background: var(--bg-alt); overflow: hidden; position: relative; }
@@ -698,7 +714,7 @@
     @media (max-width: 1100px) {
       .app-shell { padding: 12px 14px 16px; border-radius: 14px; }
       .toolbar { gap: 6px; }
-      #toolbar-collapsible { gap: 5px; }
+      .sb-slider { width: 48px; }
       .gantt-scroll { max-height: 62vh; }
     }
     @media (max-width: 820px) {
@@ -706,13 +722,12 @@
       .app-shell { border-radius: 10px; padding: 10px 10px 14px; }
       .meta-name { font-size: 1.1rem !important; }
       .toolbar { flex-wrap: wrap; gap: 5px; }
-      #toolbar-collapsible { flex-wrap: wrap; gap: 4px; }
       .gantt-scroll { max-height: 55vh; }
       .task-table-wrapper { max-height: 50vh; }
       .zoom-slider { width: 70px; }
-      /* Allow Show on Bars row to wrap on narrow viewports */
-      .checkbox-row { flex-wrap: wrap; border-radius: 12px; gap: 8px 10px; }
-      .checkbox-row input[type="range"] { width: 40px !important; }
+      .sb-section { padding: 7px 9px 8px; }
+      .sb-slider { width: 40px; }
+      .settings-bar { border-radius: 10px; }
     }
 
     #task-print-preview-area {
@@ -794,65 +809,98 @@
           <button id="toolbar-collapse-btn" title="Show/hide settings">▼ Settings</button>
 
           <div id="toolbar-collapsible">
+            <div class="settings-bar">
 
-          <div>
-            <div class="pill-label">Show on Bars</div>
-            <div class="checkbox-row">
-              <label><input type="checkbox" id="opt-name" checked /> Name</label>
-              <label><input type="checkbox" id="opt-phase" /> Group</label>
-              <label><input type="checkbox" id="opt-note" checked /> Status</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-flat-mode" /> Flat</label>
-              <label id="opt-flat-wrap-label" style="display:none;padding-left:8px;"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
-              <label id="opt-flat-barh-label" style="display:none;padding-left:8px;gap:5px;">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" style="width:55px;accent-color:var(--accent);" /> <span id="opt-flat-barh-val">24</span>px</label>
-              <label id="opt-flat-overflow-label" style="display:none;padding-left:8px;gap:5px;">Overflow <input type="range" id="opt-flat-overflow" min="0" max="400" value="0" step="10" style="width:55px;accent-color:var(--accent);" /> <span id="opt-flat-overflow-val">0</span>px</label>
-              <label id="opt-flat-outside-label" style="display:none;padding-left:8px;"><input type="checkbox" id="opt-flat-outside" /> Outside</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-today" checked /> Today</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-deps" checked /> Deps</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Font <input type="number" id="gantt-font-size" value="12" min="6" max="24" style="width:44px;height:22px;padding:2px 4px;border-radius:6px;font-size:0.74rem;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" /></label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Text <input type="color" id="gantt-text-color" value="#ffffff" style="width:28px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" /> <input type="checkbox" id="gantt-text-color-auto" checked style="width:13px;height:13px;cursor:pointer;" title="Auto text color based on bar brightness" /> Auto</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Tint <input type="range" id="opt-group-tint" min="0" max="100" value="30" style="width:55px;accent-color:var(--accent);" /> <span id="opt-group-tint-val">30</span>%</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Row <input type="range" id="opt-row-tint" min="0" max="100" value="50" style="width:55px;accent-color:var(--accent);" title="Task label column alternating row opacity" /> <span id="opt-row-tint-val">50</span>%</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px; gap:5px;">Hdr <input type="color" id="opt-header-color" value="#94a3b8" style="width:28px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" title="Group header row background color" /> <input type="range" id="opt-header-tint" min="0" max="100" value="30" style="width:55px;accent-color:var(--accent);" title="Header tint opacity" /> <span id="opt-header-tint-val">30</span>% <input type="color" id="opt-header-text-color" value="#0369a1" style="width:28px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" title="Group header text color" /></label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-match-hdr-color" /> Match Hdr Color</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-status-colors" /> Status Colors</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-rollup-ticks" checked /> Bar Ticks</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-show-group-bars" checked /> Group Bars</label>
-              <label style="border-left:1px solid var(--border-strong); padding-left:10px;"><input type="checkbox" id="opt-date-cols" /> Date Cols</label>
-              <label style="padding-left:8px;"><input type="checkbox" id="opt-dur-col" /> Duration</label>
+              <!-- Bar Labels -->
+              <div class="sb-section">
+                <div class="sb-label">Bar Labels</div>
+                <label class="sb-row"><input type="checkbox" id="opt-name" checked /> Name</label>
+                <label class="sb-row"><input type="checkbox" id="opt-phase" /> Group</label>
+                <label class="sb-row"><input type="checkbox" id="opt-note" checked /> Status</label>
+              </div>
+
+              <!-- Display -->
+              <div class="sb-section">
+                <div class="sb-label">Display</div>
+                <label class="sb-row"><input type="checkbox" id="opt-flat-mode" /> Flat</label>
+                <label class="sb-row"><input type="checkbox" id="opt-status-colors" /> Status Colors</label>
+                <label class="sb-row"><input type="checkbox" id="opt-today" checked /> Today</label>
+                <label class="sb-row"><input type="checkbox" id="opt-deps" checked /> Deps</label>
+              </div>
+
+              <!-- Flat Options (shown when Flat is on) -->
+              <div class="sb-section" id="flat-options-card" style="display:none;">
+                <div class="sb-label">Flat Options</div>
+                <label class="sb-row"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
+                <label class="sb-row"><input type="checkbox" id="opt-flat-outside" /> Outside</label>
+                <label class="sb-slider-row">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" class="sb-slider" /> <span class="sb-val" id="opt-flat-barh-val">24</span>px</label>
+                <label class="sb-slider-row">Overflow <input type="range" id="opt-flat-overflow" min="0" max="400" value="0" step="10" class="sb-slider" /> <span class="sb-val" id="opt-flat-overflow-val">0</span>px</label>
+              </div>
+
+              <!-- Text -->
+              <div class="sb-section">
+                <div class="sb-label">Text</div>
+                <label class="sb-slider-row">Font <input type="number" id="gantt-font-size" value="12" min="6" max="24" class="sb-number" /></label>
+                <label class="sb-slider-row">Color <input type="color" id="gantt-text-color" value="#ffffff" class="sb-color" title="Bar label color" /> <input type="checkbox" id="gantt-text-color-auto" checked style="width:12px;height:12px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;" title="Auto contrast" /> Auto</label>
+              </div>
+
+              <!-- Tint -->
+              <div class="sb-section">
+                <div class="sb-label">Tint</div>
+                <label class="sb-slider-row">Group <input type="range" id="opt-group-tint" min="0" max="100" value="30" class="sb-slider" /> <span class="sb-val" id="opt-group-tint-val">30</span>%</label>
+                <label class="sb-slider-row">Row&nbsp;&nbsp;&nbsp;&nbsp; <input type="range" id="opt-row-tint" min="0" max="100" value="50" class="sb-slider" title="Alternating row tint opacity" /> <span class="sb-val" id="opt-row-tint-val">50</span>%</label>
+              </div>
+
+              <!-- Header -->
+              <div class="sb-section">
+                <div class="sb-label">Header</div>
+                <label class="sb-slider-row">Bg <input type="color" id="opt-header-color" value="#94a3b8" class="sb-color" title="Group header background color" /> <input type="range" id="opt-header-tint" min="0" max="100" value="30" class="sb-slider" title="Header tint opacity" /> <span class="sb-val" id="opt-header-tint-val">30</span>%</label>
+                <label class="sb-slider-row">Text <input type="color" id="opt-header-text-color" value="#0369a1" class="sb-color" title="Group header text color" /></label>
+                <label class="sb-row"><input type="checkbox" id="opt-match-hdr-color" /> Match Bar Color</label>
+              </div>
+
+              <!-- Chart -->
+              <div class="sb-section">
+                <div class="sb-label">Chart</div>
+                <label class="sb-row"><input type="checkbox" id="opt-rollup-ticks" checked /> Bar Ticks</label>
+                <label class="sb-row"><input type="checkbox" id="opt-show-group-bars" checked /> Group Bars</label>
+                <label class="sb-row"><input type="checkbox" id="opt-date-cols" /> Date Cols</label>
+                <label class="sb-row"><input type="checkbox" id="opt-dur-col" /> Duration</label>
+              </div>
+
+              <!-- Sort Groups -->
+              <div class="sb-section">
+                <div class="sb-label">Sort Groups</div>
+                <button id="sort-groups-date-btn" class="secondary sb-btn" title="Sort by earliest task start date">📅 By Date</button>
+                <button id="sort-groups-alpha-btn" class="secondary sb-btn" title="Sort alphabetically A → Z">🔤 A → Z</button>
+                <button id="sort-groups-custom-btn" class="secondary sb-btn" title="Apply Task List drag order">↕ Custom</button>
+              </div>
+
+              <!-- Snap -->
+              <div class="sb-section">
+                <div class="sb-label">Snap</div>
+                <select id="snap-select" style="width:86px;">
+                  <option value="1">Day</option>
+                  <option value="7" selected>Week</option>
+                  <option value="0">None</option>
+                </select>
+              </div>
+
+              <!-- Google Sheets Sync -->
+              <div class="sb-section sb-sync">
+                <div class="sb-label">Google Sheets Sync</div>
+                <span class="sync-indicator" id="sync-indicator">
+                  <span class="sync-dot" id="sync-dot"></span>
+                  <span id="sync-label">Not connected</span>
+                </span>
+                <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                  <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
+                  <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
+                </div>
+                <span id="sheet-name-display" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title=""></span>
+              </div>
+
             </div>
-          </div>
-
-          <div>
-            <div class="pill-label">Sort Groups</div>
-            <div style="display:flex; gap:6px;">
-              <button id="sort-groups-date-btn" class="secondary" title="Sort discipline groups by earliest task start date">📅 By Date</button>
-              <button id="sort-groups-alpha-btn" class="secondary" title="Sort discipline groups alphabetically A → Z">🔤 A→Z</button>
-              <button id="sort-groups-custom-btn" class="secondary" title="Apply the order from the Task List drag-and-drop to the Gantt chart">↕ Custom</button>
-            </div>
-          </div>
-
-          <div>
-            <div class="pill-label">Snap</div>
-            <select id="snap-select" style="width:90px;">
-              <option value="1">Day</option>
-              <option value="7" selected>Week</option>
-              <option value="0">None</option>
-            </select>
-          </div>
-
-          <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px;">
-            <div class="pill-label">Google Sheets Sync</div>
-            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-              <span class="sync-indicator" id="sync-indicator">
-                <span class="sync-dot" id="sync-dot"></span>
-                <span id="sync-label">Not connected</span>
-              </span>
-              <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
-              <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
-              <span id="sheet-name-display" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title=""></span>
-            </div>
-          </div>
-
           </div><!-- /toolbar-collapsible -->
 
           <!-- Overflow menu — always visible, contains File / Actions / Setup / Theme -->
@@ -4958,22 +5006,15 @@
       optNote = document.getElementById('opt-note');
 
       var optFlatMode = document.getElementById('opt-flat-mode');
-      var optFlatWrapLabel = document.getElementById('opt-flat-wrap-label');
       var optFlatWrap = document.getElementById('opt-flat-wrap');
-      var optFlatBarhLabel = document.getElementById('opt-flat-barh-label');
       var optFlatBarh = document.getElementById('opt-flat-barh');
       var optFlatBarhVal = document.getElementById('opt-flat-barh-val');
-      var optFlatOverflowLabel = document.getElementById('opt-flat-overflow-label');
       var optFlatOverflow = document.getElementById('opt-flat-overflow');
       var optFlatOverflowVal = document.getElementById('opt-flat-overflow-val');
-      var optFlatOutsideLabel = document.getElementById('opt-flat-outside-label');
       var optFlatOutside = document.getElementById('opt-flat-outside');
       function _syncFlatWrapVisibility() {
-        var show = flatMode ? '' : 'none';
-        if (optFlatWrapLabel)     optFlatWrapLabel.style.display     = show;
-        if (optFlatBarhLabel)     optFlatBarhLabel.style.display     = show;
-        if (optFlatOverflowLabel) optFlatOverflowLabel.style.display = show;
-        if (optFlatOutsideLabel)  optFlatOutsideLabel.style.display  = show;
+        var flatCard = document.getElementById('flat-options-card');
+        if (flatCard) flatCard.style.display = flatMode ? '' : 'none';
       }
       if (optFlatMode) {
         optFlatMode.addEventListener('change', function() {
@@ -5839,19 +5880,11 @@
       var tlEl = document.getElementById('opt-today');
       if (tlEl) tlEl.checked = showTodayLine;
 
-      // Sync flat mode checkbox and dependent controls (Wrap + Bar H)
+      // Sync flat mode checkbox and Flat Options card visibility
       var fmEl = document.getElementById('opt-flat-mode');
       if (fmEl) fmEl.checked = flatMode;
-      // _syncFlatWrapVisibility is scoped inside init() — do it inline here instead
-      var _flatShow = flatMode ? '' : 'none';
-      var _fwLblEl   = document.getElementById('opt-flat-wrap-label');
-      var _fbhLblEl  = document.getElementById('opt-flat-barh-label');
-      var _fovLblEl  = document.getElementById('opt-flat-overflow-label');
-      var _foLblEl   = document.getElementById('opt-flat-outside-label');
-      if (_fwLblEl)  _fwLblEl.style.display  = _flatShow;
-      if (_fbhLblEl) _fbhLblEl.style.display  = _flatShow;
-      if (_fovLblEl) _fovLblEl.style.display  = _flatShow;
-      if (_foLblEl)  _foLblEl.style.display   = _flatShow;
+      var _flatCardEl = document.getElementById('flat-options-card');
+      if (_flatCardEl) _flatCardEl.style.display = flatMode ? '' : 'none';
 
       // Sync group tint slider
       if (s.groupTint !== undefined) {
