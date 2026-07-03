@@ -7708,6 +7708,16 @@
       return Math.max(1, Math.round(ms / 604800000));
     }
 
+    var tpZoom = 100; // task-list print preview zoom %
+    var _lastTpPgW = 816; // page width of last task print render (for Fit zoom)
+
+    function applyTpZoom() {
+      var wrapper = document.getElementById('tp-pages-wrapper');
+      if (wrapper) wrapper.style.zoom = (tpZoom / 100);
+      var zd = document.getElementById('tp-zoom-display');
+      if (zd) zd.textContent = tpZoom + '%';
+    }
+
     function renderTaskPrintPreview() {
       var opts = _tpGetOpts();
       var COLOR_MAP = STATUS_COLOR_MAP; // use the global — kept in sync with backend on every Load
@@ -7730,10 +7740,24 @@
       var usableW = opts.pw - mL - mR;
       var hdrH = 52;
 
+      // Filter tasks by active tab (milestones/flags tabs show only their type)
+      var tabTypeFilter = null;
+      if (currentTab === 'milestones') tabTypeFilter = 'milestone';
+      else if (currentTab === 'flags') tabTypeFilter = 'flag';
+      var srcTasks = tabTypeFilter ? tasks.filter(function(t) { return t.type === tabTypeFilter; }) : tasks;
+
+      // Update title label to reflect active tab
+      var titleEl = document.getElementById('tp-title-label');
+      if (titleEl) {
+        titleEl.textContent = tabTypeFilter === 'milestone' ? 'MILESTONES — PRINT PREVIEW'
+                            : tabTypeFilter === 'flag'      ? 'FLAGS — PRINT PREVIEW'
+                            : 'TASK LIST — PRINT PREVIEW';
+      }
+
       // Build ordered discipline list and rows — use taskListOrder (Task List drag order)
       var groupMap = {};
-      for (var i = 0; i < tasks.length; i++) {
-        var t = tasks[i];
+      for (var i = 0; i < srcTasks.length; i++) {
+        var t = srcTasks[i];
         var disc = t.group || t.discipline || 'OTHER';
         if (!groupMap[disc]) groupMap[disc] = [];
         groupMap[disc].push(t);
@@ -7794,6 +7818,12 @@
       var projSub  = (document.getElementById('meta-subtitle') || {}).value || 'PROJECT SCHEDULE';
       var today    = new Date();
       var todayStr = _tpFmtDate(today);
+
+      _lastTpPgW = opts.pw;
+      var wrapper = document.createElement('div');
+      wrapper.id = 'tp-pages-wrapper';
+      wrapper.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:20px; padding-bottom:24px;';
+      area.appendChild(wrapper);
 
       for (var pi = 0; pi < pageRows.length; pi++) {
         var pageDiv = document.createElement('div');
@@ -7870,8 +7900,9 @@
         }
         tbl.appendChild(tbody);
         pageDiv.appendChild(tbl);
-        area.appendChild(pageDiv);
+        wrapper.appendChild(pageDiv);
       }
+      applyTpZoom();
     }
 
     function openTaskPrintPreview() {
@@ -7902,6 +7933,18 @@
         document.getElementById(id).addEventListener('change', reRender);
       });
 
+      var tpZoomIn  = document.getElementById('tp-zoom-in');
+      var tpZoomOut = document.getElementById('tp-zoom-out');
+      var tpZoomFit = document.getElementById('tp-zoom-fit');
+      if (tpZoomIn)  tpZoomIn.addEventListener('click',  function() { tpZoom = Math.min(200, tpZoom + 10); applyTpZoom(); });
+      if (tpZoomOut) tpZoomOut.addEventListener('click', function() { tpZoom = Math.max(25,  tpZoom - 10); applyTpZoom(); });
+      if (tpZoomFit) tpZoomFit.addEventListener('click', function() {
+        var area = document.getElementById('task-print-preview-area');
+        if (!area || !_lastTpPgW) return;
+        tpZoom = Math.max(25, Math.min(200, Math.floor(((area.clientWidth - 48) / _lastTpPgW) * 100)));
+        applyTpZoom();
+      });
+
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && document.getElementById('task-print-overlay').style.display !== 'none') {
           closeTaskPrintPreview();
@@ -7920,7 +7963,7 @@
   <!-- ── Task Print Overlay ─────────────────────────────────────── -->
   <div id="task-print-overlay">
     <div id="task-print-ctrl-bar">
-      <span class="pr-title">TASK LIST — PRINT PREVIEW</span>
+      <span class="pr-title" id="tp-title-label">TASK LIST — PRINT PREVIEW</span>
       <div class="pr-sep"></div>
 
       <label>Size
@@ -7967,6 +8010,15 @@
       <label>B <input type="number" id="tp-mb" min="0" max="200" value="36" style="width:40px;" /></label>
       <label>L <input type="number" id="tp-ml" min="0" max="200" value="36" style="width:40px;" /></label>
       <label>R <input type="number" id="tp-mr" min="0" max="200" value="36" style="width:40px;" /></label>
+
+      <div class="pr-sep"></div>
+
+      <div class="pr-sep"></div>
+      <span style="color:#94a3b8;white-space:nowrap;font-size:0.78rem;">Zoom</span>
+      <button class="pr-zoom-btn" id="tp-zoom-out" title="Zoom out (−10%)">−</button>
+      <span id="tp-zoom-display" style="color:#7dd3fc;min-width:38px;text-align:center;font-weight:600;font-size:0.82rem;">100%</span>
+      <button class="pr-zoom-btn" id="tp-zoom-in" title="Zoom in (+10%)">+</button>
+      <button class="pr-zoom-btn" id="tp-zoom-fit" title="Fit page to window">Fit</button>
 
       <div class="pr-sep"></div>
 
