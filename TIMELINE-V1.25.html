@@ -296,9 +296,11 @@
     .topbar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
     .topbar-top-row { display: flex; align-items: flex-start; gap: 12px; padding-right: 54px; }
     /* ── Logo upload ── */
-    #logo-upload-area { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 90px; }
-    #logo-preview { max-width: 120px; max-height: 52px; object-fit: contain; border-radius: 4px; border: 1px solid var(--border); background: var(--panel-soft); padding: 2px; display: none; }
-    #logo-preview.has-logo { display: block; }
+    /* Logo display (topbar top-left) */
+    #logo-topbar { flex-shrink: 0; display: none; align-items: center; }
+    #logo-topbar.has-logo { display: flex; }
+    #logo-preview { object-fit: contain; border-radius: 4px; display: block; }
+    /* Logo remove button (inside settings bar) */
     #logo-remove-btn { font-size: 0.68rem; display: none; }
     #logo-remove-btn.has-logo { display: inline-flex; }
     /* ── Print zoom ── */
@@ -813,6 +815,9 @@
 
     <div class="topbar">
       <div class="topbar-top-row">
+        <div id="logo-topbar">
+          <img id="logo-preview" src="" alt="Project Logo" style="max-height:52px;max-width:140px;" />
+        </div>
         <div class="project-meta" style="flex:1; min-width:0;">
           <div class="meta-name-row">
             <input type="text" id="meta-name" class="meta-input meta-name" value="LA COSTA HOTEL" />
@@ -824,13 +829,9 @@
           </div>
           <textarea id="meta-note" class="meta-input meta-note" placeholder="Optional project note..."></textarea>
         </div>
-        <div id="logo-upload-area">
-          <img id="logo-preview" src="" alt="Project Logo" />
-          <button id="logo-upload-btn" class="secondary" style="font-size:0.72rem;padding:3px 9px;white-space:nowrap;" title="Upload a project logo (PNG, JPG, SVG)">⊕ Logo</button>
-          <input type="file" id="logo-file-input" accept="image/*" style="display:none;" />
-          <button id="logo-remove-btn" class="secondary danger" style="font-size:0.68rem;padding:2px 7px;" title="Remove logo">✕ Remove</button>
-        </div>
       </div>
+      <!-- Hidden file input for logo (triggered from settings bar) -->
+      <input type="file" id="logo-file-input" accept="image/*" style="display:none;" />
 
       <div class="toolbar" id="gantt-toolbar">
         <div class="toolbar-group">
@@ -963,6 +964,14 @@
                   <option value="7" selected>Week</option>
                   <option value="0">None</option>
                 </select>
+              </div>
+
+              <!-- Logo -->
+              <div class="sb-section">
+                <div class="sb-label">Logo</div>
+                <button id="logo-upload-btn" class="secondary sb-btn" title="Upload a project logo (PNG, JPG, SVG)">⊕ Upload</button>
+                <button id="logo-remove-btn" class="secondary danger sb-btn" title="Remove logo">✕ Remove</button>
+                <label class="sb-slider-row">Size <input type="range" id="logo-size" min="20" max="120" value="52" step="4" class="sb-slider" /> <span class="sb-val" id="logo-size-val">52</span>px</label>
               </div>
 
             </div>
@@ -1284,6 +1293,7 @@
     var taskRowTint        = 50;       // 0–100: opacity of grey alternating stripe in task label column (0=none, 50=default)
     var tableZebra         = true;     // alternating row tint in task properties table
     var projectLogo        = null;     // base64 data URL of uploaded logo (not persisted to sheet)
+    var logoDisplayH       = 52;      // display height of logo in topbar and print header (px)
     var prZoom             = 100;      // print preview zoom %
     var _lastPrintPgW      = 1056;    // page width of last print render (px), used for Fit zoom
     var currentTab   = 'gantt'; // 'gantt' | 'tasks' | 'milestones' | 'flags'
@@ -5197,14 +5207,33 @@
         });
       }
 
-      // Logo upload
-      var logoFileInput = document.getElementById('logo-file-input');
-      var logoPreviewEl = document.getElementById('logo-preview');
-      var logoRemovBtn  = document.getElementById('logo-remove-btn');
-      var logoUploadBtn = document.getElementById('logo-upload-btn');
+      // Logo upload (controls live in settings bar; preview in topbar top-left)
+      var logoFileInput  = document.getElementById('logo-file-input');
+      var logoPreviewEl  = document.getElementById('logo-preview');
+      var logoTopbarEl   = document.getElementById('logo-topbar');
+      var logoRemovBtn   = document.getElementById('logo-remove-btn');
+      var logoUploadBtn  = document.getElementById('logo-upload-btn');
+      var logoSizeEl     = document.getElementById('logo-size');
+      var logoSizeValEl  = document.getElementById('logo-size-val');
+
+      function _applyLogoSize() {
+        if (logoPreviewEl) {
+          logoPreviewEl.style.maxHeight = logoDisplayH + 'px';
+          logoPreviewEl.style.maxWidth  = Math.round(logoDisplayH * 3) + 'px';
+        }
+      }
+      _applyLogoSize();
+
       if (logoUploadBtn) {
         logoUploadBtn.addEventListener('click', function() {
           if (logoFileInput) logoFileInput.click();
+        });
+      }
+      if (logoSizeEl) {
+        logoSizeEl.addEventListener('input', function() {
+          logoDisplayH = parseInt(logoSizeEl.value, 10) || 52;
+          if (logoSizeValEl) logoSizeValEl.textContent = logoDisplayH;
+          _applyLogoSize();
         });
       }
       if (logoFileInput) {
@@ -5214,9 +5243,10 @@
           var reader = new FileReader();
           reader.onload = function(e) {
             projectLogo = e.target.result;
-            if (logoPreviewEl) { logoPreviewEl.src = projectLogo; logoPreviewEl.classList.add('has-logo'); }
-            if (logoRemovBtn)  { logoRemovBtn.classList.add('has-logo'); }
-            if (logoUploadBtn) logoUploadBtn.style.display = 'none';
+            if (logoPreviewEl) logoPreviewEl.src = projectLogo;
+            if (logoTopbarEl) logoTopbarEl.classList.add('has-logo');
+            if (logoRemovBtn) logoRemovBtn.classList.add('has-logo');
+            _applyLogoSize();
           };
           reader.readAsDataURL(file);
         });
@@ -5225,9 +5255,9 @@
         logoRemovBtn.addEventListener('click', function() {
           projectLogo = null;
           if (logoFileInput) logoFileInput.value = '';
-          if (logoPreviewEl) { logoPreviewEl.src = ''; logoPreviewEl.classList.remove('has-logo'); }
+          if (logoPreviewEl) logoPreviewEl.src = '';
+          if (logoTopbarEl) logoTopbarEl.classList.remove('has-logo');
           logoRemovBtn.classList.remove('has-logo');
-          if (logoUploadBtn) logoUploadBtn.style.display = '';
         });
       }
 
@@ -6778,10 +6808,8 @@
           while (wd2 < opts.sliceMax) {
             var wx = _pDateToX(wd2, opts.sliceMin, opts.sliceMax, tw);
             if (wx >= 0 && wx <= tw) {
+              line(mL+lw+wx, bodyY, mL+lw+wx, bodyY+opts.bodyH, '#e2e8f0', 0.4);
               line(mL+lw+wx, rulerY+subH, mL+lw+wx, rulerY+rH, '#cbd5e1', 0.5);
-              if (wx + 3 < tw)
-                txt(wd2.getDate() + '/' + (wd2.getMonth()+1),
-                    {x:mL+lw+wx+2, y:rulerY+rH-3, 'font-size':Math.max(4,fs-3), fill:'#64748b'});
             }
             wd2.setDate(wd2.getDate() + 7);
           }
