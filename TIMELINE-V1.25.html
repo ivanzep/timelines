@@ -438,7 +438,7 @@
     .grid-line-month { stroke: #cbd5e1; stroke-width: 0.7; }
     .grid-line-quarter { stroke: #94a3b8; stroke-width: 0.9; }
     .grid-line-year { stroke: #64748b; stroke-width: 1.2; }
-    .today-line { stroke: #0284c7; stroke-width: 1.5; stroke-dasharray: 4 3; }
+    .today-line { stroke-width: 1.5; stroke-dasharray: 4 3; }
     .task-label-big { font-weight: 800; fill: #ffffff; letter-spacing: 0.03em; pointer-events: none; }
     .task-label-sub { font-weight: 600; fill: rgba(255,255,255,0.9); letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; }
     .task-label-note { font-weight: 600; fill: rgba(255,255,255,0.85); letter-spacing: 0.06em; text-transform: uppercase; pointer-events: none; }
@@ -3072,13 +3072,13 @@
         }
       }
 
-      // Today line in ruler — overlaps the month/date calendar area
+      // Today line in ruler — overlaps month/date rows only (not year band at y=0–22)
       if (showTodayLine) {
         var todayA = new Date(); todayA.setHours(0,0,0,0);
         if (todayA >= geom.minDate && todayA <= geom.maxDate) {
           var txa = dateToX(todayA);
           var tlineA = document.createElementNS(svgNS, 'line');
-          tlineA.setAttribute('x1', txa); tlineA.setAttribute('y1', 0);
+          tlineA.setAttribute('x1', txa); tlineA.setAttribute('y1', 22);
           tlineA.setAttribute('x2', txa); tlineA.setAttribute('y2', h);
           tlineA.setAttribute('class', 'today-line');
           tlineA.setAttribute('stroke', todayLineColor);
