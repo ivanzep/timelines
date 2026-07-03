@@ -7506,9 +7506,20 @@
 
     // Print preview zoom helpers
     function applyPrintZoom() {
-      // Apply zoom to each page so their layout dimensions actually change (transform doesn't affect layout)
+      var scale = prZoom / 100;
+      // Use transform:scale on each page (avoids browser min-font-size clamping that CSS zoom triggers).
+      // Each page is inside a .print-page-slot whose dimensions are set to the scaled size so the
+      // flex container sees the correct layout footprint.
       document.querySelectorAll('#print-pages-wrapper .print-page').forEach(function(p) {
-        p.style.zoom = prZoom / 100;
+        var nW = parseInt(p.style.width)  || 1056;
+        var nH = parseInt(p.style.height) || 816;
+        p.style.transform = 'scale(' + scale + ')';
+        p.style.transformOrigin = 'top left';
+        var slot = p.parentElement;
+        if (slot && slot.classList.contains('print-page-slot')) {
+          slot.style.width  = Math.round(nW * scale) + 'px';
+          slot.style.height = Math.round(nH * scale) + 'px';
+        }
       });
       var zd = document.getElementById('pr-zoom-display');
       if (zd) zd.value = prZoom;
@@ -7632,7 +7643,11 @@
             logoH:        prLogoH
           });
 
-          container.appendChild(pageEl);
+          var prSlot = document.createElement('div');
+          prSlot.className = 'print-page-slot';
+          prSlot.style.cssText = 'flex-shrink:0; overflow:hidden;';
+          prSlot.appendChild(pageEl);
+          container.appendChild(prSlot);
 
           // Small label below each page (hidden on actual print)
           var lbl = document.createElement('div');
@@ -7877,9 +7892,17 @@
     var _lastTpPgW = 816; // page width of last task print render (for Fit zoom)
 
     function applyTpZoom() {
-      // Apply zoom to each page so their layout dimensions actually change (transform doesn't affect layout)
+      var scale = tpZoom / 100;
       document.querySelectorAll('#tp-pages-wrapper .tp-page').forEach(function(p) {
-        p.style.zoom = tpZoom / 100;
+        var nW = parseInt(p.getAttribute('data-pw')) || 816;
+        var nH = parseInt(p.getAttribute('data-ph')) || 1056;
+        p.style.transform = 'scale(' + scale + ')';
+        p.style.transformOrigin = 'top left';
+        var slot = p.parentElement;
+        if (slot && slot.classList.contains('tp-page-slot')) {
+          slot.style.width  = Math.round(nW * scale) + 'px';
+          slot.style.height = Math.round(nH * scale) + 'px';
+        }
       });
       var zd = document.getElementById('tp-zoom-display');
       if (zd) zd.value = tpZoom;
@@ -7993,9 +8016,16 @@
       area.appendChild(wrapper);
 
       for (var pi = 0; pi < pageRows.length; pi++) {
+        var tpSlot = document.createElement('div');
+        tpSlot.className = 'tp-page-slot';
+        tpSlot.style.cssText = 'flex-shrink:0; overflow:hidden;';
+        wrapper.appendChild(tpSlot);
+
         var pageDiv = document.createElement('div');
         pageDiv.className = 'tp-page';
-        pageDiv.style.cssText = 'width:' + opts.pw + 'px;min-height:' + opts.ph + 'px;padding:' + mT + 'px ' + mR + 'px ' + mB + 'px ' + mL + 'px;box-sizing:border-box;font-size:' + opts.fs + 'px;font-family:system-ui,sans-serif;';
+        pageDiv.setAttribute('data-pw', opts.pw);
+        pageDiv.setAttribute('data-ph', opts.ph);
+        pageDiv.style.cssText = 'width:' + opts.pw + 'px;min-height:' + opts.ph + 'px;padding:' + mT + 'px ' + mR + 'px ' + mB + 'px ' + mL + 'px;box-sizing:border-box;font-size:' + opts.fs + 'px;font-family:system-ui,sans-serif;transform-origin:top left;';
 
         // Page header
         var hdrDiv = document.createElement('div');
@@ -8074,7 +8104,7 @@
         }
         tbl.appendChild(tbody);
         pageDiv.appendChild(tbl);
-        wrapper.appendChild(pageDiv);
+        tpSlot.appendChild(pageDiv);
       }
       applyTpZoom();
     }
