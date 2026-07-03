@@ -318,6 +318,11 @@
     .meta-updated-label { font-size: 0.7rem; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.08em; }
     .meta-updated { font-size: 0.78rem; color: var(--text-muted); width: 150px; }
     .meta-note { font-size: 0.8rem; color: var(--text); width: 100%; min-height: 36px; max-height: 80px; resize: vertical; margin-top: 4px; }
+    #meta-details { display: flex; flex-direction: column; gap: 2px; overflow: hidden; transition: opacity 0.15s; }
+    #meta-details.collapsed { display: none; }
+    #meta-collapse-btn { flex-shrink: 0; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.75rem; padding: 2px 4px; line-height: 1; border-radius: 4px; opacity: 0.55; transition: opacity 0.15s, transform 0.2s; }
+    #meta-collapse-btn:hover { opacity: 1; background: var(--bg-alt); }
+    #meta-collapse-btn.collapsed { transform: rotate(-90deg); }
 
     .panel { background: var(--panel); border-radius: var(--radius-lg); border: 1px solid var(--border); padding: 14px 16px 16px; box-shadow: var(--shadow-card); }
     #gantt-panel { border: none; box-shadow: none; padding-left: 0; padding-right: 0; }
@@ -823,13 +828,16 @@
         <div class="project-meta" style="flex:1; min-width:0;">
           <div class="meta-name-row">
             <input type="text" id="meta-name" class="meta-input meta-name" value="LA COSTA HOTEL" />
+            <button id="meta-collapse-btn" title="Collapse / expand project details">▾</button>
           </div>
-          <input type="text" id="meta-subtitle" class="meta-input meta-subtitle" value="PROJECT SCHEDULE" />
-          <div class="meta-updated-wrap">
-            <span class="meta-updated-label">Updated:</span>
-            <input type="date" id="meta-updated" class="meta-input meta-updated" value="2026-05-14" />
+          <div id="meta-details">
+            <input type="text" id="meta-subtitle" class="meta-input meta-subtitle" value="PROJECT SCHEDULE" />
+            <div class="meta-updated-wrap">
+              <span class="meta-updated-label">Updated:</span>
+              <input type="date" id="meta-updated" class="meta-input meta-updated" value="2026-05-14" />
+            </div>
+            <textarea id="meta-note" class="meta-input meta-note" placeholder="Optional project note..."></textarea>
           </div>
-          <textarea id="meta-note" class="meta-input meta-note" placeholder="Optional project note..."></textarea>
         </div>
         <div id="logo-topbar">
           <img id="logo-preview" src="" alt="Project Logo" style="max-height:52px;max-width:140px;" />
@@ -1295,6 +1303,7 @@
     var DURATION_COL_W     = 60;       // width of the duration column
     var taskRowTint        = 50;       // 0–100: opacity of grey alternating stripe in task label column (0=none, 50=default)
     var tableZebra         = true;     // alternating row tint in task properties table
+    var metaDetailsCollapsed = false;  // whether the subtitle/date/note block is folded
     var projectLogo        = null;     // base64 data URL of uploaded logo (not persisted to sheet)
     var logoDisplayH       = 52;      // display height of logo in topbar and print header (px)
     var prZoom             = 100;      // print preview zoom %
@@ -5211,6 +5220,22 @@
         });
       }
 
+      // Meta-details collapse toggle
+      (function() {
+        var btn     = document.getElementById('meta-collapse-btn');
+        var details = document.getElementById('meta-details');
+        function _applyMetaCollapse() {
+          if (!btn || !details) return;
+          details.classList.toggle('collapsed', metaDetailsCollapsed);
+          btn.classList.toggle('collapsed', metaDetailsCollapsed);
+        }
+        _applyMetaCollapse();
+        if (btn) btn.addEventListener('click', function() {
+          metaDetailsCollapsed = !metaDetailsCollapsed;
+          _applyMetaCollapse();
+        });
+      })();
+
       // Logo upload (upload/remove in hamburger menu; size slider in settings; preview top-right)
       var logoFileInput  = document.getElementById('logo-file-input');
       var logoPreviewEl  = document.getElementById('logo-preview');
@@ -5934,6 +5959,7 @@
         projectNote:         projectMeta.note     || '',
         userLabelWidth:      userLabelWidth,
         ganttBarFontSize:    ganttBarFontSize,
+        metaDetailsCollapsed: metaDetailsCollapsed ? 'true' : 'false',
         showTodayLine:       showTodayLine ? 'true' : 'false',
         darkMode:            darkMode      ? 'true' : 'false',
         flatMode:            flatMode      ? 'true' : 'false',
@@ -6007,6 +6033,12 @@
 
       if (s.userLabelWidth    !== undefined) { userLabelWidth    = parseFloat(s.userLabelWidth)    || userLabelWidth; }
       if (s.ganttBarFontSize  !== undefined) { ganttBarFontSize  = parseFloat(s.ganttBarFontSize)  || ganttBarFontSize; }
+      if (s.metaDetailsCollapsed !== undefined) {
+        metaDetailsCollapsed = toBool(s.metaDetailsCollapsed);
+        var _md = document.getElementById('meta-details'), _mb = document.getElementById('meta-collapse-btn');
+        if (_md) _md.classList.toggle('collapsed', metaDetailsCollapsed);
+        if (_mb) _mb.classList.toggle('collapsed', metaDetailsCollapsed);
+      }
       if (s.showTodayLine     !== undefined) { showTodayLine     = toBool(s.showTodayLine); }
       if (s.flatMode          !== undefined) { flatMode          = toBool(s.flatMode); }
       if (s.flatTextWrap      !== undefined) {
