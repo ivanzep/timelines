@@ -1380,7 +1380,7 @@
     var showGroupBars      = true;     // when false, rollup bars on group header rows are hidden
     var showDateColumns    = false;    // when true, START and END date columns appear between label col and timeline
     var DATE_COL_W         = 160;      // total width of both date columns (80px each)
-    var showDurationColumn = false;    // when true, DURATION column appears to the right of END (or label if no date cols)
+    var showDurationColumn = true;     // DURATION column appears to the right of END (or label if no date cols)
     var DURATION_COL_W     = 60;       // width of the duration column
     var taskRowTint        = 50;       // 0–100: opacity of grey alternating stripe in task label column (0=none, 50=default)
     var tableZebra         = true;     // alternating row tint in task properties table
@@ -3101,7 +3101,7 @@
 
       // Precompute min-start / max-end per discipline for group header rows
       var discDateRange = {};
-      if (showDateColumns) {
+      if (showDateColumns || showDurationColumn) {
         tasks.forEach(function(t) {
           var disc = (t.group || '').toUpperCase();
           if (!discDateRange[disc]) {
