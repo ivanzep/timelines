@@ -970,7 +970,7 @@
                 <div class="sb-label">Display</div>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-mode" /> Flat</label>
                 <label class="sb-row"><input type="checkbox" id="opt-status-colors" /> Status Colors</label>
-                <label class="sb-row"><input type="checkbox" id="opt-today" checked /> Today</label>
+                <div class="sb-row" style="gap:6px;"><label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="opt-today" checked /> Today</label><input type="color" id="opt-today-color" value="#ef4444" title="Today line color" style="width:22px;height:18px;padding:0;border:1px solid var(--border-strong);border-radius:3px;cursor:pointer;background:none;" /></div>
                 <label class="sb-row"><input type="checkbox" id="opt-deps" checked /> Deps</label>
               </div>
 
@@ -1337,7 +1337,8 @@
     var _flatLabelPlacementMap = {}; // task.id → 'above'|'below'|'inside'; set by pre-pass each render
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
-    var showTodayLine = true;  // whether to draw the Today vertical line
+    var showTodayLine = true;       // whether to draw the Today vertical line
+    var todayLineColor = '#ef4444'; // Today line color (default: red)
     var barTextColor  = null;  // null = auto (contrast), hex string = manual override
     var groupColors    = {};   // { disciplineKey: '#rrggbb' } — rollup bar / separator / left-border accent ONLY (does NOT affect individual task bar fills)
     var selectedGroups = {};   // { disciplineKey: true } — groups checked for batch color edit
@@ -3071,6 +3072,21 @@
         }
       }
 
+      // Today line in ruler — overlaps the month/date calendar area
+      if (showTodayLine) {
+        var todayA = new Date(); todayA.setHours(0,0,0,0);
+        if (todayA >= geom.minDate && todayA <= geom.maxDate) {
+          var txa = dateToX(todayA);
+          var tlineA = document.createElementNS(svgNS, 'line');
+          tlineA.setAttribute('x1', txa); tlineA.setAttribute('y1', 0);
+          tlineA.setAttribute('x2', txa); tlineA.setAttribute('y2', h);
+          tlineA.setAttribute('class', 'today-line');
+          tlineA.setAttribute('stroke', todayLineColor);
+          tlineA.setAttribute('pointer-events', 'none');
+          svg.appendChild(tlineA);
+        }
+      }
+
       cellAxis.appendChild(svg);
     }
 
@@ -3529,6 +3545,7 @@
           tline.setAttribute('x1', tx); tline.setAttribute('y1', 0);
           tline.setAttribute('x2', tx); tline.setAttribute('y2', h);
           tline.setAttribute('class', 'today-line');
+          tline.setAttribute('stroke', todayLineColor);
           tline.setAttribute('pointer-events', 'none');
           svg.appendChild(tline);
         }
@@ -5514,10 +5531,15 @@
         renderGantt();
       });
 
-      // Today line toggle
+      // Today line toggle + color
       var optTodayEl = document.getElementById('opt-today');
       if (optTodayEl) optTodayEl.addEventListener('change', function() {
         showTodayLine = this.checked;
+        renderGantt();
+      });
+      var optTodayColorEl = document.getElementById('opt-today-color');
+      if (optTodayColorEl) optTodayColorEl.addEventListener('input', function() {
+        todayLineColor = this.value;
         renderGantt();
       });
 
@@ -6034,6 +6056,7 @@
         ganttBarFontSize:    ganttBarFontSize,
         metaDetailsCollapsed: metaDetailsCollapsed ? 'true' : 'false',
         showTodayLine:       showTodayLine ? 'true' : 'false',
+        todayLineColor:      todayLineColor,
         darkMode:            darkMode      ? 'true' : 'false',
         flatMode:            flatMode      ? 'true' : 'false',
         flatTextWrap:        flatTextWrap  ? 'true' : 'false',
@@ -6113,6 +6136,11 @@
         if (_mb) _mb.classList.toggle('collapsed', metaDetailsCollapsed);
       }
       if (s.showTodayLine     !== undefined) { showTodayLine     = toBool(s.showTodayLine); }
+      if (s.todayLineColor    !== undefined && s.todayLineColor) {
+        todayLineColor = s.todayLineColor;
+        var _tlcEl = document.getElementById('opt-today-color');
+        if (_tlcEl) _tlcEl.value = todayLineColor;
+      }
       if (s.flatMode          !== undefined) { flatMode          = toBool(s.flatMode); }
       if (s.flatTextWrap      !== undefined) {
         flatTextWrap = toBool(s.flatTextWrap);
