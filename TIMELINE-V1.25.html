@@ -573,6 +573,21 @@
     .sheets-steps li { margin-bottom:1px; }
     .sheets-modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
 
+    /* ── Status Colors Modal ───────────────────────────────────── */
+    #status-colors-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
+    #status-colors-overlay.open { display:flex; }
+    #status-colors-modal { background:var(--panel); border-radius:18px; padding:24px 24px 18px; width:380px; max-width:93vw; max-height:82vh; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(15,23,42,0.28); border:1px solid var(--border-strong); }
+    #status-colors-modal h3 { margin:0 0 14px; font-size:1rem; font-weight:800; display:flex; align-items:center; justify-content:space-between; }
+    #status-colors-modal h3 button { font-size:1rem; background:none; border:none; cursor:pointer; color:var(--text-muted); line-height:1; padding:2px 4px; border-radius:4px; }
+    #status-colors-modal h3 button:hover { color:var(--text); background:var(--panel-soft); }
+    #status-colors-list { overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:4px; }
+    .sc-row { display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:8px; }
+    .sc-row:hover { background:var(--panel-soft); }
+    .sc-row input[type="color"] { width:26px; height:22px; padding:0; border:1px solid var(--border-strong); border-radius:4px; cursor:pointer; flex-shrink:0; background:none; }
+    .sc-row .sc-name { flex:1; font-size:0.78rem; font-weight:600; letter-spacing:0.02em; }
+    .sc-row .sc-hex { font-size:0.7rem; color:var(--text-muted); font-variant-numeric:tabular-nums; width:56px; flex-shrink:0; }
+    #status-colors-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+
     /* ── Print Overlay ──────────────────────────────────────────── */
     #print-overlay {
       display: none;
@@ -871,7 +886,22 @@
           </label>
         </div>
         <div class="overflow-section">
+          <button id="status-colors-btn" title="Edit status bar colors">🎨 Status Colors</button>
+        </div>
+        <div class="overflow-section">
           <button id="sheets-config-btn" title="Configure Google Sheets connection">⚙ Setup</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Colors modal -->
+    <div id="status-colors-overlay">
+      <div id="status-colors-modal">
+        <h3>Status Colors <button id="status-colors-close" title="Close">✕</button></h3>
+        <div id="status-colors-list"></div>
+        <div id="status-colors-footer">
+          <button class="secondary" id="status-colors-reset">Reset Defaults</button>
+          <button class="primary" id="status-colors-done">Done</button>
         </div>
       </div>
     </div>
@@ -2271,17 +2301,6 @@
       statusSel.addEventListener('change', function() {
         task.note = statusSel.value;
         applyStatusSelectColor(statusSel, statusSel.value);
-        if (STATUS_COLOR_MAP[statusSel.value]) {
-          task.color = STATUS_COLOR_MAP[statusSel.value];
-          delete task.colorOverride;
-        } else if (statusSel.value === '') {
-          // Clearing status — also clear any colorOverride so the bar reverts to section/default color
-          delete task.colorOverride;
-        }
-        // Sync color picker and dot to the effective color so a subsequent picker interaction
-        // does not silently re-apply the now-stale pre-status-change color.
-        var effectiveColor = task.colorOverride || task.color || '#0284c7';
-        colorIn.value = effectiveColor;
         dot.style.backgroundColor = _effectiveBarColor(task);
         renderGantt();
       });
@@ -5723,7 +5742,6 @@
             if (!selectedTaskIds[t.id]) return;
             if (newStatus) {
               t.note = newStatus;
-              if (STATUS_COLOR_MAP[newStatus]) { t.color = STATUS_COLOR_MAP[newStatus]; delete t.colorOverride; }
             }
             if (applyColor && newColor) t.colorOverride = newColor;
             if (newDisc)  t.group = newDisc;
@@ -6607,6 +6625,88 @@
           menu.classList.remove('open');
         });
       })();
+      // ── Status Colors modal ──────────────────────────────────────
+      (function() {
+        var DEFAULT_STATUS_COLORS = {
+          'IN PROGRESS':'#16a34a','UPCOMING':'#f59e0b','DOWNSTREAM':'#8b5cf6',
+          'PENDING':'#d9c34a','COMPLETED':'#94a3b8','CANCELLED':'#dc2626',
+          '75% COMPLETE':'#22c55e','WAITING ON OTHERS':'#f97316','WITING ON THE CITY':'#f97316',
+          'UNDER REVIEW':'#06b6d4','URGENT':'#dc2626','ON HOLD':'#94a3b8',
+          'STAND BY':'#94a3b8','NEEDS ATTENTION':'#f97316','TBD':'#94a3b8',
+          'NOTE':'#60a5fa','RECEIVED':'#22c55e','APPROVED':'#16a34a','DECLINED':'#dc2626'
+        };
+
+        function buildStatusList() {
+          var list = document.getElementById('status-colors-list');
+          if (!list) return;
+          list.innerHTML = '';
+          Object.keys(STATUS_COLOR_MAP).forEach(function(status) {
+            var color = STATUS_COLOR_MAP[status];
+            var row = document.createElement('div');
+            row.className = 'sc-row';
+
+            var swatch = document.createElement('input');
+            swatch.type = 'color';
+            swatch.value = color;
+            swatch.title = status;
+
+            var nameEl = document.createElement('span');
+            nameEl.className = 'sc-name';
+            nameEl.textContent = status;
+            nameEl.style.color = color;
+
+            var hexEl = document.createElement('span');
+            hexEl.className = 'sc-hex';
+            hexEl.textContent = color;
+
+            swatch.addEventListener('input', function() {
+              STATUS_COLOR_MAP[status] = swatch.value;
+              nameEl.style.color = swatch.value;
+              hexEl.textContent = swatch.value;
+              renderGantt();
+              refreshTaskTable();
+            });
+
+            row.appendChild(swatch);
+            row.appendChild(nameEl);
+            row.appendChild(hexEl);
+            list.appendChild(row);
+          });
+        }
+
+        function openStatusColors() {
+          buildStatusList();
+          document.getElementById('status-colors-overlay').classList.add('open');
+        }
+        function closeStatusColors() {
+          document.getElementById('status-colors-overlay').classList.remove('open');
+        }
+
+        var openBtn = document.getElementById('status-colors-btn');
+        if (openBtn) openBtn.addEventListener('click', openStatusColors);
+
+        var closeBtn = document.getElementById('status-colors-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeStatusColors);
+
+        var doneBtn = document.getElementById('status-colors-done');
+        if (doneBtn) doneBtn.addEventListener('click', closeStatusColors);
+
+        var resetBtn = document.getElementById('status-colors-reset');
+        if (resetBtn) resetBtn.addEventListener('click', function() {
+          Object.keys(DEFAULT_STATUS_COLORS).forEach(function(k) {
+            STATUS_COLOR_MAP[k] = DEFAULT_STATUS_COLORS[k];
+          });
+          buildStatusList();
+          renderGantt();
+          refreshTaskTable();
+        });
+
+        var overlay = document.getElementById('status-colors-overlay');
+        if (overlay) overlay.addEventListener('click', function(e) {
+          if (e.target === overlay) closeStatusColors();
+        });
+      })();
+
       document.getElementById('sheets-modal-cancel').addEventListener('click', closeSheetsModal);
 
       document.getElementById('sheets-modal-test').addEventListener('click', function() {
