@@ -8079,7 +8079,7 @@
             var td = document.createElement('td');
             td.colSpan = cols.length;
             td.style.cssText = 'padding:0 8px;font-weight:700;font-size:' + (opts.fs+1) + 'px;letter-spacing:.08em;text-transform:uppercase;color:#0f172a;' +
-              (opts.showGridLines ? 'border-bottom:2px solid #cbd5e1;' : '') +
+              'border-bottom:' + (opts.showGridLines ? '2px solid #cbd5e1' : 'none') + ';' +
               'border-left:4px solid ' + discColor + ';';
             td.textContent = row.disc;
             tr.appendChild(td);
@@ -8091,7 +8091,7 @@
             var discColor2 = groupColors[row.disc] || '#64748b';
             cols.forEach(function(c) {
               var td2 = document.createElement('td');
-              td2.style.cssText = 'padding:0 6px;color:#1e293b;' + (opts.showGridLines ? 'border-bottom:1px solid #e2e8f0;' : '') + 'overflow:hidden;max-width:' + c.w + 'px;white-space:nowrap;text-overflow:ellipsis;';
+              td2.style.cssText = 'padding:0 6px;color:#1e293b;border-bottom:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';overflow:hidden;max-width:' + c.w + 'px;white-space:nowrap;text-overflow:ellipsis;';
               if (c.key === 'name') {
                 td2.style.borderLeft = '3px solid ' + discColor2;
                 td2.textContent = task.name || '';
