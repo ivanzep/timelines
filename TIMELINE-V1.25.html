@@ -296,13 +296,13 @@
     .topbar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
     .topbar-top-row { display: flex; align-items: flex-start; gap: 12px; padding-right: 54px; }
     /* ── Logo upload ── */
-    /* Logo display (topbar top-left) */
-    #logo-topbar { flex-shrink: 0; display: none; align-items: center; }
+    /* Logo display (topbar top-right) */
+    #logo-topbar { flex-shrink: 0; display: none; align-items: center; margin-left: 12px; }
     #logo-topbar.has-logo { display: flex; }
     #logo-preview { object-fit: contain; border-radius: 4px; display: block; }
-    /* Logo remove button (inside settings bar) */
-    #logo-remove-btn { font-size: 0.68rem; display: none; }
-    #logo-remove-btn.has-logo { display: inline-flex; }
+    /* Logo remove button (inside overflow/hamburger menu) */
+    #logo-remove-btn { display: none; }
+    #logo-remove-btn.has-logo { display: block; }
     /* ── Print zoom ── */
     #pr-zoom-display { color: #7dd3fc; min-width: 38px; text-align: center; font-weight: 600; font-size: 0.82rem; }
     .pr-zoom-btn { padding: 2px 9px !important; font-size: 0.82rem !important; }
@@ -808,6 +808,11 @@
           <button id="theme-toggle-btn" title="Toggle dark / light theme">🌙 Dark Mode</button>
         </div>
         <div class="overflow-section">
+          <div class="overflow-section-label">Logo</div>
+          <button id="logo-upload-btn">⊕ Upload Logo</button>
+          <button id="logo-remove-btn">✕ Remove Logo</button>
+        </div>
+        <div class="overflow-section">
           <button id="sheets-config-btn" title="Configure Google Sheets connection">⚙ Setup</button>
         </div>
       </div>
@@ -815,9 +820,6 @@
 
     <div class="topbar">
       <div class="topbar-top-row">
-        <div id="logo-topbar">
-          <img id="logo-preview" src="" alt="Project Logo" style="max-height:52px;max-width:140px;" />
-        </div>
         <div class="project-meta" style="flex:1; min-width:0;">
           <div class="meta-name-row">
             <input type="text" id="meta-name" class="meta-input meta-name" value="LA COSTA HOTEL" />
@@ -829,8 +831,11 @@
           </div>
           <textarea id="meta-note" class="meta-input meta-note" placeholder="Optional project note..."></textarea>
         </div>
+        <div id="logo-topbar">
+          <img id="logo-preview" src="" alt="Project Logo" style="max-height:52px;max-width:140px;" />
+        </div>
       </div>
-      <!-- Hidden file input for logo (triggered from settings bar) -->
+      <!-- Hidden file input for logo (triggered from hamburger menu) -->
       <input type="file" id="logo-file-input" accept="image/*" style="display:none;" />
 
       <div class="toolbar" id="gantt-toolbar">
@@ -966,11 +971,9 @@
                 </select>
               </div>
 
-              <!-- Logo -->
+              <!-- Logo size (upload/remove are in the ☰ hamburger menu) -->
               <div class="sb-section">
-                <div class="sb-label">Logo</div>
-                <button id="logo-upload-btn" class="secondary sb-btn" title="Upload a project logo (PNG, JPG, SVG)">⊕ Upload</button>
-                <button id="logo-remove-btn" class="secondary danger sb-btn" title="Remove logo">✕ Remove</button>
+                <div class="sb-label">Logo Size</div>
                 <label class="sb-slider-row">Size <input type="range" id="logo-size" min="20" max="120" value="52" step="4" class="sb-slider" /> <span class="sb-val" id="logo-size-val">52</span>px</label>
               </div>
 
@@ -5207,7 +5210,7 @@
         });
       }
 
-      // Logo upload (controls live in settings bar; preview in topbar top-left)
+      // Logo upload (upload/remove in hamburger menu; size slider in settings; preview top-right)
       var logoFileInput  = document.getElementById('logo-file-input');
       var logoPreviewEl  = document.getElementById('logo-preview');
       var logoTopbarEl   = document.getElementById('logo-topbar');
