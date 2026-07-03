@@ -3287,19 +3287,6 @@
         }
       }
 
-      // Today line
-      if (showTodayLine) {
-        var today = new Date(); today.setHours(0,0,0,0);
-        if (today >= geom.minDate && today <= geom.maxDate) {
-          var tx = dateToX(today);
-          var tline = document.createElementNS(svgNS, 'line');
-          tline.setAttribute('x1', tx); tline.setAttribute('y1', 0);
-          tline.setAttribute('x2', tx); tline.setAttribute('y2', h);
-          tline.setAttribute('class', 'today-line');
-          svg.appendChild(tline);
-        }
-      }
-
       // Dependency-arrow layer — inserted here so it sits BELOW bars/labels in SVG z-order.
       // barPositions is populated by renderTaskBar below; renderDependencyArrows fills this group.
       var arrowsLayer = document.createElementNS(svgNS, 'g');
@@ -3449,6 +3436,20 @@
           })(ah);
           gripsLayer.appendChild(dc);
         });
+      }
+
+      // Today line — appended last so it renders above all bars and arrows
+      if (showTodayLine) {
+        var todayD = new Date(); todayD.setHours(0,0,0,0);
+        if (todayD >= geom.minDate && todayD <= geom.maxDate) {
+          var tx = dateToX(todayD);
+          var tline = document.createElementNS(svgNS, 'line');
+          tline.setAttribute('x1', tx); tline.setAttribute('y1', 0);
+          tline.setAttribute('x2', tx); tline.setAttribute('y2', h);
+          tline.setAttribute('class', 'today-line');
+          tline.setAttribute('pointer-events', 'none');
+          svg.appendChild(tline);
+        }
       }
 
       svg.appendChild(gripsLayer);
