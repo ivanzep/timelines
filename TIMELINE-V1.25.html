@@ -556,13 +556,22 @@
     #print-ctrl-bar, #task-print-ctrl-bar {
       background: var(--bg);
       border-bottom: 1px solid var(--border-strong);
-      padding: 8px 14px;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .pr-fixed-bar {
       display: flex;
       align-items: center;
       gap: 10px;
-      flex-shrink: 0;
+      padding: 8px 14px;
       flex-wrap: wrap;
     }
+    .pr-settings-panel {
+      padding: 0 14px 8px;
+      display: flex;
+    }
+    .pr-settings-panel.collapsed { display: none; }
     .pr-overlay-title {
       font-size: 0.67rem;
       font-weight: 800;
@@ -572,6 +581,24 @@
       white-space: nowrap;
       flex-shrink: 0;
     }
+    .pr-toggle-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--panel-soft);
+      border: 1px solid var(--border-strong);
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.72rem;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: background 0.1s;
+    }
+    .pr-toggle-btn:hover { background: var(--border); }
+    .pr-toggle-chevron { font-size: 0.65rem; transition: transform 0.2s; display: inline-block; }
+    .pr-toggle-btn.collapsed .pr-toggle-chevron { transform: rotate(-90deg); }
     .pr-card {
       flex: 1;
       min-width: 0;
@@ -7662,6 +7689,16 @@
         applyPrintZoom();
       });
 
+      // Settings panel toggle
+      var prSettingsToggle = document.getElementById('pr-settings-toggle');
+      var prSettingsPanel  = document.getElementById('pr-settings-panel');
+      if (prSettingsToggle && prSettingsPanel) {
+        prSettingsToggle.addEventListener('click', function() {
+          var collapsed = prSettingsPanel.classList.toggle('collapsed');
+          prSettingsToggle.classList.toggle('collapsed', collapsed);
+        });
+      }
+
       // Close on Escape
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && document.getElementById('print-overlay').style.display !== 'none') {
@@ -7967,6 +8004,16 @@
         applyTpZoom();
       });
 
+      // Settings panel toggle
+      var tpSettingsToggle = document.getElementById('tp-settings-toggle');
+      var tpSettingsPanel  = document.getElementById('tp-settings-panel');
+      if (tpSettingsToggle && tpSettingsPanel) {
+        tpSettingsToggle.addEventListener('click', function() {
+          var collapsed = tpSettingsPanel.classList.toggle('collapsed');
+          tpSettingsToggle.classList.toggle('collapsed', collapsed);
+        });
+      }
+
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && document.getElementById('task-print-overlay').style.display !== 'none') {
           closeTaskPrintPreview();
@@ -7985,65 +8032,66 @@
   <!-- ── Task Print Overlay ─────────────────────────────────────── -->
   <div id="task-print-overlay">
     <div id="task-print-ctrl-bar">
-      <span class="pr-overlay-title" id="tp-title-label">TASK LIST — PRINT PREVIEW</span>
-      <div class="pr-card">
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Page</div>
-          <div class="pr-row">Size <select id="tp-size" class="pr-select">
-            <option value="letter">Letter 8.5×11</option>
-            <option value="tabloid">Tabloid 11×17</option>
-            <option value="legal">Legal 8.5×14</option>
-            <option value="archd">Arch D 24×36</option>
-            <option value="a4">A4</option>
-            <option value="a3">A3</option>
-          </select></div>
-          <div class="pr-row">Orient <select id="tp-orient" class="pr-select">
-            <option value="portrait">Portrait</option>
-            <option value="landscape">Landscape</option>
-          </select></div>
+      <div class="pr-fixed-bar">
+        <span class="pr-overlay-title" id="tp-title-label">TASK LIST — PRINT PREVIEW</span>
+        <button class="pr-toggle-btn" id="tp-settings-toggle">⚙ Settings <span class="pr-toggle-chevron">▾</span></button>
+        <div class="pr-zoom-ctrl">
+          <button class="pr-zoom-btn" id="tp-zoom-out" title="Zoom out (−10%)">−</button>
+          <span id="tp-zoom-display" class="pr-zoom-display">100%</span>
+          <button class="pr-zoom-btn" id="tp-zoom-in" title="Zoom in (+10%)">+</button>
+          <button class="pr-zoom-btn" id="tp-zoom-fit" title="Fit page to window">Fit</button>
         </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Text</div>
-          <div class="pr-row">Font <input type="range" id="tp-font" class="pr-slider" min="6" max="14" value="9" /> <span class="pr-val" id="tp-font-val">9</span>pt</div>
-          <div class="pr-row">Row ht <input type="range" id="tp-rowh" class="pr-slider" min="14" max="40" value="20" /> <span class="pr-val" id="tp-rowh-val">20</span>px</div>
+        <div class="pr-actions">
+          <button id="tp-print-btn">⬜ Print</button>
+          <button id="tp-close-btn">✕ Close</button>
         </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Columns</div>
-          <label class="pr-row"><input type="checkbox" id="tp-col-dates" checked /> Dates</label>
-          <label class="pr-row"><input type="checkbox" id="tp-col-dur" checked /> Duration</label>
-          <label class="pr-row"><input type="checkbox" id="tp-col-status" checked /> Status</label>
-          <label class="pr-row"><input type="checkbox" id="tp-col-notes" checked /> Notes</label>
-          <label class="pr-row"><input type="checkbox" id="tp-col-type" /> Type</label>
-        </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Margins</div>
-          <div class="pr-row">T <input type="number" id="tp-mt" class="pr-num" min="0" max="200" value="36" /> B <input type="number" id="tp-mb" class="pr-num" min="0" max="200" value="36" /></div>
-          <div class="pr-row">L <input type="number" id="tp-ml" class="pr-num" min="0" max="200" value="36" /> R <input type="number" id="tp-mr" class="pr-num" min="0" max="200" value="36" /></div>
-        </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Logo</div>
-          <div class="pr-row">H <input type="range" id="tp-logo-h" class="pr-slider" min="16" max="80" value="42" /> <span class="pr-val" id="tp-logo-h-val">42</span>px</div>
-        </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Zoom</div>
-          <div class="pr-row pr-zoom-ctrl">
-            <button class="pr-zoom-btn" id="tp-zoom-out" title="Zoom out (−10%)">−</button>
-            <span id="tp-zoom-display" class="pr-zoom-display">100%</span>
-            <button class="pr-zoom-btn" id="tp-zoom-in" title="Zoom in (+10%)">+</button>
-            <button class="pr-zoom-btn" id="tp-zoom-fit" title="Fit page to window">Fit</button>
-          </div>
-        </div>
-
       </div>
-      <div class="pr-actions">
-        <button id="tp-print-btn">⬜ Print</button>
-        <button id="tp-close-btn">✕ Close</button>
+      <div class="pr-settings-panel" id="tp-settings-panel">
+        <div class="pr-card">
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Page</div>
+            <div class="pr-row">Size <select id="tp-size" class="pr-select">
+              <option value="letter">Letter 8.5×11</option>
+              <option value="tabloid">Tabloid 11×17</option>
+              <option value="legal">Legal 8.5×14</option>
+              <option value="archd">Arch D 24×36</option>
+              <option value="a4">A4</option>
+              <option value="a3">A3</option>
+            </select></div>
+            <div class="pr-row">Orient <select id="tp-orient" class="pr-select">
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select></div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Text</div>
+            <div class="pr-row">Font <input type="range" id="tp-font" class="pr-slider" min="6" max="14" value="9" /> <span class="pr-val" id="tp-font-val">9</span>pt</div>
+            <div class="pr-row">Row ht <input type="range" id="tp-rowh" class="pr-slider" min="14" max="40" value="20" /> <span class="pr-val" id="tp-rowh-val">20</span>px</div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Columns</div>
+            <label class="pr-row"><input type="checkbox" id="tp-col-dates" checked /> Dates</label>
+            <label class="pr-row"><input type="checkbox" id="tp-col-dur" checked /> Duration</label>
+            <label class="pr-row"><input type="checkbox" id="tp-col-status" checked /> Status</label>
+            <label class="pr-row"><input type="checkbox" id="tp-col-notes" checked /> Notes</label>
+            <label class="pr-row"><input type="checkbox" id="tp-col-type" /> Type</label>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Margins</div>
+            <div class="pr-row">T <input type="number" id="tp-mt" class="pr-num" min="0" max="200" value="36" /> B <input type="number" id="tp-mb" class="pr-num" min="0" max="200" value="36" /></div>
+            <div class="pr-row">L <input type="number" id="tp-ml" class="pr-num" min="0" max="200" value="36" /> R <input type="number" id="tp-mr" class="pr-num" min="0" max="200" value="36" /></div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Logo</div>
+            <div class="pr-row">H <input type="range" id="tp-logo-h" class="pr-slider" min="16" max="80" value="42" /> <span class="pr-val" id="tp-logo-h-val">42</span>px</div>
+          </div>
+
+        </div>
       </div>
     </div>
     <div id="task-print-preview-area"></div>
@@ -8052,72 +8100,73 @@
   <!-- ── Print Mode Overlay ──────────────────────────────────────── -->
   <div id="print-overlay">
     <div id="print-ctrl-bar">
-      <span class="pr-overlay-title">GANTT — PRINT PREVIEW</span>
-      <div class="pr-card">
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Page</div>
-          <div class="pr-row">Size <select id="pr-size" class="pr-select">
-            <option value="tabloid">Tabloid 11×17</option>
-            <option value="archd">Arch D 24×36</option>
-            <option value="letter">Letter 8.5×11</option>
-            <option value="legal">Legal 8.5×14</option>
-            <option value="a3">A3</option>
-            <option value="a4">A4</option>
-          </select></div>
-          <div class="pr-row">Orient <select id="pr-orient" class="pr-select">
-            <option value="landscape">Landscape</option>
-            <option value="portrait">Portrait</option>
-          </select></div>
+      <div class="pr-fixed-bar">
+        <span class="pr-overlay-title">GANTT — PRINT PREVIEW</span>
+        <button class="pr-toggle-btn" id="pr-settings-toggle">⚙ Settings <span class="pr-toggle-chevron">▾</span></button>
+        <div class="pr-zoom-ctrl">
+          <button class="pr-zoom-btn" id="pr-zoom-out" title="Zoom out (−10%)">−</button>
+          <span id="pr-zoom-display" class="pr-zoom-display">100%</span>
+          <button class="pr-zoom-btn" id="pr-zoom-in" title="Zoom in (+10%)">+</button>
+          <button class="pr-zoom-btn" id="pr-zoom-fit" title="Fit page to window">Fit</button>
         </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Layout</div>
-          <div class="pr-row">Label <input type="range" id="pr-labelw" class="pr-slider" min="80" max="320" value="180" /> <span class="pr-val" id="pr-labelw-val">180</span>px</div>
-          <div class="pr-row">Row ht <input type="range" id="pr-rowh" class="pr-slider" min="14" max="200" value="22" /> <span class="pr-val" id="pr-rowh-val">22</span>px</div>
-          <div class="pr-row">Font <input type="range" id="pr-font" class="pr-slider" min="5" max="14" value="8" /> <span class="pr-val" id="pr-font-val">8</span>pt</div>
+        <div class="pr-actions">
+          <button id="pr-print-btn">⬜ Print</button>
+          <button id="pr-close-btn">✕ Close</button>
         </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Date Range</div>
-          <div class="pr-row">From <input type="date" id="pr-from" class="pr-date" /></div>
-          <div class="pr-row">To <input type="date" id="pr-to" class="pr-date" /></div>
-        </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Options</div>
-          <label class="pr-row"><input type="checkbox" id="pr-split" /> Split pages</label>
-          <label class="pr-row" id="pr-months-wrap" style="display:none;">Months/pg <input type="number" id="pr-months" class="pr-num" min="1" max="36" value="6" /></label>
-          <label class="pr-row"><input type="checkbox" id="pr-deps" checked /> Deps</label>
-          <label class="pr-row"><input type="checkbox" id="pr-date-cols" /> Date cols</label>
-          <label class="pr-row"><input type="checkbox" id="pr-dur-col" /> Duration</label>
-        </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Margins</div>
-          <div class="pr-row">T <input type="number" id="pr-mt" class="pr-num" min="0" max="200" value="36" /> B <input type="number" id="pr-mb" class="pr-num" min="0" max="200" value="36" /></div>
-          <div class="pr-row">L <input type="number" id="pr-ml" class="pr-num" min="0" max="200" value="36" /> R <input type="number" id="pr-mr" class="pr-num" min="0" max="200" value="36" /></div>
-        </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Logo</div>
-          <div class="pr-row">H <input type="range" id="pr-logo-h" class="pr-slider" min="16" max="80" value="42" /> <span class="pr-val" id="pr-logo-h-val">42</span>px</div>
-        </div>
-
-        <div class="pr-section">
-          <div class="pr-sec-label">Zoom</div>
-          <div class="pr-row pr-zoom-ctrl">
-            <button class="pr-zoom-btn" id="pr-zoom-out" title="Zoom out (−10%)">−</button>
-            <span id="pr-zoom-display" class="pr-zoom-display">100%</span>
-            <button class="pr-zoom-btn" id="pr-zoom-in" title="Zoom in (+10%)">+</button>
-            <button class="pr-zoom-btn" id="pr-zoom-fit" title="Fit page to window">Fit</button>
-          </div>
-        </div>
-
       </div>
-      <div class="pr-actions">
-        <button id="pr-print-btn">⬜ Print</button>
-        <button id="pr-close-btn">✕ Close</button>
+      <div class="pr-settings-panel" id="pr-settings-panel">
+        <div class="pr-card">
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Page</div>
+            <div class="pr-row">Size <select id="pr-size" class="pr-select">
+              <option value="tabloid">Tabloid 11×17</option>
+              <option value="archd">Arch D 24×36</option>
+              <option value="letter">Letter 8.5×11</option>
+              <option value="legal">Legal 8.5×14</option>
+              <option value="a3">A3</option>
+              <option value="a4">A4</option>
+            </select></div>
+            <div class="pr-row">Orient <select id="pr-orient" class="pr-select">
+              <option value="landscape">Landscape</option>
+              <option value="portrait">Portrait</option>
+            </select></div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Layout</div>
+            <div class="pr-row">Label <input type="range" id="pr-labelw" class="pr-slider" min="80" max="320" value="180" /> <span class="pr-val" id="pr-labelw-val">180</span>px</div>
+            <div class="pr-row">Row ht <input type="range" id="pr-rowh" class="pr-slider" min="14" max="200" value="22" /> <span class="pr-val" id="pr-rowh-val">22</span>px</div>
+            <div class="pr-row">Font <input type="range" id="pr-font" class="pr-slider" min="5" max="14" value="8" /> <span class="pr-val" id="pr-font-val">8</span>pt</div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Date Range</div>
+            <div class="pr-row">From <input type="date" id="pr-from" class="pr-date" /></div>
+            <div class="pr-row">To <input type="date" id="pr-to" class="pr-date" /></div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Options</div>
+            <label class="pr-row"><input type="checkbox" id="pr-split" /> Split pages</label>
+            <label class="pr-row" id="pr-months-wrap" style="display:none;">Months/pg <input type="number" id="pr-months" class="pr-num" min="1" max="36" value="6" /></label>
+            <label class="pr-row"><input type="checkbox" id="pr-deps" checked /> Deps</label>
+            <label class="pr-row"><input type="checkbox" id="pr-date-cols" /> Date cols</label>
+            <label class="pr-row"><input type="checkbox" id="pr-dur-col" /> Duration</label>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Margins</div>
+            <div class="pr-row">T <input type="number" id="pr-mt" class="pr-num" min="0" max="200" value="36" /> B <input type="number" id="pr-mb" class="pr-num" min="0" max="200" value="36" /></div>
+            <div class="pr-row">L <input type="number" id="pr-ml" class="pr-num" min="0" max="200" value="36" /> R <input type="number" id="pr-mr" class="pr-num" min="0" max="200" value="36" /></div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Logo</div>
+            <div class="pr-row">H <input type="range" id="pr-logo-h" class="pr-slider" min="16" max="80" value="42" /> <span class="pr-val" id="pr-logo-h-val">42</span>px</div>
+          </div>
+
+        </div>
       </div>
     </div>
 
