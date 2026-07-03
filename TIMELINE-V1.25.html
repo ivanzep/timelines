@@ -8030,23 +8030,26 @@
         pageDiv.className = 'tp-page';
         pageDiv.setAttribute('data-pw', opts.pw);
         pageDiv.setAttribute('data-ph', opts.ph);
-        pageDiv.style.cssText = 'width:' + opts.pw + 'px;min-height:' + opts.ph + 'px;padding:' + mT + 'px ' + mR + 'px ' + mB + 'px ' + mL + 'px;box-sizing:border-box;font-size:' + opts.fs + 'px;font-family:system-ui,sans-serif;transform-origin:top left;';
+        pageDiv.style.cssText = 'width:' + opts.pw + 'px;min-height:' + opts.ph + 'px;padding:' + mT + 'px ' + mR + 'px ' + mB + 'px ' + mL + 'px;box-sizing:border-box;font-size:' + opts.fs + 'px;font-family:system-ui,sans-serif;transform-origin:top left;position:relative;';
 
-        // Page header
+        // Page header — project name/subtitle left, logo right
         var hdrDiv = document.createElement('div');
         hdrDiv.className = 'tp-page-header';
         hdrDiv.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #cbd5e1;';
         var logoHtml = projectLogo
-          ? '<img src="' + projectLogo + '" style="max-height:' + tpLogoH + 'px;max-width:' + Math.round(tpLogoH * 3.5) + 'px;object-fit:contain;display:block;margin-bottom:4px;margin-left:auto;" />'
+          ? '<img src="' + projectLogo + '" style="max-height:' + tpLogoH + 'px;max-width:' + Math.round(tpLogoH * 3.5) + 'px;object-fit:contain;display:block;" />'
           : '';
         hdrDiv.innerHTML =
           '<div><div style="font-size:' + (opts.fs+3) + 'px;font-weight:800;letter-spacing:.06em;color:#0f172a;">' + projName + '</div>' +
           '<div style="font-size:' + (opts.fs-1) + 'px;color:#64748b;letter-spacing:.04em;">' + projSub + '</div></div>' +
-          '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;">' +
-          logoHtml +
-          '<div style="font-size:' + (opts.fs-1) + 'px;color:#64748b;text-align:right;white-space:nowrap;">Printed ' + todayStr + '<br>Page ' + (pi+1) + ' of ' + totalPages + '</div>' +
-          '</div>';
+          (logoHtml ? '<div style="flex-shrink:0;">' + logoHtml + '</div>' : '');
         pageDiv.appendChild(hdrDiv);
+
+        // Page footer — date and page number pinned to bottom-right
+        var ftrDiv = document.createElement('div');
+        ftrDiv.style.cssText = 'position:absolute;bottom:' + Math.max(8, mB) + 'px;right:' + Math.max(8, mR) + 'px;font-size:' + Math.max(7, opts.fs - 2) + 'px;color:#94a3b8;text-align:right;white-space:nowrap;line-height:1.5;font-family:system-ui,sans-serif;';
+        ftrDiv.innerHTML = 'Printed ' + todayStr + '&nbsp;&nbsp;|&nbsp;&nbsp;Page ' + (pi+1) + ' of ' + totalPages;
+        pageDiv.appendChild(ftrDiv);
 
         // Table
         var tbl = document.createElement('table');
