@@ -312,7 +312,7 @@
     .meta-input { border: 1px solid transparent; border-radius: 6px; padding: 3px 8px; background: transparent; color: var(--text); outline: none; font-family: inherit; }
     .meta-input:hover { border-color: var(--border); background: var(--panel-soft); }
     .meta-input:focus { border-color: var(--accent); background: var(--bg-alt); box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15); }
-    .meta-name { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.04em; width: 100%; }
+    .meta-name { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.04em; flex: 1; min-width: 0; }
     .meta-subtitle { font-size: 0.95rem; color: var(--text-muted); letter-spacing: 0.05em; width: 100%; font-weight: 500; }
     .meta-updated-wrap { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
     .meta-updated-label { font-size: 0.7rem; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.08em; }
@@ -6645,21 +6645,29 @@
     // flat mode → one disc row per group; normal mode → group headers + tasks,
     // collapsed groups show only their header (no task rows).
     function _buildPrintRows() {
+      // Filter tasks by current tab context (milestones / flags tabs print only their type)
+      var typeFilter = null;
+      var collapsedRef = ganttCollapsedGroups;
+      if (currentTab === 'milestones') { typeFilter = 'milestone'; collapsedRef = milestonesCollapsedGroups; }
+      else if (currentTab === 'flags') { typeFilter = 'flag';      collapsedRef = flagsCollapsedGroups; }
+
+      var srcTasks = typeFilter ? tasks.filter(function(t) { return t.type === typeFilter; }) : tasks;
+
       var groupMap = {}, seenG = {}, orderedDiscs = [];
       for (var j = 0; j < disciplineOrder.length; j++) {
         var dk = disciplineOrder[j];
         if (!seenG[dk]) { orderedDiscs.push(dk); seenG[dk] = true; }
       }
-      for (var i = 0; i < tasks.length; i++) {
-        var kg = tasks[i].group;
+      for (var i = 0; i < srcTasks.length; i++) {
+        var kg = srcTasks[i].group;
         if (!kg) continue;
         if (!seenG[kg]) { orderedDiscs.push(kg); seenG[kg] = true; }
         if (!groupMap[kg]) groupMap[kg] = [];
-        groupMap[kg].push(tasks[i]);
+        groupMap[kg].push(srcTasks[i]);
       }
       var rows = [];
-      if (flatMode) {
-        // One aggregated row per discipline (all tasks overlap within it)
+      if (flatMode && !typeFilter) {
+        // One aggregated row per discipline (all tasks overlap within it) — only in gantt/tasks tab
         for (var g = 0; g < orderedDiscs.length; g++) {
           var disc = orderedDiscs[g];
           var gtasks = groupMap[disc] || [];
@@ -6673,7 +6681,7 @@
           var gtasks = groupMap[disc] || [];
           if (!gtasks.length) continue;
           rows.push({ type: 'gh', disc: disc });
-          if (!ganttCollapsedGroups[disc]) {
+          if (!collapsedRef[disc]) {
             for (var t2 = 0; t2 < gtasks.length; t2++) {
               rows.push({ type: 'task', task: gtasks[t2] });
             }
