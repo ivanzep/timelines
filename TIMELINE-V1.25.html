@@ -652,6 +652,9 @@
     #pr-print-btn:hover, #tp-print-btn:hover { opacity: 0.88; }
     #pr-close-btn, #tp-close-btn { background: var(--panel-soft); color: var(--text); border: 1px solid var(--border-strong); padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 0.77rem; font-weight: 600; white-space: nowrap; }
     #pr-close-btn:hover, #tp-close-btn:hover { background: var(--border); }
+    .pr-pdf-btn { background: #16a34a; color: #fff; font-weight: 700; border: none; padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 0.77rem; white-space: nowrap; }
+    .pr-pdf-btn:hover { opacity: 0.88; }
+    .pr-pdf-btn:disabled { opacity: 0.55; cursor: wait; }
     .pr-zoom-ctrl { display: flex; gap: 4px; align-items: center; }
     .pr-zoom-btn { background: var(--panel-soft); border: 1px solid var(--border-strong); color: var(--text); padding: 2px 8px; border-radius: 5px; cursor: pointer; font-size: 0.78rem; font-weight: 600; line-height: 1.4; }
     .pr-zoom-btn:hover { background: var(--border); }
@@ -7644,12 +7647,83 @@
       document.getElementById('print-overlay').style.display = 'none';
     }
 
+    // ── PDF export ────────────────────────────────────────────────
+    function _loadScript(src) {
+      return new Promise(function(resolve, reject) {
+        if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
+        var s = document.createElement('script');
+        s.src = src; s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    async function _exportPagesToPDF(pageSelector, pgW, pgH, filename) {
+      await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+      await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+
+      var pages = document.querySelectorAll(pageSelector);
+      if (!pages.length) { alert('No pages to export. Open print preview first.'); return; }
+
+      var scale = Math.min(2, Math.floor(6000 / Math.max(pgW, pgH)));
+      scale = Math.max(1, scale);
+      var orient = pgW > pgH ? 'l' : 'p';
+      var { jsPDF } = window.jspdf;
+      var pdf = new jsPDF({ orientation: orient, unit: 'px', format: [pgW, pgH] });
+
+      for (var i = 0; i < pages.length; i++) {
+        if (i > 0) pdf.addPage([pgW, pgH], orient);
+        var canvas = await html2canvas(pages[i], {
+          scale: scale, useCORS: true, logging: false, backgroundColor: '#ffffff'
+        });
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, pgW, pgH);
+      }
+      pdf.save(filename);
+    }
+
+    async function exportGanttPDF() {
+      var btn = document.getElementById('pr-export-pdf-btn');
+      var orig = btn ? btn.textContent : '';
+      if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
+      var sizeKey = document.getElementById('pr-size').value;
+      var orient  = document.getElementById('pr-orient').value;
+      var s  = PRINT_PAGE_SIZES[sizeKey] || PRINT_PAGE_SIZES.tabloid;
+      var pgW = orient === 'landscape' ? Math.max(s.w,s.h) : Math.min(s.w,s.h);
+      var pgH = orient === 'landscape' ? Math.min(s.w,s.h) : Math.max(s.w,s.h);
+      var savedZoom = prZoom; prZoom = 100; applyPrintZoom();
+      try {
+        await _exportPagesToPDF('#print-pages-wrapper .print-page', pgW, pgH, 'timeline-gantt.pdf');
+      } finally {
+        prZoom = savedZoom; applyPrintZoom();
+        if (btn) { btn.textContent = orig; btn.disabled = false; }
+      }
+    }
+
+    async function exportTaskPDF() {
+      var btn = document.getElementById('tp-export-pdf-btn');
+      var orig = btn ? btn.textContent : '';
+      if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
+      var sz   = document.getElementById('tp-size').value;
+      var land = document.getElementById('tp-orient').value === 'landscape';
+      var dims = TASK_PRINT_SIZES[sz] || TASK_PRINT_SIZES.letter;
+      var pgW  = land ? Math.max(dims.w, dims.h) : Math.min(dims.w, dims.h);
+      var pgH  = land ? Math.min(dims.w, dims.h) : Math.max(dims.w, dims.h);
+      var savedZoom = tpZoom; tpZoom = 100; applyTpZoom();
+      try {
+        await _exportPagesToPDF('#tp-pages-wrapper .tp-page', pgW, pgH, 'timeline-tasks.pdf');
+      } finally {
+        tpZoom = savedZoom; applyTpZoom();
+        if (btn) { btn.textContent = orig; btn.disabled = false; }
+      }
+    }
+
     // Wire up print controls once DOM is ready
     function initPrintMode() {
       document.getElementById('print-preview-btn').addEventListener('click', openPrintPreview);
       document.getElementById('export-svg-btn').addEventListener('click', exportChartSVG);
       document.getElementById('pr-close-btn').addEventListener('click', closePrintPreview);
       document.getElementById('pr-print-btn').addEventListener('click', function() { window.print(); });
+      var prPdfBtn = document.getElementById('pr-export-pdf-btn');
+      if (prPdfBtn) prPdfBtn.addEventListener('click', exportGanttPDF);
 
       // Live-update preview on any control change
       var reRender = function() { renderPrintPreview(); };
@@ -7973,6 +8047,8 @@
       if (taskPrintBtn) taskPrintBtn.addEventListener('click', openTaskPrintPreview);
       document.getElementById('tp-close-btn').addEventListener('click', closeTaskPrintPreview);
       document.getElementById('tp-print-btn').addEventListener('click', function() { window.print(); });
+      var tpPdfBtn = document.getElementById('tp-export-pdf-btn');
+      if (tpPdfBtn) tpPdfBtn.addEventListener('click', exportTaskPDF);
 
       var reRender = function() { renderTaskPrintPreview(); };
       ['tp-size','tp-orient','tp-mt','tp-mb','tp-ml','tp-mr'].forEach(function(id) {
@@ -8042,6 +8118,7 @@
           <button class="pr-zoom-btn" id="tp-zoom-fit" title="Fit page to window">Fit</button>
         </div>
         <div class="pr-actions">
+          <button class="pr-pdf-btn" id="tp-export-pdf-btn">⬇ Export PDF</button>
           <button id="tp-print-btn">⬜ Print</button>
           <button id="tp-close-btn">✕ Close</button>
         </div>
@@ -8110,6 +8187,7 @@
           <button class="pr-zoom-btn" id="pr-zoom-fit" title="Fit page to window">Fit</button>
         </div>
         <div class="pr-actions">
+          <button class="pr-pdf-btn" id="pr-export-pdf-btn">⬇ Export PDF</button>
           <button id="pr-print-btn">⬜ Print</button>
           <button id="pr-close-btn">✕ Close</button>
         </div>
