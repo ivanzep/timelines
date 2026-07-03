@@ -658,7 +658,9 @@
     .pr-zoom-ctrl { display: flex; gap: 4px; align-items: center; }
     .pr-zoom-btn { background: var(--panel-soft); border: 1px solid var(--border-strong); color: var(--text); padding: 2px 8px; border-radius: 5px; cursor: pointer; font-size: 0.78rem; font-weight: 600; line-height: 1.4; }
     .pr-zoom-btn:hover { background: var(--border); }
-    #pr-zoom-display, #tp-zoom-display { font-size: 0.71rem; font-weight: 600; color: var(--text-muted); min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
+    #pr-zoom-display, #tp-zoom-display { font-size: 0.71rem; font-weight: 600; color: var(--text); width: 42px; text-align: center; font-variant-numeric: tabular-nums; background: var(--panel-soft); border: 1px solid var(--border-strong); border-radius: 4px; padding: 1px 4px; height: 22px; }
+    #pr-zoom-display::-webkit-inner-spin-button, #tp-zoom-display::-webkit-inner-spin-button { display: none; }
+    #pr-zoom-display::-webkit-outer-spin-button, #tp-zoom-display::-webkit-outer-spin-button { display: none; }
 
     #print-preview-area {
       flex: 1;
@@ -7474,9 +7476,16 @@
     // Print preview zoom helpers
     function applyPrintZoom() {
       var wrapper = document.getElementById('print-pages-wrapper');
-      if (wrapper) wrapper.style.zoom = (prZoom / 100);
+      if (wrapper) {
+        var scale = prZoom / 100;
+        wrapper.style.transform = '';
+        var naturalH = wrapper.scrollHeight;
+        wrapper.style.transform = 'scale(' + scale + ')';
+        wrapper.style.transformOrigin = 'top center';
+        wrapper.style.marginBottom = Math.round(naturalH * (scale - 1)) + 'px';
+      }
       var zd = document.getElementById('pr-zoom-display');
-      if (zd) zd.textContent = prZoom + '%';
+      if (zd) zd.value = prZoom;
     }
 
     // Main render function — called whenever a control changes
@@ -7754,6 +7763,7 @@
       var prZoomInBtn  = document.getElementById('pr-zoom-in');
       var prZoomOutBtn = document.getElementById('pr-zoom-out');
       var prZoomFitBtn = document.getElementById('pr-zoom-fit');
+      var prZoomInput  = document.getElementById('pr-zoom-display');
       if (prZoomInBtn)  prZoomInBtn.addEventListener('click', function() { prZoom = Math.min(200, prZoom + 10); applyPrintZoom(); });
       if (prZoomOutBtn) prZoomOutBtn.addEventListener('click', function() { prZoom = Math.max(25,  prZoom - 10); applyPrintZoom(); });
       if (prZoomFitBtn) prZoomFitBtn.addEventListener('click', function() {
@@ -7762,6 +7772,14 @@
         prZoom = Math.max(25, Math.min(200, Math.floor(((area.clientWidth - 48) / _lastPrintPgW) * 100)));
         applyPrintZoom();
       });
+      if (prZoomInput) {
+        var _prCommitZoom = function() {
+          var v = parseInt(prZoomInput.value, 10);
+          if (!isNaN(v)) { prZoom = Math.max(25, Math.min(200, v)); applyPrintZoom(); }
+        };
+        prZoomInput.addEventListener('change', _prCommitZoom);
+        prZoomInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); _prCommitZoom(); } });
+      }
 
       // Settings panel toggle
       var prSettingsToggle = document.getElementById('pr-settings-toggle');
@@ -7834,9 +7852,16 @@
 
     function applyTpZoom() {
       var wrapper = document.getElementById('tp-pages-wrapper');
-      if (wrapper) wrapper.style.zoom = (tpZoom / 100);
+      if (wrapper) {
+        var scale = tpZoom / 100;
+        wrapper.style.transform = '';
+        var naturalH = wrapper.scrollHeight;
+        wrapper.style.transform = 'scale(' + scale + ')';
+        wrapper.style.transformOrigin = 'top center';
+        wrapper.style.marginBottom = Math.round(naturalH * (scale - 1)) + 'px';
+      }
       var zd = document.getElementById('tp-zoom-display');
-      if (zd) zd.textContent = tpZoom + '%';
+      if (zd) zd.value = tpZoom;
     }
 
     function renderTaskPrintPreview() {
@@ -8068,9 +8093,10 @@
         document.getElementById(id).addEventListener('change', reRender);
       });
 
-      var tpZoomIn  = document.getElementById('tp-zoom-in');
-      var tpZoomOut = document.getElementById('tp-zoom-out');
-      var tpZoomFit = document.getElementById('tp-zoom-fit');
+      var tpZoomIn    = document.getElementById('tp-zoom-in');
+      var tpZoomOut   = document.getElementById('tp-zoom-out');
+      var tpZoomFit   = document.getElementById('tp-zoom-fit');
+      var tpZoomInput = document.getElementById('tp-zoom-display');
       if (tpZoomIn)  tpZoomIn.addEventListener('click',  function() { tpZoom = Math.min(200, tpZoom + 10); applyTpZoom(); });
       if (tpZoomOut) tpZoomOut.addEventListener('click', function() { tpZoom = Math.max(25,  tpZoom - 10); applyTpZoom(); });
       if (tpZoomFit) tpZoomFit.addEventListener('click', function() {
@@ -8079,6 +8105,14 @@
         tpZoom = Math.max(25, Math.min(200, Math.floor(((area.clientWidth - 48) / _lastTpPgW) * 100)));
         applyTpZoom();
       });
+      if (tpZoomInput) {
+        var _tpCommitZoom = function() {
+          var v = parseInt(tpZoomInput.value, 10);
+          if (!isNaN(v)) { tpZoom = Math.max(25, Math.min(200, v)); applyTpZoom(); }
+        };
+        tpZoomInput.addEventListener('change', _tpCommitZoom);
+        tpZoomInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); _tpCommitZoom(); } });
+      }
 
       // Settings panel toggle
       var tpSettingsToggle = document.getElementById('tp-settings-toggle');
@@ -8113,7 +8147,7 @@
         <button class="pr-toggle-btn" id="tp-settings-toggle">⚙ Settings <span class="pr-toggle-chevron">▾</span></button>
         <div class="pr-zoom-ctrl">
           <button class="pr-zoom-btn" id="tp-zoom-out" title="Zoom out (−10%)">−</button>
-          <span id="tp-zoom-display" class="pr-zoom-display">100%</span>
+          <input type="number" id="tp-zoom-display" class="pr-zoom-display" value="100" min="25" max="200" step="10" title="Zoom % (25–200)" /><span style="font-size:0.68rem;color:var(--text-muted);margin-left:-2px;">%</span>
           <button class="pr-zoom-btn" id="tp-zoom-in" title="Zoom in (+10%)">+</button>
           <button class="pr-zoom-btn" id="tp-zoom-fit" title="Fit page to window">Fit</button>
         </div>
@@ -8182,7 +8216,7 @@
         <button class="pr-toggle-btn" id="pr-settings-toggle">⚙ Settings <span class="pr-toggle-chevron">▾</span></button>
         <div class="pr-zoom-ctrl">
           <button class="pr-zoom-btn" id="pr-zoom-out" title="Zoom out (−10%)">−</button>
-          <span id="pr-zoom-display" class="pr-zoom-display">100%</span>
+          <input type="number" id="pr-zoom-display" class="pr-zoom-display" value="100" min="25" max="200" step="10" title="Zoom % (25–200)" /><span style="font-size:0.68rem;color:var(--text-muted);margin-left:-2px;">%</span>
           <button class="pr-zoom-btn" id="pr-zoom-in" title="Zoom in (+10%)">+</button>
           <button class="pr-zoom-btn" id="pr-zoom-fit" title="Fit page to window">Fit</button>
         </div>
