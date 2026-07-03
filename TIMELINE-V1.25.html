@@ -303,9 +303,6 @@
     /* Logo remove button (inside overflow/hamburger menu) */
     #logo-remove-btn { display: none; }
     #logo-remove-btn.has-logo { display: block; }
-    /* ── Print zoom ── */
-    #pr-zoom-display { color: #7dd3fc; min-width: 38px; text-align: center; font-weight: 600; font-size: 0.82rem; }
-    .pr-zoom-btn { padding: 2px 9px !important; font-size: 0.82rem !important; }
     .project-meta { display: flex; flex-direction: column; gap: 2px; }
     .meta-name-row { display: flex; align-items: center; gap: 8px; }
     .logo-dot { width: 14px; height: 14px; border-radius: 999px; background: radial-gradient(circle at 30% 30%, #bae6fd 0, #0284c7 40%, #075985 100%); box-shadow: 0 0 12px rgba(2, 132, 199, 0.5); flex-shrink: 0; }
@@ -550,73 +547,89 @@
       display: none;
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: #1e293b;
       z-index: 9000;
       flex-direction: column;
       overflow: hidden;
     }
-    #print-ctrl-bar {
-      background: #0f172a;
-      color: #e2e8f0;
+
+    /* ── Shared print ctrl bar — settings-card style ── */
+    #print-ctrl-bar, #task-print-ctrl-bar {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border-strong);
       padding: 8px 14px;
       display: flex;
       align-items: center;
       gap: 10px;
-      flex-wrap: wrap;
-      border-bottom: 2px solid #0ea5e9;
       flex-shrink: 0;
-      font-size: 0.78rem;
+      flex-wrap: wrap;
     }
-    #print-ctrl-bar .pr-title {
-      font-weight: 700;
-      font-size: 0.85rem;
-      letter-spacing: 0.06em;
-      color: #7dd3fc;
-      margin-right: 4px;
+    .pr-overlay-title {
+      font-size: 0.67rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      white-space: nowrap;
+      flex-shrink: 0;
     }
-    #print-ctrl-bar label {
+    .pr-card {
+      flex: 1;
+      min-width: 0;
       display: flex;
-      align-items: center;
+      align-items: stretch;
+      gap: 0;
+      background: var(--bg-alt);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      overflow: hidden;
+      flex-wrap: wrap;
+    }
+    .pr-section {
+      display: flex;
+      flex-direction: column;
       gap: 4px;
-      color: #94a3b8;
+      padding: 7px 11px 8px;
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .pr-section:last-child { border-right: none; }
+    .pr-sec-label {
+      font-size: 0.59rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding-bottom: 3px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1px;
       white-space: nowrap;
     }
-    #print-ctrl-bar select,
-    #print-ctrl-bar input[type="date"],
-    #print-ctrl-bar input[type="number"] {
-      background: #1e293b;
-      color: #e2e8f0;
-      border: 1px solid #334155;
-      border-radius: 4px;
-      padding: 2px 5px;
-      font-size: 0.76rem;
+    .pr-row {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      font-size: 0.71rem;
+      color: var(--text);
+      white-space: nowrap;
+      font-weight: 500;
+      cursor: default;
     }
-    #print-ctrl-bar input[type="range"] {
-      accent-color: #0ea5e9;
-      width: 60px;
-    }
-    #print-ctrl-bar .pr-sep {
-      width: 1px;
-      height: 20px;
-      background: #334155;
-      flex-shrink: 0;
-    }
-    #print-ctrl-bar .pr-val {
-      color: #7dd3fc;
-      min-width: 22px;
-      text-align: right;
-    }
-    #print-ctrl-bar button {
-      padding: 4px 12px;
-      border-radius: 5px;
-      font-size: 0.78rem;
-      cursor: pointer;
-      border: none;
-    }
-    #pr-print-btn  { background: #0ea5e9; color: #fff; font-weight: 600; }
-    #pr-print-btn:hover { background: #0284c7; }
-    #pr-close-btn  { background: #475569; color: #e2e8f0; }
-    #pr-close-btn:hover { background: #64748b; }
+    .pr-row input[type="checkbox"] { width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer; margin: 0; flex-shrink: 0; }
+    .pr-slider { width: 52px; accent-color: var(--accent); }
+    .pr-num { width: 36px; height: 20px; padding: 1px 4px; border-radius: 4px; font-size: 0.7rem; border: 1px solid var(--border-strong); background: var(--panel-soft); color: var(--text); text-align: center; }
+    .pr-select { background: var(--panel-soft); color: var(--text); border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 5px; font-size: 0.7rem; }
+    .pr-date { background: var(--panel-soft); color: var(--text); border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 5px; font-size: 0.7rem; width: 118px; }
+    .pr-val { min-width: 20px; font-size: 0.67rem; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+    .pr-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+    #pr-print-btn, #tp-print-btn { background: var(--accent); color: #fff; font-weight: 700; border: none; padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 0.77rem; white-space: nowrap; }
+    #pr-print-btn:hover, #tp-print-btn:hover { opacity: 0.88; }
+    #pr-close-btn, #tp-close-btn { background: var(--panel-soft); color: var(--text); border: 1px solid var(--border-strong); padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 0.77rem; font-weight: 600; white-space: nowrap; }
+    #pr-close-btn:hover, #tp-close-btn:hover { background: var(--border); }
+    .pr-zoom-ctrl { display: flex; gap: 4px; align-items: center; }
+    .pr-zoom-btn { background: var(--panel-soft); border: 1px solid var(--border-strong); color: var(--text); padding: 2px 8px; border-radius: 5px; cursor: pointer; font-size: 0.78rem; font-weight: 600; line-height: 1.4; }
+    .pr-zoom-btn:hover { background: var(--border); }
+    #pr-zoom-display, #tp-zoom-display { font-size: 0.71rem; font-weight: 600; color: var(--text-muted); min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
+
     #print-preview-area {
       flex: 1;
       overflow: auto;
@@ -625,6 +638,7 @@
       flex-direction: column;
       align-items: center;
       gap: 20px;
+      background: #1e293b;
     }
     .print-page {
       background: white;
@@ -697,36 +711,8 @@
       inset: 0;
       z-index: 9000;
       flex-direction: column;
-      background: #e2e8f0;
       overflow: hidden;
     }
-    #task-print-ctrl-bar {
-      background: #0f172a;
-      color: #e2e8f0;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 16px;
-      flex-shrink: 0;
-      flex-wrap: wrap;
-      font-size: 0.78rem;
-    }
-    #task-print-ctrl-bar .pr-title { font-weight: 700; font-size: 0.85rem; margin-right: 4px; }
-    #task-print-ctrl-bar label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-    #task-print-ctrl-bar select,
-    #task-print-ctrl-bar input[type="number"] {
-      background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
-      border-radius: 5px; padding: 3px 6px; font-size: 0.76rem;
-    }
-    #task-print-ctrl-bar input[type="range"] { accent-color: #0ea5e9; width: 60px; }
-    #task-print-ctrl-bar input[type="checkbox"] { accent-color: #0ea5e9; width: 14px; height: 14px; }
-    #task-print-ctrl-bar .pr-sep { width: 1px; height: 20px; background: #334155; flex-shrink: 0; }
-    #task-print-ctrl-bar .pr-val { color: #7dd3fc; min-width: 22px; text-align: right; }
-    #task-print-ctrl-bar button { padding: 4px 12px; border-radius: 5px; cursor: pointer; font-size: 0.78rem; border: none; }
-    #tp-print-btn  { background: #0ea5e9; color: #fff; font-weight: 600; }
-    #tp-print-btn:hover { background: #0284c7; }
-    #tp-close-btn  { background: #475569; color: #e2e8f0; }
-    #tp-close-btn:hover { background: #64748b; }
 
     /* ---- Overflow / hamburger menu ---- */
     .overflow-menu-wrapper { position: absolute; top: 16px; right: 20px; z-index: 500; }
@@ -773,6 +759,7 @@
     #task-print-preview-area {
       flex: 1; overflow-y: auto; padding: 24px; display: flex;
       flex-direction: column; align-items: center; gap: 24px;
+      background: #e2e8f0;
     }
     .tp-page {
       background: white; box-shadow: 0 4px 24px rgba(0,0,0,0.18);
@@ -7998,72 +7985,66 @@
   <!-- ── Task Print Overlay ─────────────────────────────────────── -->
   <div id="task-print-overlay">
     <div id="task-print-ctrl-bar">
-      <span class="pr-title" id="tp-title-label">TASK LIST — PRINT PREVIEW</span>
-      <div class="pr-sep"></div>
+      <span class="pr-overlay-title" id="tp-title-label">TASK LIST — PRINT PREVIEW</span>
+      <div class="pr-card">
 
-      <label>Size
-        <select id="tp-size">
-          <option value="letter">Letter (8.5×11)</option>
-          <option value="tabloid">Tabloid (11×17)</option>
-          <option value="legal">Legal (8.5×14)</option>
-          <option value="archd">Arch D (24×36)</option>
-          <option value="a4">A4</option>
-          <option value="a3">A3</option>
-        </select>
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Page</div>
+          <div class="pr-row">Size <select id="tp-size" class="pr-select">
+            <option value="letter">Letter 8.5×11</option>
+            <option value="tabloid">Tabloid 11×17</option>
+            <option value="legal">Legal 8.5×14</option>
+            <option value="archd">Arch D 24×36</option>
+            <option value="a4">A4</option>
+            <option value="a3">A3</option>
+          </select></div>
+          <div class="pr-row">Orient <select id="tp-orient" class="pr-select">
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select></div>
+        </div>
 
-      <label>Orientation
-        <select id="tp-orient">
-          <option value="portrait">Portrait</option>
-          <option value="landscape">Landscape</option>
-        </select>
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Text</div>
+          <div class="pr-row">Font <input type="range" id="tp-font" class="pr-slider" min="6" max="14" value="9" /> <span class="pr-val" id="tp-font-val">9</span>pt</div>
+          <div class="pr-row">Row ht <input type="range" id="tp-rowh" class="pr-slider" min="14" max="40" value="20" /> <span class="pr-val" id="tp-rowh-val">20</span>px</div>
+        </div>
 
-      <div class="pr-sep"></div>
+        <div class="pr-section">
+          <div class="pr-sec-label">Columns</div>
+          <label class="pr-row"><input type="checkbox" id="tp-col-dates" checked /> Dates</label>
+          <label class="pr-row"><input type="checkbox" id="tp-col-dur" checked /> Duration</label>
+          <label class="pr-row"><input type="checkbox" id="tp-col-status" checked /> Status</label>
+          <label class="pr-row"><input type="checkbox" id="tp-col-notes" checked /> Notes</label>
+          <label class="pr-row"><input type="checkbox" id="tp-col-type" /> Type</label>
+        </div>
 
-      <label>Font
-        <input type="range" id="tp-font" min="6" max="14" value="9" />
-        <span class="pr-val" id="tp-font-val">9</span>pt
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Margins</div>
+          <div class="pr-row">T <input type="number" id="tp-mt" class="pr-num" min="0" max="200" value="36" /> B <input type="number" id="tp-mb" class="pr-num" min="0" max="200" value="36" /></div>
+          <div class="pr-row">L <input type="number" id="tp-ml" class="pr-num" min="0" max="200" value="36" /> R <input type="number" id="tp-mr" class="pr-num" min="0" max="200" value="36" /></div>
+        </div>
 
-      <label>Row ht
-        <input type="range" id="tp-rowh" min="14" max="40" value="20" />
-        <span class="pr-val" id="tp-rowh-val">20</span>px
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Logo</div>
+          <div class="pr-row">H <input type="range" id="tp-logo-h" class="pr-slider" min="16" max="80" value="42" /> <span class="pr-val" id="tp-logo-h-val">42</span>px</div>
+        </div>
 
-      <div class="pr-sep"></div>
+        <div class="pr-section">
+          <div class="pr-sec-label">Zoom</div>
+          <div class="pr-row pr-zoom-ctrl">
+            <button class="pr-zoom-btn" id="tp-zoom-out" title="Zoom out (−10%)">−</button>
+            <span id="tp-zoom-display" class="pr-zoom-display">100%</span>
+            <button class="pr-zoom-btn" id="tp-zoom-in" title="Zoom in (+10%)">+</button>
+            <button class="pr-zoom-btn" id="tp-zoom-fit" title="Fit page to window">Fit</button>
+          </div>
+        </div>
 
-      <label title="Show Start and End dates"><input type="checkbox" id="tp-col-dates" checked /> Dates</label>
-      <label title="Show Duration column"><input type="checkbox" id="tp-col-dur" checked /> Duration</label>
-      <label title="Show Status column"><input type="checkbox" id="tp-col-status" checked /> Status</label>
-      <label title="Show Notes column"><input type="checkbox" id="tp-col-notes" checked /> Notes</label>
-      <label title="Show Type column"><input type="checkbox" id="tp-col-type" /> Type</label>
-
-      <div class="pr-sep"></div>
-
-      <label>Margin T <input type="number" id="tp-mt" min="0" max="200" value="36" style="width:40px;" /></label>
-      <label>B <input type="number" id="tp-mb" min="0" max="200" value="36" style="width:40px;" /></label>
-      <label>L <input type="number" id="tp-ml" min="0" max="200" value="36" style="width:40px;" /></label>
-      <label>R <input type="number" id="tp-mr" min="0" max="200" value="36" style="width:40px;" /></label>
-
-      <div class="pr-sep"></div>
-
-      <label>Logo H
-        <input type="range" id="tp-logo-h" min="16" max="80" value="42" />
-        <span class="pr-val" id="tp-logo-h-val">42</span>px
-      </label>
-
-      <div class="pr-sep"></div>
-      <span style="color:#94a3b8;white-space:nowrap;font-size:0.78rem;">Zoom</span>
-      <button class="pr-zoom-btn" id="tp-zoom-out" title="Zoom out (−10%)">−</button>
-      <span id="tp-zoom-display" style="color:#7dd3fc;min-width:38px;text-align:center;font-weight:600;font-size:0.82rem;">100%</span>
-      <button class="pr-zoom-btn" id="tp-zoom-in" title="Zoom in (+10%)">+</button>
-      <button class="pr-zoom-btn" id="tp-zoom-fit" title="Fit page to window">Fit</button>
-
-      <div class="pr-sep"></div>
-
-      <button id="tp-print-btn">⬜ Print</button>
-      <button id="tp-close-btn">✕ Close</button>
+      </div>
+      <div class="pr-actions">
+        <button id="tp-print-btn">⬜ Print</button>
+        <button id="tp-close-btn">✕ Close</button>
+      </div>
     </div>
     <div id="task-print-preview-area"></div>
   </div>
@@ -8071,89 +8052,73 @@
   <!-- ── Print Mode Overlay ──────────────────────────────────────── -->
   <div id="print-overlay">
     <div id="print-ctrl-bar">
-      <span class="pr-title">PRINT PREVIEW</span>
-      <div class="pr-sep"></div>
+      <span class="pr-overlay-title">GANTT — PRINT PREVIEW</span>
+      <div class="pr-card">
 
-      <label>Size
-        <select id="pr-size">
-          <option value="tabloid">Tabloid (11×17)</option>
-          <option value="archd">Arch D (24×36)</option>
-          <option value="letter">Letter (8.5×11)</option>
-          <option value="legal">Legal (8.5×14)</option>
-          <option value="a3">A3</option>
-          <option value="a4">A4</option>
-        </select>
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Page</div>
+          <div class="pr-row">Size <select id="pr-size" class="pr-select">
+            <option value="tabloid">Tabloid 11×17</option>
+            <option value="archd">Arch D 24×36</option>
+            <option value="letter">Letter 8.5×11</option>
+            <option value="legal">Legal 8.5×14</option>
+            <option value="a3">A3</option>
+            <option value="a4">A4</option>
+          </select></div>
+          <div class="pr-row">Orient <select id="pr-orient" class="pr-select">
+            <option value="landscape">Landscape</option>
+            <option value="portrait">Portrait</option>
+          </select></div>
+        </div>
 
-      <label>Orientation
-        <select id="pr-orient">
-          <option value="landscape">Landscape</option>
-          <option value="portrait">Portrait</option>
-        </select>
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Layout</div>
+          <div class="pr-row">Label <input type="range" id="pr-labelw" class="pr-slider" min="80" max="320" value="180" /> <span class="pr-val" id="pr-labelw-val">180</span>px</div>
+          <div class="pr-row">Row ht <input type="range" id="pr-rowh" class="pr-slider" min="14" max="200" value="22" /> <span class="pr-val" id="pr-rowh-val">22</span>px</div>
+          <div class="pr-row">Font <input type="range" id="pr-font" class="pr-slider" min="5" max="14" value="8" /> <span class="pr-val" id="pr-font-val">8</span>pt</div>
+        </div>
 
-      <div class="pr-sep"></div>
+        <div class="pr-section">
+          <div class="pr-sec-label">Date Range</div>
+          <div class="pr-row">From <input type="date" id="pr-from" class="pr-date" /></div>
+          <div class="pr-row">To <input type="date" id="pr-to" class="pr-date" /></div>
+        </div>
 
-      <label>Label col
-        <input type="range" id="pr-labelw" min="80" max="320" value="180" />
-        <span class="pr-val" id="pr-labelw-val">180</span>px
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Options</div>
+          <label class="pr-row"><input type="checkbox" id="pr-split" /> Split pages</label>
+          <label class="pr-row" id="pr-months-wrap" style="display:none;">Months/pg <input type="number" id="pr-months" class="pr-num" min="1" max="36" value="6" /></label>
+          <label class="pr-row"><input type="checkbox" id="pr-deps" checked /> Deps</label>
+          <label class="pr-row"><input type="checkbox" id="pr-date-cols" /> Date cols</label>
+          <label class="pr-row"><input type="checkbox" id="pr-dur-col" /> Duration</label>
+        </div>
 
-      <label>Row ht
-        <input type="range" id="pr-rowh" min="14" max="200" value="22" />
-        <span class="pr-val" id="pr-rowh-val">22</span>px
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Margins</div>
+          <div class="pr-row">T <input type="number" id="pr-mt" class="pr-num" min="0" max="200" value="36" /> B <input type="number" id="pr-mb" class="pr-num" min="0" max="200" value="36" /></div>
+          <div class="pr-row">L <input type="number" id="pr-ml" class="pr-num" min="0" max="200" value="36" /> R <input type="number" id="pr-mr" class="pr-num" min="0" max="200" value="36" /></div>
+        </div>
 
-      <label>Font
-        <input type="range" id="pr-font" min="5" max="14" value="8" />
-        <span class="pr-val" id="pr-font-val">8</span>pt
-      </label>
+        <div class="pr-section">
+          <div class="pr-sec-label">Logo</div>
+          <div class="pr-row">H <input type="range" id="pr-logo-h" class="pr-slider" min="16" max="80" value="42" /> <span class="pr-val" id="pr-logo-h-val">42</span>px</div>
+        </div>
 
-      <div class="pr-sep"></div>
+        <div class="pr-section">
+          <div class="pr-sec-label">Zoom</div>
+          <div class="pr-row pr-zoom-ctrl">
+            <button class="pr-zoom-btn" id="pr-zoom-out" title="Zoom out (−10%)">−</button>
+            <span id="pr-zoom-display" class="pr-zoom-display">100%</span>
+            <button class="pr-zoom-btn" id="pr-zoom-in" title="Zoom in (+10%)">+</button>
+            <button class="pr-zoom-btn" id="pr-zoom-fit" title="Fit page to window">Fit</button>
+          </div>
+        </div>
 
-      <label>From <input type="date" id="pr-from" style="width:120px;" /></label>
-      <label>To   <input type="date" id="pr-to"   style="width:120px;" /></label>
-
-      <div class="pr-sep"></div>
-
-      <label title="Split timeline across multiple pages horizontally">
-        <input type="checkbox" id="pr-split" />
-        Split timeline
-      </label>
-      <label id="pr-months-wrap" style="display:none;">
-        Months/page
-        <input type="number" id="pr-months" min="1" max="36" value="6" style="width:44px;" />
-      </label>
-
-      <div class="pr-sep"></div>
-
-      <label>Margin T <input type="number" id="pr-mt" min="0" max="200" value="36" style="width:40px;" /></label>
-      <label>B <input type="number" id="pr-mb" min="0" max="200" value="36" style="width:40px;" /></label>
-      <label>L <input type="number" id="pr-ml" min="0" max="200" value="36" style="width:40px;" /></label>
-      <label>R <input type="number" id="pr-mr" min="0" max="200" value="36" style="width:40px;" /></label>
-
-      <div class="pr-sep"></div>
-
-      <label><input type="checkbox" id="pr-deps" checked /> Dependencies</label>
-      <label><input type="checkbox" id="pr-date-cols" /> Date Cols</label>
-      <label><input type="checkbox" id="pr-dur-col" /> Duration</label>
-
-      <div class="pr-sep"></div>
-      <label>Logo H
-        <input type="range" id="pr-logo-h" min="16" max="80" value="42" />
-        <span class="pr-val" id="pr-logo-h-val">42</span>px
-      </label>
-
-      <div class="pr-sep"></div>
-      <span style="color:#94a3b8;white-space:nowrap;font-size:0.78rem;">Zoom</span>
-      <button class="pr-zoom-btn" id="pr-zoom-out" title="Zoom out (−10%)">−</button>
-      <span id="pr-zoom-display">100%</span>
-      <button class="pr-zoom-btn" id="pr-zoom-in" title="Zoom in (+10%)">+</button>
-      <button class="pr-zoom-btn" id="pr-zoom-fit" title="Fit page to window">Fit</button>
-
-      <div class="pr-sep"></div>
-      <button id="pr-print-btn">⬜ Print</button>
-      <button id="pr-close-btn">✕ Close</button>
+      </div>
+      <div class="pr-actions">
+        <button id="pr-print-btn">⬜ Print</button>
+        <button id="pr-close-btn">✕ Close</button>
+      </div>
     </div>
 
     <div id="print-preview-area"></div>
