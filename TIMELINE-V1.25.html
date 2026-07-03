@@ -5,6 +5,37 @@
 
   VERSION HISTORY
   ───────────────
+  V1.25  2026-07-03
+    • Print mode UI restyled to match the main settings "card" design language:
+      both print ctrl bars (Gantt and Task/Milestones/Flags) use the same
+      .pr-card / .pr-section / .pr-sec-label pattern as the main toolbar, with
+      CSS variables for colors so they respect dark mode automatically.
+    • Print settings are now collapsible. A "⚙ Settings" toggle button hides/shows
+      the settings card. Zoom controls, Export PDF, Print, and Close are always
+      visible outside the collapsible section.
+    • Zoom input: the static zoom display (e.g. "100%") has been replaced with an
+      editable number input in both print overlays. The user can type a zoom %
+      directly (25–200); pressing Enter or tabbing out applies it. The + / − / Fit
+      buttons continue to work as before and keep the input in sync.
+    • Print preview zoom now works: CSS zoom is applied per-page (to each
+      .print-page / .tp-page element) so each page's layout dimensions actually
+      change. The previous wrapper-level approach (transform: scale or zoom on the
+      wrapper) left the flex container unaware of the scale, making zoom invisible.
+    • Export PDF added to all print modes (Gantt, Task List, Milestones, Flags).
+      Uses lazily-loaded html2canvas + jsPDF from Cloudflare CDN. Zoom is reset to
+      100 % before capture and restored afterwards to ensure correct output resolution.
+    • Ruler fix: day-of-month numbers in the week/day ruler sub-row are now shown
+      only when the scale is "day" (not "week"). At week scale the sub-row showed
+      redundant weekday dates; at day scale they remain as useful column labels.
+    • Axis label dark-mode fix: fill color was previously set in CSS (.axis-label)
+      which overrode the SVG presentation attribute, making labels invisible in dark
+      mode. Removed fill from the CSS class; all SVG text labels now receive fill via
+      JS setAttribute with dark-mode-aware colors (#94a3b8 dark / #334155 light).
+    • Logo upload and logo size slider added (hamburger menu). Logo appears in the
+      top-right corner of the Gantt chart and in the header of all print pages.
+      Print logo height is controlled by an independent slider in each print mode.
+    • Backend unchanged (no redeploy needed).
+
   V1.24  2026-07-02
     • Task Properties table restyled as an Excel-like spreadsheet grid. Full vertical
       column lines added (border-right on all th/td). Header row: bold, dark text,
