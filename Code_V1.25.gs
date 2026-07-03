@@ -32,8 +32,10 @@
 //  VERSION HISTORY
 //  ───────────────
 //  V1.25  2026-07-03
-//    • No backend changes. Version bump to accompany TIMELINE-V1.25.html (logo
-//      upload, print footer/zoom, group color column alignment improvements).
+//    • SETTINGS_KEYS expanded with 3 keys that were collected by the HTML but
+//      never written to the sheet: todayLineColor, metaDetailsCollapsed, statusColors.
+//    • SETTINGS_DESCRIPTIONS updated for all 3 new keys.
+//    • No other logic changes. Redeploy to activate settings persistence for these keys.
 //
 //  V1.24  2026-07-02
 //    • No backend changes. Version bump to accompany TIMELINE-V1.24.html (Task
@@ -908,7 +910,8 @@ var SETTINGS_KEYS = [
   'matchHdrToGroupColor', 'showRollupTicks', 'showGroupBars',
   'showDateColumns', 'showDurationColumn',
   'flatTextWrap', 'flatBarHeight',
-  'flatLabelOverflow', 'flatLabelsOutside', 'useStatusColors'
+  'flatLabelOverflow', 'flatLabelsOutside', 'useStatusColors',
+  'todayLineColor', 'metaDetailsCollapsed', 'statusColors'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -953,7 +956,10 @@ var SETTINGS_DESCRIPTIONS = {
   flatBarHeight:        'Bar height in pixels in flat mode (12–72, default 24)',
   flatLabelOverflow:    'Extra px the outside flat-mode label clip extends beyond bar right edge (0–400, default 0)',
   flatLabelsOutside:    'Force all flat-mode labels outside bars (above/below) even when they would fit inside (true/false)',
-  useStatusColors:      'Use STATUS_COLOR_MAP[task.note] for bar/milestone/flag fill instead of assigned color (true/false)'
+  useStatusColors:      'Use STATUS_COLOR_MAP[task.note] for bar/milestone/flag fill instead of assigned color (true/false)',
+  todayLineColor:       'Hex color of the Today vertical line on the Gantt chart (default #ef4444)',
+  metaDetailsCollapsed: 'Whether the subtitle / date / note block in the project header is collapsed (true/false)',
+  statusColors:         'JSON object mapping status names to hex colors — saved from the Status Colors editor popup'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.
