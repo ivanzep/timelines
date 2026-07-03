@@ -2972,6 +2972,16 @@
           wNotch.setAttribute('stroke', '#e2e8f0'); wNotch.setAttribute('stroke-width', 0.5);
           svg.appendChild(wNotch);
 
+          // Day-of-month label in lower sub-row
+          if (shouldLabelTick(ti, ticks, currentScale, geom.unitWidth)) {
+            var wLbl = document.createElementNS(svgNS, 'text');
+            wLbl.setAttribute('x', tx + Math.min(geom.unitWidth / 2, 14));
+            wLbl.setAttribute('y', wRowTop + Math.round((h - wRowTop) * 0.62));
+            wLbl.setAttribute('class', 'axis-label');
+            wLbl.setAttribute('text-anchor', 'middle');
+            wLbl.textContent = ticks[ti].getDate();
+            svg.appendChild(wLbl);
+          }
         }
 
       } else {
