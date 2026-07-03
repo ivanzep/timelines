@@ -6841,8 +6841,10 @@
       var title = (projectMeta && projectMeta.name) || 'LA COSTA HOTEL';
       var sub   = (projectMeta && projectMeta.subtitle) || 'PROJECT SCHEDULE';
 
-      txt(title, {x:mL, y:hdrY+18, 'font-size':13, 'font-weight':'700', fill:'#0f172a'});
-      txt(sub,   {x:mL, y:hdrY+32, 'font-size':8,  fill:'#64748b'});
+      var _tF = opts.titleFont || 13;
+      var _sF = Math.max(6, Math.round(_tF * 0.62));
+      txt(title, {x:mL, y:hdrY + _tF + 5, 'font-size':_tF, 'font-weight':'700', fill:'#0f172a'});
+      txt(sub,   {x:mL, y:hdrY + _tF + 5 + _sF + 4, 'font-size':_sF, fill:'#64748b'});
       txt(_fmtPrintDate(opts.sliceMin) + ' – ' + _fmtPrintDate(opts.sliceMax),
           {x:mL, y:hdrY+44, 'font-size':7, fill:'#94a3b8'});
 
@@ -7624,6 +7626,7 @@
             headerH: headerH, rulerH: rulerH, footerH: footerH, bodyH: bodyH,
             labelW: labelW, timelineW: timelineW, dateColW: prDateColW, durColW: prDurColW,
             rowH: rowH, fontSize: fontSize,
+            titleFont: (function() { var el = document.getElementById('pr-title-font'); return el ? (parseInt(el.value, 10) || 13) : 13; })(),
             rowSlice: rowSlice,
             sliceMin: sliceMin, sliceMax: sliceMax,
             pageNum: pageNum, totalPages: totalPages,
@@ -7787,7 +7790,7 @@
       if (prDateColsEl) prDateColsEl.addEventListener('change', reRender);
       var prDurColEl = document.getElementById('pr-dur-col');
       if (prDurColEl) prDurColEl.addEventListener('change', reRender);
-      ['pr-labelw','pr-rowh','pr-font','pr-logo-h'].forEach(function(id) {
+      ['pr-labelw','pr-rowh','pr-font','pr-title-font','pr-logo-h'].forEach(function(id) {
         var el = document.getElementById(id);
         if (!el) return;
         var valEl = document.getElementById(id + '-val');
@@ -7871,7 +7874,8 @@
       return {
         pw: pw, ph: ph, sz: sz, land: land,
         mT: mT, mB: mB, mL: mL, mR: mR,
-        fs:   parseInt(document.getElementById('tp-font').value, 10),
+        fs:        parseInt(document.getElementById('tp-font').value, 10),
+        titleFont: parseInt(document.getElementById('tp-title-font').value, 10) || 14,
         rowH: parseInt(document.getElementById('tp-rowh').value, 10),
         showDates:     document.getElementById('tp-col-dates').checked,
         showDur:       document.getElementById('tp-col-dur').checked,
@@ -8039,9 +8043,10 @@
         var logoHtml = projectLogo
           ? '<img src="' + projectLogo + '" style="max-height:' + tpLogoH + 'px;max-width:' + Math.round(tpLogoH * 3.5) + 'px;object-fit:contain;display:block;" />'
           : '';
+        var subFont = Math.max(7, Math.round(opts.titleFont * 0.7));
         hdrDiv.innerHTML =
-          '<div><div style="font-size:' + (opts.fs+3) + 'px;font-weight:800;letter-spacing:.06em;color:#0f172a;">' + projName + '</div>' +
-          '<div style="font-size:' + (opts.fs-1) + 'px;color:#64748b;letter-spacing:.04em;">' + projSub + '</div></div>' +
+          '<div><div style="font-size:' + opts.titleFont + 'px;font-weight:800;letter-spacing:.06em;color:#0f172a;">' + projName + '</div>' +
+          '<div style="font-size:' + subFont + 'px;color:#64748b;letter-spacing:.04em;">' + projSub + '</div></div>' +
           (logoHtml ? '<div style="flex-shrink:0;">' + logoHtml + '</div>' : '');
         pageDiv.appendChild(hdrDiv);
 
@@ -8062,7 +8067,7 @@
         cols.forEach(function(c) {
           var th = document.createElement('th');
           th.textContent = c.label;
-          th.style.cssText = 'width:' + c.w + 'px;max-width:' + c.w + 'px;background:#1e293b;color:#e2e8f0;text-align:left;padding:0 6px;font-size:' + (opts.fs-1) + 'px;letter-spacing:.05em;height:' + thH + 'px;overflow:hidden;';
+          th.style.cssText = 'width:' + c.w + 'px;max-width:' + c.w + 'px;background:#1e293b;color:#e2e8f0;text-align:left;padding:0 6px;font-size:' + (opts.fs-1) + 'px;letter-spacing:.05em;height:' + thH + 'px;overflow:hidden;border-bottom:none;border-right:' + (opts.showGridLines ? '1px solid #334155' : 'none') + ';';
           headTr.appendChild(th);
         });
         thead.appendChild(headTr);
@@ -8083,6 +8088,7 @@
             td.colSpan = cols.length;
             td.style.cssText = 'padding:0 8px;font-weight:700;font-size:' + (opts.fs+1) + 'px;letter-spacing:.08em;text-transform:uppercase;color:#0f172a;' +
               'border-bottom:' + (opts.showGridLines ? '2px solid #cbd5e1' : 'none') + ';' +
+              'border-right:' + (opts.showGridLines ? '1px solid #cbd5e1' : 'none') + ';' +
               'border-left:4px solid ' + discColor + ';';
             td.textContent = row.disc;
             tr.appendChild(td);
@@ -8094,7 +8100,7 @@
             var discColor2 = groupColors[row.disc] || '#64748b';
             cols.forEach(function(c) {
               var td2 = document.createElement('td');
-              td2.style.cssText = 'padding:0 6px;color:#1e293b;border-bottom:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';overflow:hidden;max-width:' + c.w + 'px;white-space:nowrap;text-overflow:ellipsis;';
+              td2.style.cssText = 'padding:0 6px;color:#1e293b;border-bottom:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';border-right:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';overflow:hidden;max-width:' + c.w + 'px;white-space:nowrap;text-overflow:ellipsis;';
               if (c.key === 'name') {
                 td2.style.borderLeft = '3px solid ' + discColor2;
                 td2.textContent = task.name || '';
@@ -8140,7 +8146,7 @@
       ['tp-size','tp-orient','tp-mt','tp-mb','tp-ml','tp-mr'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', reRender);
       });
-      ['tp-font','tp-rowh','tp-logo-h'].forEach(function(id) {
+      ['tp-title-font','tp-font','tp-rowh','tp-logo-h'].forEach(function(id) {
         var el = document.getElementById(id);
         if (!el) return;
         var valEl = document.getElementById(id + '-val');
@@ -8239,7 +8245,8 @@
 
           <div class="pr-section">
             <div class="pr-sec-label">Text</div>
-            <div class="pr-row">Font <input type="range" id="tp-font" class="pr-slider" min="6" max="14" value="9" /> <span class="pr-val" id="tp-font-val">9</span>pt</div>
+            <div class="pr-row">Title <input type="range" id="tp-title-font" class="pr-slider" min="8" max="28" value="14" /> <span class="pr-val" id="tp-title-font-val">14</span>pt</div>
+            <div class="pr-row">Body <input type="range" id="tp-font" class="pr-slider" min="6" max="14" value="9" /> <span class="pr-val" id="tp-font-val">9</span>pt</div>
             <div class="pr-row">Row ht <input type="range" id="tp-rowh" class="pr-slider" min="14" max="40" value="20" /> <span class="pr-val" id="tp-rowh-val">20</span>px</div>
           </div>
 
@@ -8316,7 +8323,8 @@
             <div class="pr-sec-label">Layout</div>
             <div class="pr-row">Label <input type="range" id="pr-labelw" class="pr-slider" min="80" max="320" value="180" /> <span class="pr-val" id="pr-labelw-val">180</span>px</div>
             <div class="pr-row">Row ht <input type="range" id="pr-rowh" class="pr-slider" min="14" max="200" value="22" /> <span class="pr-val" id="pr-rowh-val">22</span>px</div>
-            <div class="pr-row">Font <input type="range" id="pr-font" class="pr-slider" min="5" max="14" value="8" /> <span class="pr-val" id="pr-font-val">8</span>pt</div>
+            <div class="pr-row">Body <input type="range" id="pr-font" class="pr-slider" min="5" max="14" value="8" /> <span class="pr-val" id="pr-font-val">8</span>pt</div>
+            <div class="pr-row">Title <input type="range" id="pr-title-font" class="pr-slider" min="8" max="24" value="13" /> <span class="pr-val" id="pr-title-font-val">13</span>pt</div>
           </div>
 
           <div class="pr-section">
