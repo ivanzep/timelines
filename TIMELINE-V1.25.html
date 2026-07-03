@@ -1190,7 +1190,6 @@
             <tr id="task-table-head">
               <th style="width:24px;"><input type="checkbox" id="select-all-cb" style="width:14px;height:14px;cursor:pointer;" title="Select / deselect all" /></th>
               <th style="width:28px;"></th>
-              <th style="width:18px;"></th>
               <th data-sort="color" style="width:34px;">COLOR</th>
               <th data-sort="name">TASK</th>
               <th data-sort="group">DISCIPLINE</th>
@@ -1995,7 +1994,7 @@
         }
       }
 
-      var TOTAL_COLS = 16; // number of <th> columns in the header row
+      var TOTAL_COLS = 15; // number of <th> columns in the header row
 
       for (var gi2 = 0; gi2 < groupOrder.length; gi2++) {
         (function(discipline, groupTasks) {
@@ -2063,17 +2062,13 @@
           headTdGrip.appendChild(headGrip);
           headTr.appendChild(headTdGrip);
 
-          var headTdDot = document.createElement('td');
-          headTdDot.style.width = '18px';
-          headTr.appendChild(headTdDot);
-
           var headTdColor = document.createElement('td');
           headTdColor.style.cssText = 'width:34px;text-align:center;';
           headTdColor.appendChild(gcPicker);
           headTr.appendChild(headTdColor);
 
           var headTd = document.createElement('td');
-          headTd.colSpan = TOTAL_COLS - 4;
+          headTd.colSpan = TOTAL_COLS - 3;
           headTd.appendChild(toggle);
           headTd.appendChild(document.createTextNode(discipline));
           headTd.appendChild(countSpan);
@@ -2171,25 +2166,6 @@
       tdGrip.appendChild(grip);
       tr.appendChild(tdGrip);
 
-      // Color/shape dot
-      var tdDot = document.createElement('td');
-      tdDot.style.width = '18px';
-      var dot = document.createElement('span');
-      dot.style.display = 'inline-block';
-      dot.style.width = '10px';
-      dot.style.height = '10px';
-      dot.style.backgroundColor = _effectiveBarColor(task);
-      if (task.type === 'milestone') {
-        dot.style.borderRadius = '0'; dot.style.transform = 'rotate(45deg)';
-      } else if (task.type === 'flag') {
-        dot.style.borderRadius = '0'; dot.style.clipPath = 'polygon(0 0, 100% 25%, 0 50%)';
-      } else {
-        dot.style.borderRadius = '999px';
-      }
-      if (task.dashed) { dot.style.background = 'transparent'; dot.style.border = '1.5px dashed ' + _effectiveBarColor(task); }
-      else if (task.dashedOutline) { dot.style.border = '1.5px dashed rgba(15,23,42,0.7)'; }
-      tdDot.appendChild(dot);
-      tr.appendChild(tdDot);
 
       // Color override — placed before NAME so all color indicators align in one column
       var tdColor = document.createElement('td');
@@ -2201,7 +2177,6 @@
       colorIn.value = task.colorOverride || task.color || '#0284c7';
       colorIn.addEventListener('input', function() {
         task.colorOverride = colorIn.value;
-        dot.style.backgroundColor = task.colorOverride;
         renderGantt();
       });
       tdColor.appendChild(colorIn);
@@ -2302,7 +2277,6 @@
       statusSel.addEventListener('change', function() {
         task.note = statusSel.value;
         applyStatusSelectColor(statusSel, statusSel.value);
-        dot.style.backgroundColor = _effectiveBarColor(task);
         renderGantt();
       });
       tdStatus.appendChild(statusSel); tr.appendChild(tdStatus);
