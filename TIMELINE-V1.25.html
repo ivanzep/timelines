@@ -7870,11 +7870,13 @@
         mT: mT, mB: mB, mL: mL, mR: mR,
         fs:   parseInt(document.getElementById('tp-font').value, 10),
         rowH: parseInt(document.getElementById('tp-rowh').value, 10),
-        showDates:  document.getElementById('tp-col-dates').checked,
-        showDur:    document.getElementById('tp-col-dur').checked,
-        showStatus: document.getElementById('tp-col-status').checked,
-        showNotes:  document.getElementById('tp-col-notes').checked,
-        showType:   document.getElementById('tp-col-type').checked
+        showDates:     document.getElementById('tp-col-dates').checked,
+        showDur:       document.getElementById('tp-col-dur').checked,
+        showStatus:    document.getElementById('tp-col-status').checked,
+        showNotes:     document.getElementById('tp-col-notes').checked,
+        showType:      document.getElementById('tp-col-type').checked,
+        showGridLines: document.getElementById('tp-grid-lines').checked,
+        showZebra:     document.getElementById('tp-zebra').checked
       };
     }
 
@@ -8073,18 +8075,20 @@
             tr.style.cssText = 'height:' + groupRowH + 'px;background:#f1f5f9;';
             var td = document.createElement('td');
             td.colSpan = cols.length;
-            td.style.cssText = 'padding:0 8px;font-weight:700;font-size:' + (opts.fs+1) + 'px;letter-spacing:.08em;text-transform:uppercase;color:#0f172a;border-bottom:2px solid #cbd5e1;border-left:4px solid ' + discColor + ';';
+            td.style.cssText = 'padding:0 8px;font-weight:700;font-size:' + (opts.fs+1) + 'px;letter-spacing:.08em;text-transform:uppercase;color:#0f172a;' +
+              (opts.showGridLines ? 'border-bottom:2px solid #cbd5e1;' : '') +
+              'border-left:4px solid ' + discColor + ';';
             td.textContent = row.disc;
             tr.appendChild(td);
           } else {
             var task = row.task;
             var isEven = taskRowIdx % 2 === 1;
             taskRowIdx++;
-            tr.style.cssText = 'height:' + opts.rowH + 'px;' + (isEven ? 'background:#f8fafc;' : '');
+            tr.style.cssText = 'height:' + opts.rowH + 'px;' + (opts.showZebra && isEven ? 'background:#f8fafc;' : '');
             var discColor2 = groupColors[row.disc] || '#64748b';
             cols.forEach(function(c) {
               var td2 = document.createElement('td');
-              td2.style.cssText = 'padding:0 6px;color:#1e293b;border-bottom:1px solid #e2e8f0;overflow:hidden;max-width:' + c.w + 'px;white-space:nowrap;text-overflow:ellipsis;';
+              td2.style.cssText = 'padding:0 6px;color:#1e293b;' + (opts.showGridLines ? 'border-bottom:1px solid #e2e8f0;' : '') + 'overflow:hidden;max-width:' + c.w + 'px;white-space:nowrap;text-overflow:ellipsis;';
               if (c.key === 'name') {
                 td2.style.borderLeft = '3px solid ' + discColor2;
                 td2.textContent = task.name || '';
@@ -8140,7 +8144,7 @@
           reRender();
         });
       });
-      ['tp-col-dates','tp-col-dur','tp-col-status','tp-col-notes','tp-col-type'].forEach(function(id) {
+      ['tp-col-dates','tp-col-dur','tp-col-status','tp-col-notes','tp-col-type','tp-grid-lines','tp-zebra'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', reRender);
       });
 
@@ -8246,6 +8250,12 @@
             <div class="pr-sec-label">Margins</div>
             <div class="pr-row">T <input type="number" id="tp-mt" class="pr-num" min="0" max="200" value="36" /> B <input type="number" id="tp-mb" class="pr-num" min="0" max="200" value="36" /></div>
             <div class="pr-row">L <input type="number" id="tp-ml" class="pr-num" min="0" max="200" value="36" /> R <input type="number" id="tp-mr" class="pr-num" min="0" max="200" value="36" /></div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Style</div>
+            <label class="pr-row"><input type="checkbox" id="tp-grid-lines" checked /> Grid lines</label>
+            <label class="pr-row"><input type="checkbox" id="tp-zebra" checked /> Row stripes</label>
           </div>
 
           <div class="pr-section">
