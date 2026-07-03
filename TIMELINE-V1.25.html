@@ -2882,6 +2882,11 @@
       bg.setAttribute('fill', darkMode ? '#1e293b' : '#ffffff');
       svg.appendChild(bg);
 
+      var _axLabelFill      = darkMode ? '#94a3b8' : '#334155';
+      var _axLabelMajorFill = darkMode ? '#e2e8f0' : '#0f172a';
+      var _axYearStripEven  = darkMode ? '#1e3a5f' : '#e2e8f0';
+      var _axYearStripOdd   = darkMode ? '#172b44' : '#f1f5f9';
+
       var yearSegments = computeYearSegments();
       for (var k = 0; k < yearSegments.length; k++) {
         var seg = yearSegments[k];
@@ -2890,7 +2895,7 @@
         stripe.setAttribute('y', 0);
         stripe.setAttribute('width', seg.width);
         stripe.setAttribute('height', 22);
-        stripe.setAttribute('fill', seg.year % 2 === 0 ? '#e2e8f0' : '#f1f5f9');
+        stripe.setAttribute('fill', seg.year % 2 === 0 ? _axYearStripEven : _axYearStripOdd);
         svg.appendChild(stripe);
 
         var yLab = document.createElementNS(svgNS, 'text');
@@ -2898,6 +2903,7 @@
         yLab.setAttribute('x', labelX);
         yLab.setAttribute('y', 16);
         yLab.setAttribute('class', 'axis-label-major');
+        yLab.setAttribute('fill', _axLabelMajorFill);
         yLab.setAttribute('text-anchor', 'middle');
         yLab.textContent = seg.year;
         svg.appendChild(yLab);
@@ -2946,6 +2952,7 @@
             mLbEl.setAttribute('x', mx1 + mSegW / 2);
             mLbEl.setAttribute('y', mRowTop + Math.round((mRowBot - mRowTop) * 0.72));
             mLbEl.setAttribute('class', 'axis-label');
+            mLbEl.setAttribute('fill', _axLabelFill);
             mLbEl.setAttribute('text-anchor', 'middle');
             mLbEl.textContent = MONTHS_SHORT[mCur.getMonth()];
             svg.appendChild(mLbEl);
@@ -2978,6 +2985,8 @@
             wLbl.setAttribute('x', tx + Math.min(geom.unitWidth / 2, 14));
             wLbl.setAttribute('y', wRowTop + Math.round((h - wRowTop) * 0.62));
             wLbl.setAttribute('class', 'axis-label');
+            wLbl.setAttribute('fill', _axLabelFill);
+            wLbl.setAttribute('font-size', '10');
             wLbl.setAttribute('text-anchor', 'middle');
             wLbl.textContent = ticks[ti].getDate();
             svg.appendChild(wLbl);
@@ -3001,6 +3010,7 @@
             label.setAttribute('x', labelX2);
             label.setAttribute('y', 40);
             label.setAttribute('class', 'axis-label');
+            label.setAttribute('fill', _axLabelFill);
             label.setAttribute('text-anchor', 'middle');
             label.textContent = tickLabel(ticks[t], currentScale);
             svg.appendChild(label);
