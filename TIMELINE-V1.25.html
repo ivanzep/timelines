@@ -816,6 +816,9 @@
           <div class="overflow-section-label">Logo</div>
           <button id="logo-upload-btn">⊕ Upload Logo</button>
           <button id="logo-remove-btn">✕ Remove Logo</button>
+          <label style="display:flex;align-items:center;gap:6px;padding:5px 10px 3px;font-size:0.8rem;color:var(--text-muted);">
+            Size&nbsp;<input type="range" id="logo-size" min="20" max="120" value="52" step="4" style="flex:1;accent-color:#0ea5e9;" />&nbsp;<span id="logo-size-val" style="min-width:24px;text-align:right;color:var(--text);">52</span>px
+          </label>
         </div>
         <div class="overflow-section">
           <button id="sheets-config-btn" title="Configure Google Sheets connection">⚙ Setup</button>
@@ -979,11 +982,6 @@
                 </select>
               </div>
 
-              <!-- Logo size (upload/remove are in the ☰ hamburger menu) -->
-              <div class="sb-section">
-                <div class="sb-label">Logo Size</div>
-                <label class="sb-slider-row">Size <input type="range" id="logo-size" min="20" max="120" value="52" step="4" class="sb-slider" /> <span class="sb-val" id="logo-size-val">52</span>px</label>
-              </div>
 
             </div>
           </div><!-- /toolbar-collapsible -->
@@ -1307,6 +1305,8 @@
     var projectLogo        = null;     // base64 data URL of uploaded logo (not persisted to sheet)
     var logoDisplayH       = 52;      // display height of logo in topbar and print header (px)
     var prZoom             = 100;      // print preview zoom %
+    var prLogoH            = 42;       // logo height in Gantt print header (px)
+    var tpLogoH            = 42;       // logo height in task-list print header (px)
     var _lastPrintPgW      = 1056;    // page width of last print render (px), used for Fit zoom
     var currentTab   = 'gantt'; // 'gantt' | 'tasks' | 'milestones' | 'flags'
     var taskTypeFilter = null;  // null = all | 'milestone' | 'flag'
@@ -6776,8 +6776,8 @@
       // Logo — right side of header
       if (opts.logoDataUrl) {
         var lgEl = document.createElementNS(NS, 'image');
-        var lgH = opts.headerH - 10;
-        var lgMaxW = 160;
+        var lgH = opts.logoH || (opts.headerH - 10);
+        var lgMaxW = Math.round(lgH * 3.5);
         lgEl.setAttribute('href', opts.logoDataUrl);
         lgEl.setAttribute('x', mL + opts.usableW - lgMaxW);
         lgEl.setAttribute('y', hdrY + 5);
@@ -7556,7 +7556,8 @@
             flatTextWrap:      flatTextWrap,
             flatLabelOverflow: flatLabelOverflow,
             flatLabelsOutside: flatLabelsOutside,
-            logoDataUrl:  projectLogo
+            logoDataUrl:  projectLogo,
+            logoH:        prLogoH
           });
 
           container.appendChild(pageEl);
@@ -7625,11 +7626,13 @@
       if (prDateColsEl) prDateColsEl.addEventListener('change', reRender);
       var prDurColEl = document.getElementById('pr-dur-col');
       if (prDurColEl) prDurColEl.addEventListener('change', reRender);
-      ['pr-labelw','pr-rowh','pr-font'].forEach(function(id) {
+      ['pr-labelw','pr-rowh','pr-font','pr-logo-h'].forEach(function(id) {
         var el = document.getElementById(id);
+        if (!el) return;
         var valEl = document.getElementById(id + '-val');
         el.addEventListener('input', function() {
-          valEl.textContent = el.value;
+          if (valEl) valEl.textContent = el.value;
+          if (id === 'pr-logo-h') prLogoH = parseInt(el.value, 10) || 42;
           reRender();
         });
       });
@@ -7833,10 +7836,15 @@
         // Page header
         var hdrDiv = document.createElement('div');
         hdrDiv.className = 'tp-page-header';
-        hdrDiv.style.cssText = 'margin-bottom:10px;';
-        hdrDiv.innerHTML = '<div><div style="font-size:' + (opts.fs+3) + 'px;font-weight:800;letter-spacing:.06em;color:#0f172a;">' + projName + '</div>' +
+        hdrDiv.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #cbd5e1;';
+        var logoHtml = projectLogo
+          ? '<img src="' + projectLogo + '" style="max-height:' + tpLogoH + 'px;max-width:' + Math.round(tpLogoH * 3.5) + 'px;object-fit:contain;display:block;" />'
+          : '';
+        hdrDiv.innerHTML =
+          '<div><div style="font-size:' + (opts.fs+3) + 'px;font-weight:800;letter-spacing:.06em;color:#0f172a;">' + projName + '</div>' +
           '<div style="font-size:' + (opts.fs-1) + 'px;color:#64748b;letter-spacing:.04em;">' + projSub + '</div></div>' +
-          '<div style="font-size:' + (opts.fs-1) + 'px;color:#64748b;text-align:right;">Printed ' + todayStr + '<br>Page ' + (pi+1) + ' of ' + totalPages + '</div>';
+          (logoHtml ? '<div style="flex:1;display:flex;justify-content:center;align-items:center;">' + logoHtml + '</div>' : '') +
+          '<div style="font-size:' + (opts.fs-1) + 'px;color:#64748b;text-align:right;white-space:nowrap;">Printed ' + todayStr + '<br>Page ' + (pi+1) + ' of ' + totalPages + '</div>';
         pageDiv.appendChild(hdrDiv);
 
         // Table
@@ -7924,10 +7932,15 @@
       ['tp-size','tp-orient','tp-mt','tp-mb','tp-ml','tp-mr'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', reRender);
       });
-      ['tp-font','tp-rowh'].forEach(function(id) {
+      ['tp-font','tp-rowh','tp-logo-h'].forEach(function(id) {
         var el = document.getElementById(id);
+        if (!el) return;
         var valEl = document.getElementById(id + '-val');
-        el.addEventListener('input', function() { valEl.textContent = el.value; reRender(); });
+        el.addEventListener('input', function() {
+          if (valEl) valEl.textContent = el.value;
+          if (id === 'tp-logo-h') tpLogoH = parseInt(el.value, 10) || 42;
+          reRender();
+        });
       });
       ['tp-col-dates','tp-col-dur','tp-col-status','tp-col-notes','tp-col-type'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', reRender);
@@ -8013,6 +8026,11 @@
 
       <div class="pr-sep"></div>
 
+      <label>Logo H
+        <input type="range" id="tp-logo-h" min="16" max="80" value="42" />
+        <span class="pr-val" id="tp-logo-h-val">42</span>px
+      </label>
+
       <div class="pr-sep"></div>
       <span style="color:#94a3b8;white-space:nowrap;font-size:0.78rem;">Zoom</span>
       <button class="pr-zoom-btn" id="tp-zoom-out" title="Zoom out (−10%)">−</button>
@@ -8097,6 +8115,12 @@
       <label><input type="checkbox" id="pr-deps" checked /> Dependencies</label>
       <label><input type="checkbox" id="pr-date-cols" /> Date Cols</label>
       <label><input type="checkbox" id="pr-dur-col" /> Duration</label>
+
+      <div class="pr-sep"></div>
+      <label>Logo H
+        <input type="range" id="pr-logo-h" min="16" max="80" value="42" />
+        <span class="pr-val" id="pr-logo-h-val">42</span>px
+      </label>
 
       <div class="pr-sep"></div>
       <span style="color:#94a3b8;white-space:nowrap;font-size:0.78rem;">Zoom</span>
