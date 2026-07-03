@@ -1500,7 +1500,8 @@
     function fmtDuration(start, end) {
       if (!(start instanceof Date) || !(end instanceof Date)) return '';
       var d = Math.round((end - start) / 86400000);
-      return d + 'd';
+      var wks = Math.round(d / 7 * 10) / 10;
+      return wks + 'w';
     }
     function showDateEdit(taskId, field, clientX, clientY) {
       var inp = document.getElementById('gantt-date-input');
@@ -2909,7 +2910,7 @@
           durHdr.setAttribute('font-weight', '700');
           durHdr.setAttribute('fill', mutedFill);
           durHdr.setAttribute('letter-spacing', '0.08em');
-          durHdr.textContent = 'DUR';
+          durHdr.textContent = 'WKS';
           svg.appendChild(durHdr);
         }
       }
@@ -6995,7 +6996,7 @@
         var durHdrX = mL + rawLw + dcW;
         var durHdrFs = Math.max(4, fs - 2);
         rect(durHdrX, rulerY, durW, rH, '#e2e8f0');
-        txt('DUR', {x:durHdrX + durW/2, y:rulerY+rH/2+durHdrFs*0.4, 'text-anchor':'middle', 'font-size':durHdrFs, fill:'#475569', 'font-weight':'700'});
+        txt('WKS', {x:durHdrX + durW/2, y:rulerY+rH/2+durHdrFs*0.4, 'text-anchor':'middle', 'font-size':durHdrFs, fill:'#475569', 'font-weight':'700'});
         line(durHdrX, rulerY, durHdrX, rulerY+rH, '#94a3b8', 0.75);
       }
 
