@@ -6874,7 +6874,7 @@
       txt(title, {x:mL, y:hdrY + _tF + 5, 'font-size':_tF, 'font-weight':'700', fill:'#0f172a'});
       txt(sub,   {x:mL, y:hdrY + _tF + 5 + _sF + 4, 'font-size':_sF, fill:'#64748b'});
       txt(_fmtPrintDate(opts.sliceMin) + ' – ' + _fmtPrintDate(opts.sliceMax),
-          {x:mL, y:hdrY+44, 'font-size':7, fill:'#94a3b8'});
+          {x:mL, y:hdrY + _tF + 5 + _sF + 4 + 7 + 2, 'font-size':7, fill:'#94a3b8'});
 
       // Logo — right side of header
       if (opts.logoDataUrl) {
@@ -7594,7 +7594,10 @@
       var mR = parseInt(document.getElementById('pr-mr').value, 10) || 0;
       var usableW  = pgW - mL - mR;
       var usableH  = pgH - mT - mB;
-      var headerH  = Math.max(56, prLogoH + 14); // grows with logo size
+      var _prTitleFont = (function() { var el = document.getElementById('pr-title-font'); return el ? (parseInt(el.value, 10) || 13) : 13; })();
+      var _prSubFont   = Math.max(6, Math.round(_prTitleFont * 0.62));
+      var _prHdrTextH  = _prTitleFont + 5 + _prSubFont + 4 + 7 + 6 + 10; // title + gap + subtitle + gap + date + padding
+      var headerH  = Math.max(_prHdrTextH, prLogoH + 14); // grows with title size or logo size
       var rulerH   = 26;
       var footerH  = 22;
       var bodyH    = usableH - headerH - rulerH - footerH;
