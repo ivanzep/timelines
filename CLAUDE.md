@@ -9,7 +9,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 
 | File | Purpose |
 |------|---------|
-| `Code_V1.25.gs` | **Active backend** — deploy this. No logic changes from V1.24; version bump only. |
+| `Code_V1.26.gs` | **Active backend** — deploy this. Adds `todayLineColor`, `metaDetailsCollapsed`, `statusColors` to SETTINGS_KEYS. |
+| `Code_V1.25.gs` | Previous backend. Keep for reference. |
 | `Code_V1.24.gs` | Previous backend. Keep for reference. |
 | `Code_V1.23.gs` | Previous backend. Keep for reference. |
 | `Code_V1.22.gs` | Previous backend. Keep for reference. |

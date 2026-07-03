@@ -6111,7 +6111,8 @@
         appScriptURL:        sheetsURL       || '',
         showDependencies:    showDependencies ? 'true' : 'false',
         snapValue:           snapSelect ? snapSelect.value : '7',
-        toolbarCollapsed:    (function() { var el = document.getElementById('toolbar-collapsible'); return el && el.classList.contains('hidden') ? 'true' : 'false'; })()
+        toolbarCollapsed:    (function() { var el = document.getElementById('toolbar-collapsible'); return el && el.classList.contains('hidden') ? 'true' : 'false'; })(),
+        statusColors:        JSON.stringify(STATUS_COLOR_MAP)
       };
     }
 
@@ -6190,6 +6191,13 @@
         useStatusColors = toBool(s.useStatusColors);
         var _uscEl = document.getElementById('opt-status-colors');
         if (_uscEl) _uscEl.checked = useStatusColors;
+      }
+      if (s.statusColors !== undefined) {
+        try {
+          var _savedSC = JSON.parse(s.statusColors);
+          Object.keys(_savedSC).forEach(function(k) { STATUS_COLOR_MAP[k] = _savedSC[k]; });
+          STATUS_OPTIONS = [''].concat(Object.keys(STATUS_COLOR_MAP));
+        } catch(e) {}
       }
       if (s.darkMode          !== undefined) {
         darkMode = toBool(s.darkMode);
