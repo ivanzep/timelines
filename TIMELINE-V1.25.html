@@ -7475,15 +7475,10 @@
 
     // Print preview zoom helpers
     function applyPrintZoom() {
-      var wrapper = document.getElementById('print-pages-wrapper');
-      if (wrapper) {
-        var scale = prZoom / 100;
-        wrapper.style.transform = '';
-        var naturalH = wrapper.scrollHeight;
-        wrapper.style.transform = 'scale(' + scale + ')';
-        wrapper.style.transformOrigin = 'top center';
-        wrapper.style.marginBottom = Math.round(naturalH * (scale - 1)) + 'px';
-      }
+      // Apply zoom to each page so their layout dimensions actually change (transform doesn't affect layout)
+      document.querySelectorAll('#print-pages-wrapper .print-page').forEach(function(p) {
+        p.style.zoom = prZoom / 100;
+      });
       var zd = document.getElementById('pr-zoom-display');
       if (zd) zd.value = prZoom;
     }
@@ -7851,15 +7846,10 @@
     var _lastTpPgW = 816; // page width of last task print render (for Fit zoom)
 
     function applyTpZoom() {
-      var wrapper = document.getElementById('tp-pages-wrapper');
-      if (wrapper) {
-        var scale = tpZoom / 100;
-        wrapper.style.transform = '';
-        var naturalH = wrapper.scrollHeight;
-        wrapper.style.transform = 'scale(' + scale + ')';
-        wrapper.style.transformOrigin = 'top center';
-        wrapper.style.marginBottom = Math.round(naturalH * (scale - 1)) + 'px';
-      }
+      // Apply zoom to each page so their layout dimensions actually change (transform doesn't affect layout)
+      document.querySelectorAll('#tp-pages-wrapper .tp-page').forEach(function(p) {
+        p.style.zoom = tpZoom / 100;
+      });
       var zd = document.getElementById('tp-zoom-display');
       if (zd) zd.value = tpZoom;
     }
