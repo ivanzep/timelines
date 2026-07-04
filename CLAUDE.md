@@ -9,7 +9,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 
 | File | Purpose |
 |------|---------|
-| `Code_V1.25.gs` | **Active backend** — deploy this. Adds `todayLineColor`, `metaDetailsCollapsed`, `statusColors` to SETTINGS_KEYS. |
+| `Code_V1.26.gs` | **Active backend** — deploy this. Adds `taskSheetName` to SETTINGS_KEYS; reads settings before import so tab name is applied; SOURCE_SHEET overridable at runtime. |
+| `Code_V1.25.gs` | Previous backend. Keep for reference. |
 | `Code_V1.24.gs` | Previous backend. Keep for reference. |
 | `Code_V1.23.gs` | Previous backend. Keep for reference. |
 | `Code_V1.22.gs` | Previous backend. Keep for reference. |
@@ -34,7 +35,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 | `Code_V1.01.gs` | Previous backend. Keep for reference. |
 | `Code_V1.0.gs` | Original baseline. Keep for reference. |
 | `Code.gs` | Original base script. Keep for reference. |
-| `TIMELINE-V1.25.html` | **Active HTML frontend** — open this in browser. Logo upload, print footer/zoom, group color column alignment. |
+| `TIMELINE-V1.26.html` | **Active HTML frontend** — open this in browser. Task Sheet Name field in Setup panel; user-configurable task tab name, saved/loaded from Google Sheets settings. |
+| `TIMELINE-V1.25.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.24.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.23.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.22.html` | Previous HTML version. Keep for reference. |
@@ -148,6 +150,7 @@ Section colors: one row per discipline → `groupColor.DISCIPLINE_NAME : #hexcol
 ---
 
 ## Version History
+- **V1.26** (2026-07-04) — HTML + backend. **User-configurable task sheet name**: Setup panel gains a "Task Sheet Name" text field. Users can enter the exact name of their Google Sheet tab containing tasks (default: `PROJECT TASK LIST`). Value saved as `taskSheetName` in GANTT SETTINGS tab; backend reads settings before importing tasks so the tab name is applied on every Load and Save. `SOURCE_SHEET` global is overridden at runtime from the saved setting. Frontend: `taskSheetName` variable, `openSheetsModal()` populates the input, both Connect and "Save URL to Sheet" buttons persist the value, `collectSettings()` / `applySettings()` wired for full round-trip.
 - **V1.23** (2026-07-02) — HTML only. **Status Colors toggle**: "Status Colors" checkbox in the toolbar switches all bar / milestone / flag fills between assigned colors (`colorOverride → task.color`) and status-derived colors (`STATUS_COLOR_MAP[task.status]`). `_effectiveBarColor(task)` helper centralises the colour logic; all rendering paths (interactive bars, milestones, flags, collapsed markers, flat disc rows, print individual task rows, print collapsed markers) and the task-table colour dot are wired to it. Toggle persisted to settings as `useStatusColors`. Backend unchanged. Also includes per-group variable flat-mode row heights: each discipline row height is computed from its own max outside-label line count (`_flatMaxLabelLines` changed from global scalar to per-group dict); `geom.rowYOffsets[]` replaces the old uniform stride; all rendering updated to use per-row heights.
 - **V1.22** (2026-07-01) — HTML only. Flat mode bar labels repositioned **above** each bar instead of inside it. `getEffectiveRowHeight()` now adds a label area (`Math.round(ganttBarFontSize * 1.4) + 4` px) above the bar so rows are tall enough to accommodate the label without overlapping the bar row above. `renderTaskBar` flat-mode branch: `barY` shifted down by `_flatLabelH`; labels rendered at `yTop + ganttBarFontSize + 2` (above bar baseline); `lineGap` set to `ganttBarFontSize + 2`; clipPath covers only the label area (horizontally constrained to bar x-span). Label fill uses chart text colour (not bar-contrast) since labels sit on the row background. Same layout mirrored in `_buildPrintPageEl` disc rows. Backend unchanged (no redeploy needed).
 - **V1.15** (2026-05-22) — HTML only. Shift+click multi-select on Gantt bars, milestones, and flags. `ganttMultiSelected` object tracks selected IDs. `onBarMouseDown` handles three cases: shift+click (toggle in multi-set, rebuild `drag.multiOriginals`), plain click on multi-selected item (start multi-drag), plain click on unselected item (clear selection, single drag). `onMouseMove` checks `drag.isMulti` and moves all tasks in `multiOriginals` by the same day delta, preserving bar durations. Multi-selected items render with amber stroke/glow (`.task-bar.multi-selected` CSS class). Status bar shows count + ESC hint when 2+ items selected. ESC key and background click clear `ganttMultiSelected`. Also includes all V1.14 features: Milestones/Flags tabs, independent collapse states per tab, global ◉ Markers toggle, print mode parity, 4 new settings keys.
