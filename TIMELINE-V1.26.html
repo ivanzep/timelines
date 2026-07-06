@@ -3151,7 +3151,11 @@
 
         var label = document.createElementNS(svgNS, 'text');
         var lbl   = (row.label || '');
-        var maxCh = isGH ? 24 : 28;
+        // Uppercase 10px font with letter-spacing ≈ 7px per char; subtract left indent & arrow
+        var _charPx = 7;
+        var maxCh = isGH
+          ? Math.max(8, Math.floor((lw - 32) / _charPx))
+          : Math.max(8, Math.floor((lw - 26) / _charPx));
         label.textContent = lbl.length > maxCh ? lbl.substring(0, maxCh) + '…' : lbl;
         label.setAttribute('x', isGH ? 22 : 20);
         label.setAttribute('y', yTop + rowH / 2 + 4);
@@ -3903,7 +3907,11 @@
         else if (labelsToShow.length === 2) { outStartY = barY + barH / 2 - 3; }
         else { outStartY = barY + barH / 2 - lineGap + 4; }
 
-        // Render name to the LEFT of the bar
+        // Render name to the LEFT of the bar; truncate if bar starts near chart edge
+        var _leftAvail = barX - 10;
+        if (_leftAvail < 8) {
+          // No meaningful room to the left — skip outside label entirely
+        } else {
         var tOut = document.createElementNS(svgNS, 'text');
         tOut.setAttribute('x', barX - 5);
         tOut.setAttribute('y', outStartY);
@@ -3912,7 +3920,9 @@
         tOut.setAttribute('class', 'task-label-big');
         tOut.style.fill = darkMode ? '#e2e8f0' : '#1e293b';
         tOut.style.pointerEvents = 'none';
-        tOut.textContent = nameLabel.text;
+        tOut.textContent = _leftAvail >= nameLabel.text.length * ganttBarFontSize * 0.6
+          ? nameLabel.text
+          : _truncate(nameLabel.text, _leftAvail, ganttBarFontSize);
         g.appendChild(tOut);
         // render sub/note to the left of the bar, stacked below the name
         var outY = outStartY + lineGap;
@@ -3930,6 +3940,7 @@
           g.appendChild(t2);
           outY += lineGap;
         }
+        } // end if (_leftAvail >= 8)
       } else {
         for (var li = 0; li < labelsToShow.length; li++) {
           var lbl = labelsToShow[li];
@@ -7173,9 +7184,8 @@
         var ry  = bodyY + ri * rowH;
         if (row.type === 'gh' || row.type === 'disc') {
           var ghGroupColor = groupColors[row.disc] || '#64748b';
-          var ghBgColor    = matchHdrToGroupColor ? ghGroupColor : groupHeaderColor;
-          var ghOp         = (groupHeaderTint / 100).toFixed(3);
-          rect(mL, ry, lw, rowH, ghBgColor, {'fill-opacity': ghOp});
+          var ghOp         = (groupTint / 100).toFixed(3);
+          rect(mL, ry, lw, rowH, ghGroupColor, {'fill-opacity': ghOp});
           rect(mL, ry, 4, rowH, ghGroupColor);
         } else {
           if (ri % 2 === 1) rect(mL, ry, opts.usableW, rowH, '#f8fafc');
