@@ -7184,8 +7184,9 @@
         var ry  = bodyY + ri * rowH;
         if (row.type === 'gh' || row.type === 'disc') {
           var ghGroupColor = groupColors[row.disc] || '#64748b';
-          var ghOp         = (groupTint / 100).toFixed(3);
-          rect(mL, ry, lw, rowH, ghGroupColor, {'fill-opacity': ghOp});
+          var ghBgColor    = matchHdrToGroupColor ? ghGroupColor : groupHeaderColor;
+          var ghOp         = (groupHeaderTint / 100).toFixed(3);
+          rect(mL, ry, lw, rowH, ghBgColor, {'fill-opacity': ghOp});
           rect(mL, ry, 4, rowH, ghGroupColor);
         } else {
           if (ri % 2 === 1) rect(mL, ry, opts.usableW, rowH, '#f8fafc');
@@ -7249,7 +7250,7 @@
             var gx1 = _pDateToX(grMin, opts.sliceMin, opts.sliceMax, tw);
             var gx2 = _pDateToX(grMax, opts.sliceMin, opts.sliceMax, tw);
             var gxC1 = Math.max(0, gx1), gxC2 = Math.min(tw, gx2);
-            var ghBarOpacity = (groupHeaderTint / 100).toFixed(3);
+            var ghBarOpacity = (groupTint / 100).toFixed(3);
             if (gxC2 > gxC1)
               mk('rect', {x:mL+lw+gxC1, y:ry+3, width:gxC2-gxC1, height:rowH-6, rx:2,
                           fill:ghColor, 'fill-opacity':ghBarOpacity, 'clip-path':'url(#'+clipId+')'});
