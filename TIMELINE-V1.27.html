@@ -1,10 +1,16 @@
 <!--
   ============================================================
   Interactive Project Timeline
-  File: TIMELINE-V1.26.html
+  File: TIMELINE-V1.27.html
 
   VERSION HISTORY
   ───────────────
+  V1.27  2026-07-06
+    • Fix project title cutoff in Gantt view when Date and Duration columns are
+      enabled. Title and subtitle word-wrap now uses leftLabelWidth (not the full
+      sideWidth) so text stays within the label column and isn't painted over by
+      the date/duration column background rects.
+
   V1.26  2026-07-04
     • Setup panel: "Task Sheet Name" field lets users specify which Google Sheet
       tab the Apps Script reads tasks from. Defaults to "PROJECT TASK LIST".
@@ -1218,7 +1224,7 @@
 
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
         <div class="status-text" id="status-text">Loading La Costa Hotel project schedule...</div>
-        <div style="font-size:0.66rem;font-weight:600;color:var(--text-soft);letter-spacing:0.06em;white-space:nowrap;flex-shrink:0;padding-right:4px;">V1.26</div>
+        <div style="font-size:0.66rem;font-weight:600;color:var(--text-soft);letter-spacing:0.06em;white-space:nowrap;flex-shrink:0;padding-right:4px;">V1.27</div>
       </div>
     </div>
   </div>
