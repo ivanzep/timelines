@@ -698,6 +698,8 @@
     .pr-select { background: var(--panel-soft); color: var(--text); border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 5px; font-size: 0.7rem; }
     .pr-date { background: var(--panel-soft); color: var(--text); border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 5px; font-size: 0.7rem; width: 118px; }
     .pr-val { min-width: 20px; font-size: 0.67rem; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+    .pr-num-inp { width: 38px; height: 20px; padding: 1px 3px; border-radius: 4px; font-size: 0.67rem; border: 1px solid var(--border-strong); background: var(--panel-soft); color: var(--text); text-align: center; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+    .pr-num-inp::-webkit-inner-spin-button, .pr-num-inp::-webkit-outer-spin-button { display: none; }
     .pr-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
     #pr-print-btn, #tp-print-btn { background: var(--accent); color: #fff; font-weight: 700; border: none; padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 0.77rem; white-space: nowrap; }
     #pr-print-btn:hover, #tp-print-btn:hover { opacity: 0.88; }
@@ -7036,21 +7038,51 @@
       }
 
       if (scale === 'day' || scale === 'week') {
-        // Two-row ruler: months on top half, days/weeks on bottom half
-        var subH = Math.round(rH / 2);
-        // Month ticks + labels (top half)
+        // Three-band ruler: years (top) → months (middle) → day/week ticks (bottom)
+        var yrH  = Math.round(rH * 0.35);
+        var subH = Math.round(rH * 0.35);  // month band height (below year band)
+        // Year bands (top) — same alternating pattern as month scale
+        var yrStart2 = opts.sliceMin.getFullYear(), yrEnd2 = opts.sliceMax.getFullYear();
+        for (var yr2 = yrStart2; yr2 <= yrEnd2; yr2++) {
+          var yrS2 = new Date(yr2, 0, 1), yrE2 = new Date(yr2+1, 0, 1);
+          var segS2 = new Date(Math.max(yrS2.getTime(), opts.sliceMin.getTime()));
+          var segE2 = new Date(Math.min(yrE2.getTime(), opts.sliceMax.getTime()));
+          var x1y2 = _pDateToX(segS2, opts.sliceMin, opts.sliceMax, tw);
+          var x2y2 = _pDateToX(segE2, opts.sliceMin, opts.sliceMax, tw);
+          var yrW2 = x2y2 - x1y2;
+          rect(mL+lw+x1y2, rulerY, yrW2, yrH, yr2 % 2 === 0 ? '#e2e8f0' : '#f1f5f9');
+          if (yrW2 > 16) {
+            txt(yr2.toString(), {
+              x: mL+lw+x1y2+yrW2/2, y: rulerY+yrH/2+Math.max(5,fs-1)*0.4,
+              'font-size':Math.max(5,fs-1), 'font-weight':'700', fill:'#0f172a', 'text-anchor':'middle'
+            });
+          }
+          if (yrS2 > opts.sliceMin) {
+            var yrBx2 = _pDateToX(yrS2, opts.sliceMin, opts.sliceMax, tw);
+            if (yrBx2 > 0 && yrBx2 < tw) line(mL+lw+yrBx2, rulerY, mL+lw+yrBx2, rulerY+rH, '#475569', 1);
+          }
+        }
+        line(mL+lw, rulerY+yrH, mL+lw+tw, rulerY+yrH, '#94a3b8', 0.75);
+        // Month labels (middle band)
         var md2 = new Date(opts.sliceMin.getFullYear(), opts.sliceMin.getMonth(), 1);
         while (md2 <= opts.sliceMax) {
           var mx2 = _pDateToX(md2, opts.sliceMin, opts.sliceMax, tw);
-          if (mx2 >= 0) {
-            line(mL+lw+mx2, rulerY, mL+lw+mx2, rulerY+rH, '#475569', 1);
-            if (mx2 + 3 < tw)
-              txt(PRINT_MONTHS[md2.getMonth()] + ' ' + md2.getFullYear(),
-                  {x:mL+lw+mx2+3, y:rulerY+subH-4, 'font-size':Math.max(5,fs-2), fill:'#334155'});
+          var nxtM2 = new Date(md2.getFullYear(), md2.getMonth()+1, 1);
+          var mx2e  = _pDateToX(nxtM2, opts.sliceMin, opts.sliceMax, tw);
+          var mCellW = Math.min(mx2e, tw) - Math.max(mx2, 0);
+          if (mx2 >= 0 && mx2 < tw) {
+            line(mL+lw+mx2, rulerY+yrH, mL+lw+mx2, rulerY+yrH+subH, '#94a3b8', 0.5);
+          }
+          if (mCellW > 8) {
+            var mLblX = mL+lw+Math.max(mx2,0)+mCellW/2;
+            txt(PRINT_MONTHS[md2.getMonth()], {
+              x:mLblX, y:rulerY+yrH+subH/2+Math.max(4,fs-2)*0.4,
+              'font-size':Math.max(4,fs-2), fill:'#334155', 'text-anchor':'middle'
+            });
           }
           md2.setMonth(md2.getMonth() + 1);
         }
-        line(mL+lw, rulerY+subH, mL+lw+tw, rulerY+subH, '#cbd5e1', 0.5);
+        line(mL+lw, rulerY+yrH+subH, mL+lw+tw, rulerY+yrH+subH, '#cbd5e1', 0.5);
         // Day / week ticks (bottom half)
         var totalSpanDays = (opts.sliceMax - opts.sliceMin) / 86400000;
         if (scale === 'day') {
@@ -7059,7 +7091,7 @@
           while (dd2 < opts.sliceMax) {
             var dx = _pDateToX(dd2, opts.sliceMin, opts.sliceMax, tw);
             if (dx >= 0 && dx <= tw) {
-              line(mL+lw+dx, rulerY+subH, mL+lw+dx, rulerY+rH, '#cbd5e1', 0.4);
+              line(mL+lw+dx, rulerY+yrH+subH, mL+lw+dx, rulerY+rH, '#cbd5e1', 0.4);
               if (showDayNums && dx + 2 < tw)
                 txt(dd2.getDate().toString(),
                     {x:mL+lw+dx+2, y:rulerY+rH-3, 'font-size':Math.max(4,fs-3), fill:'#64748b'});
@@ -7075,7 +7107,7 @@
             var wx = _pDateToX(wd2, opts.sliceMin, opts.sliceMax, tw);
             if (wx >= 0 && wx <= tw) {
               line(mL+lw+wx, bodyY, mL+lw+wx, bodyY+opts.bodyH, '#e2e8f0', 0.4);
-              line(mL+lw+wx, rulerY+subH, mL+lw+wx, rulerY+rH, '#cbd5e1', 0.5);
+              line(mL+lw+wx, rulerY+yrH+subH, mL+lw+wx, rulerY+rH, '#cbd5e1', 0.5);
             }
             wd2.setDate(wd2.getDate() + 7);
           }
@@ -7251,9 +7283,15 @@
             var gx2 = _pDateToX(grMax, opts.sliceMin, opts.sliceMax, tw);
             var gxC1 = Math.max(0, gx1), gxC2 = Math.min(tw, gx2);
             var ghBarOpacity = (groupTint / 100).toFixed(3);
-            if (gxC2 > gxC1)
+            if (gxC2 > gxC1) {
               mk('rect', {x:mL+lw+gxC1, y:ry+3, width:gxC2-gxC1, height:rowH-6, rx:2,
                           fill:ghColor, 'fill-opacity':ghBarOpacity, 'clip-path':'url(#'+clipId+')'});
+              if (showRollupTicks) {
+                [gxC1, gxC2].forEach(function(cx) {
+                  line(mL+lw+cx, ry+3, mL+lw+cx, ry+rowH-3, ghColor, 2);
+                });
+              }
+            }
           }
 
           // Collapsed milestone/flag markers — mirrors interactive chart behaviour
@@ -7530,10 +7568,17 @@
                     lblEl.setAttribute('clip-path', 'url(#'+clipId+')');
                     lblEl.textContent = lbl.text;
                   } else if (bx1 > 4) {
+                    // Room to the left — render outside bar
                     lblEl.setAttribute('x', mL+lw+bC1-3);
                     lblEl.setAttribute('text-anchor', 'end');
                     lblEl.setAttribute('fill', '#334155');
                     lblEl.textContent = _truncate(lbl.text, bx1 - 6, lfs);
+                  } else if (bW >= 12) {
+                    // Bar starts at chart edge — render truncated inside bar
+                    lblEl.setAttribute('x', mL+lw+bC1+3);
+                    lblEl.setAttribute('fill', autoFill);
+                    lblEl.setAttribute('clip-path', 'url(#'+clipId+')');
+                    lblEl.textContent = _truncate(lbl.text, bW - 6, lfs);
                   } else {
                     continue;
                   }
@@ -7944,11 +7989,24 @@
         var el = document.getElementById(id);
         if (!el) return;
         var valEl = document.getElementById(id + '-val');
+        // Slider → number input
         el.addEventListener('input', function() {
-          if (valEl) valEl.textContent = el.value;
+          if (valEl) valEl.value = el.value;
           if (id === 'pr-logo-h') prLogoH = parseInt(el.value, 10) || 42;
           reRender();
         });
+        // Number input → slider (bidirectional)
+        if (valEl && valEl.tagName === 'INPUT') {
+          valEl.addEventListener('change', function() {
+            var v = parseInt(valEl.value, 10);
+            if (!isNaN(v)) {
+              v = Math.max(parseInt(el.min, 10), Math.min(parseInt(el.max, 10), v));
+              el.value = v; valEl.value = v;
+              if (id === 'pr-logo-h') prLogoH = v;
+              reRender();
+            }
+          });
+        }
       });
       document.getElementById('pr-split').addEventListener('change', function() {
         document.getElementById('pr-months-wrap').style.display =
@@ -8471,10 +8529,10 @@
 
           <div class="pr-section">
             <div class="pr-sec-label">Layout</div>
-            <div class="pr-row">Label <input type="range" id="pr-labelw" class="pr-slider" min="80" max="320" value="180" /> <span class="pr-val" id="pr-labelw-val">180</span>px</div>
-            <div class="pr-row">Row ht <input type="range" id="pr-rowh" class="pr-slider" min="14" max="200" value="22" /> <span class="pr-val" id="pr-rowh-val">22</span>px</div>
-            <div class="pr-row">Body <input type="range" id="pr-font" class="pr-slider" min="5" max="14" value="8" /> <span class="pr-val" id="pr-font-val">8</span>pt</div>
-            <div class="pr-row">Title <input type="range" id="pr-title-font" class="pr-slider" min="8" max="24" value="13" /> <span class="pr-val" id="pr-title-font-val">13</span>pt</div>
+            <div class="pr-row">Label <input type="range" id="pr-labelw" class="pr-slider" min="80" max="320" value="180" /> <input type="number" class="pr-num-inp" id="pr-labelw-val" value="180" min="80" max="320" />px</div>
+            <div class="pr-row">Row ht <input type="range" id="pr-rowh" class="pr-slider" min="14" max="200" value="22" /> <input type="number" class="pr-num-inp" id="pr-rowh-val" value="22" min="14" max="200" />px</div>
+            <div class="pr-row">Body <input type="range" id="pr-font" class="pr-slider" min="5" max="14" value="8" /> <input type="number" class="pr-num-inp" id="pr-font-val" value="8" min="5" max="14" />pt</div>
+            <div class="pr-row">Title <input type="range" id="pr-title-font" class="pr-slider" min="8" max="24" value="13" /> <input type="number" class="pr-num-inp" id="pr-title-font-val" value="13" min="8" max="24" />pt</div>
           </div>
 
           <div class="pr-section">
