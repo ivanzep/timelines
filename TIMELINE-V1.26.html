@@ -7087,7 +7087,9 @@
         var totalSpanDays = (opts.sliceMax - opts.sliceMin) / 86400000;
         if (scale === 'day') {
           var dd2 = new Date(opts.sliceMin.getTime()); dd2.setHours(0,0,0,0);
-          var showDayNums = totalSpanDays <= 62;
+          // Show day numbers whenever each day column is at least 6px wide
+          var dayColPx = totalSpanDays > 0 ? tw / totalSpanDays : 0;
+          var showDayNums = dayColPx >= 6;
           while (dd2 < opts.sliceMax) {
             var dx = _pDateToX(dd2, opts.sliceMin, opts.sliceMax, tw);
             if (dx >= 0 && dx <= tw) {
