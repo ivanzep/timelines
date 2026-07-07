@@ -32,14 +32,15 @@
 //  VERSION HISTORY
 //  ───────────────
 //  V1.26  2026-07-07
-//    • SETTINGS_KEYS expanded with 3 new keys introduced in TIMELINE-V1.26.html:
-//        sortColumn    — task-table sort column (field name or empty)
-//        sortDirection — task-table sort direction (1 = asc, -1 = desc)
-//        currentTab    — active view tab (gantt | tasks | milestones | flags)
-//    • SETTINGS_DESCRIPTIONS updated for all 3 new keys.
-//    • Also adds taskSheetName key (from same HTML version): user-configurable
-//      task sheet tab name; doGet() reads settings before importing tasks so the
-//      tab name is applied on every Load and Save.
+//    • SETTINGS_KEYS expanded with 5 new keys:
+//        taskSheetName        — user-configurable task sheet tab name
+//        sortColumn           — task-table sort column (field name or empty)
+//        sortDirection        — task-table sort direction (1 = asc, -1 = desc)
+//        currentTab           — active view tab (gantt | tasks | milestones | flags)
+//        taskListGroupSortMode — Task Properties group ordering mode (date | alpha | custom)
+//    • SETTINGS_DESCRIPTIONS updated for all 5 new keys.
+//    • doGet() reads settings before importing tasks so taskSheetName is applied
+//      on every Load and Save.
 //    • No other logic changes. Redeploy to activate persistence for these keys.
 //
 //  V1.25  2026-07-03
@@ -937,7 +938,8 @@ var SETTINGS_KEYS = [
   'flatLabelOverflow', 'flatLabelsOutside', 'useStatusColors',
   'todayLineColor', 'metaDetailsCollapsed', 'statusColors',
   'taskSheetName',
-  'sortColumn', 'sortDirection', 'currentTab'
+  'sortColumn', 'sortDirection', 'currentTab',
+  'taskListGroupSortMode'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -986,10 +988,11 @@ var SETTINGS_DESCRIPTIONS = {
   todayLineColor:       'Hex color of the Today vertical line on the Gantt chart (default #ef4444)',
   metaDetailsCollapsed: 'Whether the subtitle / date / note block in the project header is collapsed (true/false)',
   statusColors:         'JSON object mapping status names to hex colors — saved from the Status Colors editor popup',
-  taskSheetName:        'Name of the Google Sheet tab that contains the task list (default: PROJECT TASK LIST)',
-  sortColumn:           'Task-table sort column — field name or empty for unsorted',
-  sortDirection:        'Task-table sort direction — 1 = ascending, -1 = descending',
-  currentTab:           'Active view tab — gantt | tasks | milestones | flags'
+  taskSheetName:           'Name of the Google Sheet tab that contains the task list (default: PROJECT TASK LIST)',
+  sortColumn:              'Task-table sort column — field name or empty for unsorted',
+  sortDirection:           'Task-table sort direction — 1 = ascending, -1 = descending',
+  currentTab:              'Active view tab — gantt | tasks | milestones | flags',
+  taskListGroupSortMode:   'Task Properties group ordering mode — date | alpha | custom'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.

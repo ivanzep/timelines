@@ -1134,6 +1134,12 @@
           <button id="task-print-btn"   class="secondary" title="Print task list">Print</button>
         </div>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:7px;flex-wrap:wrap;">
+        <span style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);white-space:nowrap;">Group Order:</span>
+        <button id="tl-sort-date-btn"   class="secondary" title="Sort groups by earliest task start date">📅 By Date</button>
+        <button id="tl-sort-alpha-btn"  class="secondary" title="Sort groups A → Z">🔤 A–Z</button>
+        <button id="tl-sort-custom-btn" class="secondary active" title="Manual drag order">↕ Custom</button>
+      </div>
       <div class="task-search-row">
         <input type="text" id="task-search-input" placeholder="🔍  Search tasks…" />
         <div class="batch-bar" id="batch-bar">
@@ -1419,8 +1425,9 @@
     var flagsCollapsedGroups      = {}; // flags tab collapse state
     var ganttCollapsedGroups      = {}; // Gantt chart collapse state (independent)
     var ganttRollupMarkersVisible = true; // global: show/hide M+F markers on all collapsed rollup bars
-    var disciplineOrder = [];   // Gantt chart group order (affected by sort buttons + Gantt drag)
-    var taskListOrder   = [];   // Task List section group order (affected by task-list drag only)
+    var disciplineOrder = [];       // Gantt chart group order (affected by sort buttons + Gantt drag)
+    var taskListOrder   = [];       // Task List section group order (affected by task-list drag only)
+    var taskListGroupSortMode = 'custom'; // 'date' | 'alpha' | 'custom'
     var taskTableVisible = true;
     var searchFilter    = '';
     var selectedTaskIds = {};
@@ -1764,6 +1771,42 @@
       }
       // Gantt only — task list is not touched
       renderGantt();
+    }
+
+    // Sort Task List groups by date, A-Z, or restore custom drag order.
+    // Only affects taskListOrder — Gantt chart is independent.
+    function sortTaskListGroups(mode) {
+      taskListGroupSortMode = mode;
+      if (mode === 'date' || mode === 'alpha') {
+        var groupEarliestStart = {};
+        for (var i = 0; i < tasks.length; i++) {
+          var g = tasks[i].group || '(no discipline)';
+          var s = tasks[i].start;
+          if (!groupEarliestStart[g] || s < groupEarliestStart[g]) groupEarliestStart[g] = s;
+        }
+        var allGroups = Object.keys(groupEarliestStart);
+        if (mode === 'alpha') {
+          allGroups.sort(function(a, b) { return a.localeCompare(b); });
+        } else {
+          allGroups.sort(function(a, b) {
+            var da = groupEarliestStart[a] || '9999';
+            var db = groupEarliestStart[b] || '9999';
+            return da < db ? -1 : da > db ? 1 : a.localeCompare(b);
+          });
+        }
+        taskListOrder = allGroups;
+      }
+      // 'custom': keep current taskListOrder, just mark mode and refresh
+      updateTaskListGroupSortButtons();
+      refreshTaskTable();
+    }
+
+    function updateTaskListGroupSortButtons() {
+      var modes = { date: 'tl-sort-date-btn', alpha: 'tl-sort-alpha-btn', custom: 'tl-sort-custom-btn' };
+      Object.keys(modes).forEach(function(m) {
+        var btn = document.getElementById(modes[m]);
+        if (btn) btn.classList.toggle('active', m === taskListGroupSortMode);
+      });
     }
 
     function loadDefaults() {
@@ -2132,6 +2175,8 @@
             if (srcIdx < 0 || tgtIdx < 0) return;
             taskListOrder.splice(srcIdx, 1);
             taskListOrder.splice(tgtIdx, 0, srcDisc);
+            taskListGroupSortMode = 'custom';
+            updateTaskListGroupSortButtons();
             refreshTaskTable(); // task list only — no renderGantt()
           });
 
@@ -5431,6 +5476,11 @@
       document.getElementById('sort-groups-alpha-btn').addEventListener('click', function() { sortGroups('alpha'); });
       document.getElementById('sort-groups-custom-btn').addEventListener('click', function() { sortGroups('custom'); });
 
+      // Task List group sort buttons
+      document.getElementById('tl-sort-date-btn').addEventListener('click',   function() { sortTaskListGroups('date'); });
+      document.getElementById('tl-sort-alpha-btn').addEventListener('click',  function() { sortTaskListGroups('alpha'); });
+      document.getElementById('tl-sort-custom-btn').addEventListener('click', function() { sortTaskListGroups('custom'); });
+
       // Batch group color — Apply
       document.getElementById('batch-color-apply-btn').addEventListener('click', function() {
         var color = document.getElementById('batch-color-picker').value;
@@ -6127,9 +6177,10 @@
         toolbarCollapsed:    (function() { var el = document.getElementById('toolbar-collapsible'); return el && el.classList.contains('hidden') ? 'true' : 'false'; })(),
         statusColors:        JSON.stringify(STATUS_COLOR_MAP),
         taskSheetName:       taskSheetName || '',
-        sortColumn:          sortState.column    || '',
-        sortDirection:       sortState.direction,
-        currentTab:          currentTab          || 'gantt'
+        sortColumn:            sortState.column        || '',
+        sortDirection:         sortState.direction,
+        currentTab:            currentTab              || 'gantt',
+        taskListGroupSortMode: taskListGroupSortMode   || 'custom'
       };
     }
 
@@ -6412,6 +6463,12 @@
         if (_ttEl) {
           _ttEl.textContent = _tab === 'milestones' ? 'Milestone Properties' : _tab === 'flags' ? 'Flag Properties' : 'Task Properties';
         }
+      }
+
+      // Restore task-list group sort mode
+      if (s.taskListGroupSortMode !== undefined) {
+        taskListGroupSortMode = s.taskListGroupSortMode || 'custom';
+        updateTaskListGroupSortButtons();
       }
     }
     // ─────────────────────────────────────────────────────────────
