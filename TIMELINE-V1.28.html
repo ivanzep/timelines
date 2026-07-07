@@ -1,10 +1,16 @@
 <!--
   ============================================================
   Interactive Project Timeline
-  File: TIMELINE-V1.27.html
+  File: TIMELINE-V1.28.html
 
   VERSION HISTORY
   ───────────────
+  V1.28  2026-07-07
+    • Persist active tab (Timeline/Tasks/Milestones/Flags) and task-table sort
+      column/direction across loads. Both saved to GANTT SETTINGS tab and
+      restored on every Load. Sort is applied to the freshly-loaded task list
+      before the table renders.
+
   V1.27  2026-07-06
     • Fix project title cutoff in Gantt view when Date and Duration columns are
       enabled. Title and subtitle word-wrap now uses leftLabelWidth (not the full
@@ -1224,7 +1230,7 @@
 
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
         <div class="status-text" id="status-text">Loading La Costa Hotel project schedule...</div>
-        <div style="font-size:0.66rem;font-weight:600;color:var(--text-soft);letter-spacing:0.06em;white-space:nowrap;flex-shrink:0;padding-right:4px;">V1.27</div>
+        <div style="font-size:0.66rem;font-weight:600;color:var(--text-soft);letter-spacing:0.06em;white-space:nowrap;flex-shrink:0;padding-right:4px;">V1.28</div>
       </div>
     </div>
   </div>
