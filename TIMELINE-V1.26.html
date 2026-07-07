@@ -5417,6 +5417,14 @@
       }
       _applyLogoSize();
 
+      // If logo was pre-embedded by the Setup Tool, show it immediately on load
+      if (projectLogo) {
+        if (logoPreviewEl) logoPreviewEl.src = projectLogo;
+        if (logoTopbarEl) logoTopbarEl.classList.add('has-logo');
+        if (logoRemovBtn) logoRemovBtn.classList.add('has-logo');
+        _applyLogoSize();
+      }
+
       if (logoUploadBtn) {
         logoUploadBtn.addEventListener('click', function() {
           if (logoFileInput) logoFileInput.click();
