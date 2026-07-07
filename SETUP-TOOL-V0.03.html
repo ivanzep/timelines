@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timeline Setup Tool V0.03</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: #0f172a;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 18px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 8px 32px rgba(15,23,42,0.10);
+      padding: 36px 40px 32px;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .logo-dot {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #bae6fd 0, #0284c7 40%, #075985 100%);
+      box-shadow: 0 0 12px rgba(2,132,199,0.45);
+      flex-shrink: 0;
+    }
+    h1 { font-size: 1.25rem; font-weight: 800; letter-spacing: 0.03em; }
+    .subtitle { font-size: 0.82rem; color: #64748b; margin-top: 2px; }
+
+    .divider { border: none; border-top: 1px solid #e2e8f0; margin: 0 0 24px; }
+
+    label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #475569;
+      margin-bottom: 6px;
+    }
+    .field { margin-bottom: 20px; }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 9px;
+      border: 1.5px solid #cbd5e1;
+      background: #f8fafc;
+      font-size: 0.83rem;
+      color: #0f172a;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: #0284c7; background: #fff; }
+    input[type="text"].valid { border-color: #16a34a; }
+    input[type="text"].invalid { border-color: #dc2626; }
+
+    #url-input { font-family: 'Courier New', monospace; }
+
+    .hint {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      margin-top: 5px;
+      line-height: 1.4;
+    }
+
+    .file-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .file-name {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 9px;
+      border: 1.5px solid #cbd5e1;
+      background: #f8fafc;
+      font-size: 0.83rem;
+      color: #475569;
+      cursor: default;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    button {
+      padding: 10px 18px;
+      border-radius: 9px;
+      border: 1.5px solid #cbd5e1;
+      background: #f1f5f9;
+      color: #0f172a;
+      font-size: 0.83rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    button:hover { background: #e2e8f0; border-color: #94a3b8; transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: #0284c7;
+      border-color: #0284c7;
+      color: #ffffff;
+      width: 100%;
+      padding: 12px;
+      font-size: 0.92rem;
+      margin-top: 4px;
+    }
+    .btn-primary:hover { background: #0369a1; border-color: #0369a1; }
+    .btn-primary:disabled { background: #94a3b8; border-color: #94a3b8; }
+
+    .status-box {
+      margin-top: 18px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      display: none;
+    }
+    .status-box.ok    { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+    .status-box.err   { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
+    .status-box.warn  { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+
+    .compat-note {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      margin-top: 20px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .compat-note strong { color: #64748b; }
+
+    .files-list {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+    .file-item .fname { font-weight: 600; color: #0f172a; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-item .fbadge {
+      font-size: 0.68rem; padding: 2px 7px; border-radius: 999px;
+      font-weight: 600; white-space: nowrap; flex-shrink: 0;
+    }
+    .fbadge.pending  { background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; }
+    .fbadge.ok       { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .fbadge.err      { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .fbadge.skip     { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+
+    .add-more-btn {
+      font-size: 0.78rem;
+      padding: 7px 14px;
+      width: auto;
+    }
+
+    .optional-tag {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: #f1f5f9;
+      color: #94a3b8;
+      border: 1px solid #e2e8f0;
+      border-radius: 999px;
+      padding: 1px 7px;
+      vertical-align: middle;
+    }
+
+    /* ── Logo upload area ──────────────────────────────────── */
+    .logo-upload-zone {
+      border: 1.5px dashed #cbd5e1;
+      border-radius: 10px;
+      background: #f8fafc;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .logo-upload-zone.drag-over {
+      border-color: #0284c7;
+      background: #f0f9ff;
+    }
+    .logo-empty {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+    }
+    .logo-empty:hover { /* handled by .logo-upload-zone:hover via JS */ }
+    .logo-empty-text {
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .logo-chosen {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+    }
+    .logo-thumb-wrap {
+      flex-shrink: 0;
+      width: 60px;
+      height: 44px;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .logo-thumb-wrap img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .logo-chosen-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .logo-fname {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .logo-fmeta {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .logo-clear-btn {
+      padding: 5px 10px;
+      font-size: 0.75rem;
+      color: #dc2626;
+      border-color: #fca5a5;
+      background: #fff;
+      flex-shrink: 0;
+    }
+    .logo-clear-btn:hover { background: #fef2f2; border-color: #f87171; }
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo-row">
+    <div class="logo-dot"></div>
+    <div>
+      <h1>Timeline Setup Tool</h1>
+      <div class="subtitle">Configure Apps Script URL, task sheet name, browser tab title, and logo for timeline files</div>
+    </div>
+  </div>
+  <hr class="divider">
+
+  <!-- Step 1: URL -->
+  <div class="field">
+    <label>Step 1 — Apps Script Web App URL <span class="optional-tag">Optional</span></label>
+    <input type="text" id="url-input" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false">
+    <div class="hint">Deploy your Apps Script as a Web App (Execute as: Me · Who has access: Anyone) and paste the URL here.</div>
+  </div>
+
+  <!-- Step 2: Task Sheet Name -->
+  <div class="field">
+    <label>Step 2 — Task Sheet Name <span class="optional-tag">Optional</span></label>
+    <input type="text" id="sheet-name-input" placeholder="PROJECT TASK LIST">
+    <div class="hint">Name of the Google Sheet tab that contains your task list. Leave blank to keep the existing value (default: <strong>PROJECT TASK LIST</strong>).</div>
+  </div>
+
+  <!-- Step 3: Tab name -->
+  <div class="field">
+    <label>Step 3 — Browser Tab Name <span class="optional-tag">Optional</span></label>
+    <input type="text" id="title-input" placeholder="e.g. LA COSTA HOTEL — Project Timeline">
+    <div class="hint">Sets the browser tab title. Leave blank to keep the existing title in each file.</div>
+  </div>
+
+  <!-- Step 4: Logo -->
+  <div class="field">
+    <label>Step 4 — Logo Image <span class="optional-tag">Optional</span></label>
+    <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif">
+    <div class="logo-upload-zone" id="logo-upload-zone">
+      <!-- Empty state -->
+      <div class="logo-empty" id="logo-empty" onclick="pickLogo()">
+        <button type="button" style="pointer-events:none;">⊕ Choose Image…</button>
+        <span class="logo-empty-text">PNG, JPG, SVG, WEBP — or drag &amp; drop here</span>
+      </div>
+      <!-- Chosen state -->
+      <div class="logo-chosen" id="logo-chosen">
+        <div class="logo-thumb-wrap">
+          <img id="logo-thumb" src="" alt="">
+        </div>
+        <div class="logo-chosen-info">
+          <div class="logo-fname" id="logo-fname"></div>
+          <div class="logo-fmeta" id="logo-fmeta"></div>
+        </div>
+        <button type="button" class="logo-clear-btn" onclick="clearLogo()">✕ Remove</button>
+      </div>
+    </div>
+    <div class="hint">Embedded as a base64 data URI directly in each HTML file — logo loads instantly with no external hosting needed.</div>
+  </div>
+
+  <!-- Step 5: Files -->
+  <div class="field">
+    <label>Step 5 — Timeline HTML file(s)</label>
+    <div class="file-row">
+      <div class="file-name" id="file-placeholder">No files selected</div>
+      <button onclick="browseFile()">Browse…</button>
+    </div>
+    <div id="files-list" class="files-list" style="display:none;"></div>
+    <div style="margin-top:8px; display:flex; gap:8px;">
+      <button class="add-more-btn" id="add-more-btn" style="display:none;" onclick="browseFile()">+ Add another file</button>
+      <button class="add-more-btn" id="clear-files-btn" style="display:none; color:#dc2626; border-color:#fca5a5;" onclick="clearFiles()">✕ Clear all</button>
+    </div>
+    <div class="hint">Select one or more <code>.html</code> timeline files to update.</div>
+  </div>
+
+  <!-- Apply -->
+  <button class="btn-primary" id="apply-btn" onclick="applyAll()" disabled>Apply to Selected Files</button>
+
+  <div class="status-box" id="status-box"></div>
+
+  <div class="compat-note">
+    <strong>Requires Chrome or Edge.</strong> Files are modified in-place on disk — no download needed.<br>
+    Firefox does not support the File System Access API required for direct file editing.
+  </div>
+</div>
+
+<script>
+  var fileHandles  = [];
+  var logoDataUrl  = null;  // base64 data URL of the chosen logo image
+  var logoFileName = '';
+  var logoFileSize = 0;
+
+  // ── Inputs ──────────────────────────────────────────────────
+  var urlInput       = document.getElementById('url-input');
+  var sheetNameInput = document.getElementById('sheet-name-input');
+  var titleInput     = document.getElementById('title-input');
+
+  urlInput.addEventListener('input', function() {
+    var v = urlInput.value.trim();
+    urlInput.className = !v ? '' : isValidUrl(v) ? 'valid' : 'invalid';
+    updateApplyBtn();
+  });
+
+  function isValidUrl(v) {
+    return v.startsWith('https://script.google.com/macros/s/') && v.endsWith('/exec');
+  }
+
+  function updateApplyBtn() {
+    var url   = urlInput.value.trim();
+    var urlOk = !url || isValidUrl(url);
+    var hasAnyValue = url || sheetNameInput.value.trim() || titleInput.value.trim() || logoDataUrl;
+    document.getElementById('apply-btn').disabled = !urlOk || fileHandles.length === 0;
+  }
+
+  // ── Logo upload ──────────────────────────────────────────────
+  var logoFileInput = document.getElementById('logo-file-input');
+  var logoZone      = document.getElementById('logo-upload-zone');
+  var logoEmpty     = document.getElementById('logo-empty');
+  var logoChosen    = document.getElementById('logo-chosen');
+  var logoThumb     = document.getElementById('logo-thumb');
+  var logoFnameEl   = document.getElementById('logo-fname');
+  var logoFmetaEl   = document.getElementById('logo-fmeta');
+
+  function pickLogo() {
+    logoFileInput.click();
+  }
+
+  logoFileInput.addEventListener('change', function() {
+    if (logoFileInput.files && logoFileInput.files[0]) {
+      readLogoFile(logoFileInput.files[0]);
+    }
+  });
+
+  function readLogoFile(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      logoDataUrl  = e.target.result;
+      logoFileName = file.name;
+      logoFileSize = file.size;
+      renderLogoPreview();
+      updateApplyBtn();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function renderLogoPreview() {
+    if (!logoDataUrl) {
+      logoEmpty.style.display  = 'flex';
+      logoChosen.style.display = 'none';
+      return;
+    }
+    logoThumb.src          = logoDataUrl;
+    logoFnameEl.textContent = logoFileName;
+    logoFmetaEl.textContent = formatBytes(logoFileSize) + ' — embedded as base64';
+    logoEmpty.style.display  = 'none';
+    logoChosen.style.display = 'flex';
+  }
+
+  function clearLogo() {
+    logoDataUrl  = null;
+    logoFileName = '';
+    logoFileSize = 0;
+    logoFileInput.value = '';
+    renderLogoPreview();
+    updateApplyBtn();
+  }
+
+  function formatBytes(n) {
+    if (n < 1024)       return n + ' B';
+    if (n < 1048576)    return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+
+  // Drag-and-drop on the logo zone
+  logoZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    logoZone.classList.add('drag-over');
+  });
+  logoZone.addEventListener('dragleave', function() {
+    logoZone.classList.remove('drag-over');
+  });
+  logoZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    logoZone.classList.remove('drag-over');
+    var files = e.dataTransfer.files;
+    if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+      readLogoFile(files[0]);
+    }
+  });
+
+  // ── File browsing ───────────────────────────────────────────
+  async function browseFile() {
+    if (!window.showOpenFilePicker) {
+      showStatus('err', 'Your browser does not support direct file editing.<br>Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>.');
+      return;
+    }
+    try {
+      var picks = await window.showOpenFilePicker({
+        multiple: true,
+        types: [{ description: 'HTML Timeline Files', accept: { 'text/html': ['.html'] } }]
+      });
+      picks.forEach(function(handle) {
+        if (!fileHandles.some(function(f) { return f.name === handle.name; }))
+          fileHandles.push({ handle: handle, name: handle.name, status: 'pending' });
+      });
+      renderFileList();
+      updateApplyBtn();
+      hideStatus();
+    } catch(e) {
+      if (e.name !== 'AbortError') showStatus('err', 'Could not open file: ' + e.message);
+    }
+  }
+
+  function clearFiles() {
+    fileHandles = [];
+    renderFileList();
+    updateApplyBtn();
+  }
+
+  function removeFile(name) {
+    fileHandles = fileHandles.filter(function(f) { return f.name !== name; });
+    renderFileList();
+    updateApplyBtn();
+  }
+
+  function renderFileList() {
+    var placeholder = document.getElementById('file-placeholder');
+    var listEl      = document.getElementById('files-list');
+    var addMore     = document.getElementById('add-more-btn');
+    var clearBtn    = document.getElementById('clear-files-btn');
+
+    if (fileHandles.length === 0) {
+      placeholder.textContent = 'No files selected';
+      placeholder.style.display = '';
+      listEl.style.display = 'none';
+      addMore.style.display = 'none';
+      clearBtn.style.display = 'none';
+      listEl.innerHTML = '';
+      return;
+    }
+
+    placeholder.style.display = 'none';
+    listEl.style.display = 'flex';
+    addMore.style.display = '';
+    clearBtn.style.display = '';
+
+    listEl.innerHTML = '';
+    fileHandles.forEach(function(f) {
+      var badgeText =
+        f.status === 'pending' ? 'Pending' :
+        f.status === 'ok'      ? '✓ Updated' :
+        f.status === 'skip'    ? '— Marker not found' : '✕ Error';
+
+      var row = document.createElement('div');
+      row.className = 'file-item';
+      row.innerHTML =
+        '<span class="fname" title="' + escAttr(f.name) + '">📄 ' + escHtml(f.name) + '</span>' +
+        '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">' +
+          '<span class="fbadge ' + f.status + '">' + badgeText + '</span>' +
+          (f.status === 'pending'
+            ? '<button style="font-size:0.7rem;padding:3px 8px;color:#dc2626;border-color:#fca5a5;" onclick="removeFile(\'' + escAttr(f.name) + '\')">✕</button>'
+            : '') +
+        '</div>';
+      listEl.appendChild(row);
+    });
+  }
+
+  // ── Apply ───────────────────────────────────────────────────
+  async function applyAll() {
+    var url       = urlInput.value.trim();
+    var sheetName = sheetNameInput.value.trim();
+    var tabTitle  = titleInput.value.trim();
+
+    if (!url && !sheetName && !tabTitle && !logoDataUrl) {
+      showStatus('err', 'Enter at least one value to apply.');
+      return;
+    }
+    if (url && !isValidUrl(url)) {
+      showStatus('err', 'Please enter a valid Apps Script Web App URL.');
+      return;
+    }
+    if (fileHandles.length === 0) {
+      showStatus('err', 'Please select at least one HTML file.');
+      return;
+    }
+
+    var applyBtn = document.getElementById('apply-btn');
+    applyBtn.disabled = true;
+    applyBtn.textContent = 'Applying…';
+
+    var okCount = 0, skipCount = 0, errCount = 0;
+
+    for (var i = 0; i < fileHandles.length; i++) {
+      var f = fileHandles[i];
+      if (f.status === 'ok') { okCount++; continue; }
+      try {
+        var file    = await f.handle.getFile();
+        var content = await file.text();
+        var changed = false;
+
+        // ── Replace DEFAULT_SHEETS_URL (only if URL was provided) ──
+        if (url) {
+          var URL_MARKER = "var DEFAULT_SHEETS_URL = '";
+          var uidx = content.indexOf(URL_MARKER);
+          if (uidx === -1) {
+            URL_MARKER = 'var DEFAULT_SHEETS_URL = "';
+            uidx = content.indexOf(URL_MARKER);
+          }
+          if (uidx !== -1) {
+            var uQuote  = URL_MARKER.slice(-1);
+            var uStart  = uidx + URL_MARKER.length;
+            var uEnd    = content.indexOf(uQuote, uStart);
+            content     = content.slice(0, uStart) + url + content.slice(uEnd);
+            changed     = true;
+          }
+        }
+
+        // ── Replace taskSheetName (only if sheet name was provided) ──
+        if (sheetName) {
+          var SN_MARKER = "var taskSheetName = '";
+          var snidx = content.indexOf(SN_MARKER);
+          if (snidx === -1) {
+            SN_MARKER = 'var taskSheetName = "';
+            snidx = content.indexOf(SN_MARKER);
+          }
+          if (snidx !== -1) {
+            var snQuote = SN_MARKER.slice(-1);
+            var snStart = snidx + SN_MARKER.length;
+            var snEnd   = content.indexOf(snQuote, snStart);
+            content     = content.slice(0, snStart) + sheetName + content.slice(snEnd);
+            changed     = true;
+          }
+        }
+
+        // ── Replace <title> ─────────────────────────────────
+        if (tabTitle) {
+          var titleRx = /(<title>)([\s\S]*?)(<\/title>)/i;
+          if (titleRx.test(content)) {
+            content = content.replace(titleRx, '$1' + escHtml(tabTitle) + '$3');
+            changed = true;
+          }
+        }
+
+        // ── Embed logo ───────────────────────────────────────
+        if (logoDataUrl) {
+          // Matches: var projectLogo[whitespace]*=[whitespace]*<anything up to semicolon>;
+          var logoRx = /var projectLogo\s*=\s*[^;]+;/;
+          if (logoRx.test(content)) {
+            var safeUrl = logoDataUrl.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            content = content.replace(logoRx, function() {
+              return "var projectLogo = '" + safeUrl + "';";
+            });
+            changed = true;
+          }
+        }
+
+        if (!changed) {
+          f.status = 'skip';
+          skipCount++;
+        } else {
+          var writable = await f.handle.createWritable();
+          await writable.write(content);
+          await writable.close();
+          f.status = 'ok';
+          okCount++;
+        }
+      } catch(e) {
+        f.status = 'err';
+        errCount++;
+      }
+      renderFileList();
+    }
+
+    applyBtn.textContent = 'Apply to Selected Files';
+    applyBtn.disabled = false;
+
+    var parts = [];
+    if (okCount)   parts.push('<strong>' + okCount + ' file' + (okCount > 1 ? 's' : '') + ' updated</strong>');
+    if (skipCount) parts.push(skipCount + ' skipped — markers not found');
+    if (errCount)  parts.push(errCount + ' failed — close the file and retry');
+
+    if (errCount > 0 && okCount === 0) {
+      showStatus('err', parts.join(' · '));
+    } else if (skipCount > 0 && okCount === 0) {
+      showStatus('warn', 'No files were updated. Make sure you selected the correct timeline HTML files.');
+    } else {
+      var connectNote = url ? '<br>Open the file in your browser — it will connect and load automatically.' : '';
+      showStatus('ok', parts.join(' · ') + '.' + connectNote);
+    }
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────
+  function showStatus(type, html) {
+    var el = document.getElementById('status-box');
+    el.className = 'status-box ' + type;
+    el.innerHTML = html;
+    el.style.display = '';
+  }
+  function hideStatus() { document.getElementById('status-box').style.display = 'none'; }
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escAttr(s) { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>
