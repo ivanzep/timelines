@@ -5,10 +5,18 @@
 
   VERSION HISTORY
   ───────────────
-  V1.26  2026-07-04
+  V1.26  2026-07-07
     • Setup panel: "Task Sheet Name" field lets users specify which Google Sheet
       tab the Apps Script reads tasks from. Defaults to "PROJECT TASK LIST".
       Saved to GANTT SETTINGS tab and applied on every Load and Save.
+    • Fix project title cutoff in Gantt view when Date and Duration columns are
+      enabled. Title/subtitle word-wrap now uses leftLabelWidth (not sideWidth)
+      so text stays within the label column and isn't painted over by the
+      date/duration column background rects.
+    • Persist active tab (Timeline/Tasks/Milestones/Flags) and task-table sort
+      column/direction across loads. Both saved to GANTT SETTINGS tab and
+      restored on every Load. Sort is applied to the freshly-loaded task list
+      before the table renders.
 
   V1.25  2026-07-03
     • Print mode UI restyled to match the main settings "card" design language:
@@ -6118,7 +6126,10 @@
         snapValue:           snapSelect ? snapSelect.value : '7',
         toolbarCollapsed:    (function() { var el = document.getElementById('toolbar-collapsible'); return el && el.classList.contains('hidden') ? 'true' : 'false'; })(),
         statusColors:        JSON.stringify(STATUS_COLOR_MAP),
-        taskSheetName:       taskSheetName || ''
+        taskSheetName:       taskSheetName || '',
+        sortColumn:          sortState.column    || '',
+        sortDirection:       sortState.direction,
+        currentTab:          currentTab          || 'gantt'
       };
     }
 
@@ -6373,6 +6384,35 @@
           }
         }
       }
+
+      // Restore task-table sort state
+      if (s.sortColumn !== undefined) {
+        sortState.column    = s.sortColumn || null;
+        sortState.direction = (parseInt(s.sortDirection, 10) === -1) ? -1 : 1;
+        updateSortIndicators();
+      }
+
+      // Restore active tab (gantt / tasks / milestones / flags)
+      if (s.currentTab !== undefined) {
+        var _tab = s.currentTab || 'gantt';
+        currentTab   = _tab;
+        taskTypeFilter = _tab === 'milestones' ? 'milestone' : _tab === 'flags' ? 'flag' : null;
+        var _isGantt = (_tab === 'gantt');
+        var _gp = document.getElementById('gantt-panel');
+        var _gt = document.getElementById('gantt-toolbar');
+        var _tp = document.querySelector('.task-list-panel');
+        if (_gp) _gp.style.display = _isGantt ? '' : 'none';
+        if (_gt) _gt.style.display = _isGantt ? '' : 'none';
+        if (_tp) { if (_isGantt) _tp.classList.remove('tasks-fullscreen'); else _tp.classList.add('tasks-fullscreen'); }
+        ['gantt', 'tasks', 'milestones', 'flags'].forEach(function(t) {
+          var btn = document.getElementById('tab-' + t);
+          if (btn) btn.classList.toggle('active', t === _tab);
+        });
+        var _ttEl = document.querySelector('.task-list-panel .panel-title');
+        if (_ttEl) {
+          _ttEl.textContent = _tab === 'milestones' ? 'Milestone Properties' : _tab === 'flags' ? 'Flag Properties' : 'Task Properties';
+        }
+      }
     }
     // ─────────────────────────────────────────────────────────────
 
@@ -6473,8 +6513,8 @@
           taskIdCounter = tasks.length + 1;
           selectedTaskId = null;
           ganttMultiSelected = {};
-          sortState = { column: null, direction: 1 };
-          // Only reset order/collapse state if NOT restored from settings
+          // Only reset order/sort/collapse if NOT restored from settings
+          if (!data.settings || !data.settings.sortColumn) sortState = { column: null, direction: 1 };
           if (!data.settings || !data.settings.taskListOrder)   taskListOrder   = [];
           if (!data.settings || !data.settings.disciplineOrder) disciplineOrder = [];
           if (!data.settings || !data.settings.collapsedGroups)           collapsedGroups           = {};
@@ -6482,7 +6522,9 @@
           if (!data.settings || !data.settings.flagsCollapsedGroups)      flagsCollapsedGroups      = {};
           if (!data.settings || !data.settings.ganttCollapsedGroups)      ganttCollapsedGroups      = {};
           if (!data.settings || !data.settings.ganttRollupMarkersVisible) ganttRollupMarkersVisible = true;
+          applySort();
           refreshTaskTable();
+          updateSortIndicators();
           updateStatusText();
           autoSetDateRange();
           renderGantt();
