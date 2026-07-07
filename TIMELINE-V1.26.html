@@ -7973,23 +7973,106 @@
       applyPrintZoom();
     }
 
+    // ── Print settings persistence (localStorage) ─────────────────
+    var PR_STORAGE_KEY = 'gantt_print_settings_v1';
+    var TP_STORAGE_KEY = 'gantt_tp_settings_v1';
+
+    function _collectPrintSettings() {
+      function _g(id)  { var e = document.getElementById(id); return e ? e.value   : null; }
+      function _gc(id) { var e = document.getElementById(id); return e ? e.checked : null; }
+      return {
+        size: _g('pr-size'), orient: _g('pr-orient'),
+        labelw: _g('pr-labelw'), rowh: _g('pr-rowh'),
+        font: _g('pr-font'), titleFont: _g('pr-title-font'),
+        split: _gc('pr-split'), months: _g('pr-months'),
+        deps: _gc('pr-deps'), dateCols: _gc('pr-date-cols'), durCol: _gc('pr-dur-col'),
+        mt: _g('pr-mt'), mb: _g('pr-mb'), ml: _g('pr-ml'), mr: _g('pr-mr'),
+        logoH: _g('pr-logo-h'), zoom: prZoom
+      };
+    }
+    function _savePrintSettings() {
+      try { localStorage.setItem(PR_STORAGE_KEY, JSON.stringify(_collectPrintSettings())); } catch(e) {}
+    }
+    function _loadPrintSettings() {
+      try {
+        var raw = localStorage.getItem(PR_STORAGE_KEY);
+        if (!raw) return;
+        var s = JSON.parse(raw);
+        function _s(id, v)  { if (v == null) return; var e = document.getElementById(id); if (e) e.value = v; }
+        function _sv(id, v) {
+          if (v == null) return;
+          var e = document.getElementById(id); if (!e) return; e.value = v;
+          var ve = document.getElementById(id + '-val'); if (ve) ve.value = v;
+        }
+        function _sc(id, v) { if (v == null) return; var e = document.getElementById(id); if (e) e.checked = !!v; }
+        _s('pr-size', s.size); _s('pr-orient', s.orient);
+        _sv('pr-labelw', s.labelw); _sv('pr-rowh', s.rowh);
+        _sv('pr-font', s.font); _sv('pr-title-font', s.titleFont);
+        _sc('pr-split', s.split); _s('pr-months', s.months);
+        _sc('pr-deps', s.deps); _sc('pr-date-cols', s.dateCols); _sc('pr-dur-col', s.durCol);
+        _s('pr-mt', s.mt); _s('pr-mb', s.mb); _s('pr-ml', s.ml); _s('pr-mr', s.mr);
+        if (s.logoH != null) {
+          var lhEl = document.getElementById('pr-logo-h');
+          var lhVEl = document.getElementById('pr-logo-h-val');
+          if (lhEl) { lhEl.value = s.logoH; if (lhVEl) lhVEl.textContent = s.logoH; }
+          prLogoH = parseInt(s.logoH, 10) || 42;
+        }
+        if (s.zoom != null) prZoom = s.zoom;
+        var splitEl = document.getElementById('pr-split');
+        var mWrap   = document.getElementById('pr-months-wrap');
+        if (splitEl && mWrap) mWrap.style.display = splitEl.checked ? 'flex' : 'none';
+      } catch(e) {}
+    }
+
+    function _collectTpSettings() {
+      function _g(id)  { var e = document.getElementById(id); return e ? e.value   : null; }
+      function _gc(id) { var e = document.getElementById(id); return e ? e.checked : null; }
+      return {
+        size: _g('tp-size'), orient: _g('tp-orient'),
+        titleFont: _g('tp-title-font'), font: _g('tp-font'), rowh: _g('tp-rowh'),
+        colDates: _gc('tp-col-dates'), colDur: _gc('tp-col-dur'),
+        colStatus: _gc('tp-col-status'), colNotes: _gc('tp-col-notes'), colType: _gc('tp-col-type'),
+        mt: _g('tp-mt'), mb: _g('tp-mb'), ml: _g('tp-ml'), mr: _g('tp-mr'),
+        gridLines: _gc('tp-grid-lines'), zebra: _gc('tp-zebra'),
+        logoH: _g('tp-logo-h'), zoom: tpZoom
+      };
+    }
+    function _saveTpSettings() {
+      try { localStorage.setItem(TP_STORAGE_KEY, JSON.stringify(_collectTpSettings())); } catch(e) {}
+    }
+    function _loadTpSettings() {
+      try {
+        var raw = localStorage.getItem(TP_STORAGE_KEY);
+        if (!raw) return;
+        var s = JSON.parse(raw);
+        function _s(id, v)  { if (v == null) return; var e = document.getElementById(id); if (e) e.value = v; }
+        function _sv(id, v) {
+          if (v == null) return;
+          var e = document.getElementById(id); if (!e) return; e.value = v;
+          var ve = document.getElementById(id + '-val'); if (ve) ve.textContent = v;
+        }
+        function _sc(id, v) { if (v == null) return; var e = document.getElementById(id); if (e) e.checked = !!v; }
+        _s('tp-size', s.size); _s('tp-orient', s.orient);
+        _sv('tp-title-font', s.titleFont); _sv('tp-font', s.font); _sv('tp-rowh', s.rowh);
+        _sc('tp-col-dates', s.colDates); _sc('tp-col-dur', s.colDur);
+        _sc('tp-col-status', s.colStatus); _sc('tp-col-notes', s.colNotes); _sc('tp-col-type', s.colType);
+        _s('tp-mt', s.mt); _s('tp-mb', s.mb); _s('tp-ml', s.ml); _s('tp-mr', s.mr);
+        _sc('tp-grid-lines', s.gridLines); _sc('tp-zebra', s.zebra);
+        if (s.logoH != null) {
+          var lhEl = document.getElementById('tp-logo-h');
+          var lhVEl = document.getElementById('tp-logo-h-val');
+          if (lhEl) { lhEl.value = s.logoH; if (lhVEl) lhVEl.textContent = s.logoH; }
+          tpLogoH = parseInt(s.logoH, 10) || 42;
+        }
+        if (s.zoom != null) tpZoom = s.zoom;
+      } catch(e) {}
+    }
+
     function openPrintPreview() {
       var overlay = document.getElementById('print-overlay');
       overlay.style.display = 'flex';
 
-      // Mirror chart row height (clamped to slider range)
-      var chartRowH = Math.min(200, Math.max(14, getEffectiveRowHeight()));
-      var rowhEl = document.getElementById('pr-rowh');
-      rowhEl.value = chartRowH;
-      document.getElementById('pr-rowh-val').textContent = chartRowH;
-
-      // Mirror chart font size (clamped to slider range)
-      var chartFs = Math.min(14, Math.max(5, ganttBarFontSize));
-      var fontEl = document.getElementById('pr-font');
-      fontEl.value = chartFs;
-      document.getElementById('pr-font-val').textContent = chartFs;
-
-      // Populate date range from loaded tasks
+      // Populate date range from loaded tasks (always fresh)
       if (tasks.length) {
         var mn = tasks[0].start, mx = tasks[0].end;
         for (var i = 1; i < tasks.length; i++) {
@@ -8002,10 +8085,27 @@
         document.getElementById('pr-to').value   = formatDate(mxSnap);
       }
 
+      // Restore saved settings (row/font/etc.), fallback to chart values if none saved
+      var hasSaved = !!localStorage.getItem(PR_STORAGE_KEY);
+      if (hasSaved) {
+        _loadPrintSettings();
+      } else {
+        // First-open defaults: mirror chart row height and font size
+        var chartRowH = Math.min(200, Math.max(14, getEffectiveRowHeight()));
+        var rowhEl = document.getElementById('pr-rowh');
+        rowhEl.value = chartRowH;
+        document.getElementById('pr-rowh-val').textContent = chartRowH;
+        var chartFs = Math.min(14, Math.max(5, ganttBarFontSize));
+        var fontEl = document.getElementById('pr-font');
+        fontEl.value = chartFs;
+        document.getElementById('pr-font-val').textContent = chartFs;
+      }
+
       renderPrintPreview();
     }
 
     function closePrintPreview() {
+      _savePrintSettings();
       document.getElementById('print-overlay').style.display = 'none';
     }
 
@@ -8446,10 +8546,12 @@
 
     function openTaskPrintPreview() {
       document.getElementById('task-print-overlay').style.display = 'flex';
+      _loadTpSettings();
       renderTaskPrintPreview();
     }
 
     function closeTaskPrintPreview() {
+      _saveTpSettings();
       document.getElementById('task-print-overlay').style.display = 'none';
     }
 
