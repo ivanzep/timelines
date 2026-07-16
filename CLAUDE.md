@@ -1,94 +1,103 @@
-# LA COSTA HOTEL — Gantt Timeline Project
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
-An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed by a Google Sheet via a Google Apps Script Web App. The chart reads task data from the sheet on Load and writes changes back on Save. No build system — pure vanilla JS in a single HTML file + a single `.gs` script.
 
----
+An interactive HTML Gantt chart for construction/hospitality project schedules (LA COSTA HOTEL and other
+projects), backed by a Google Sheet via a Google Apps Script Web App. The chart reads task data from the
+sheet on Load and writes changes back on Save. No build system, no package manager, no test runner — pure
+vanilla JS/HTML/CSS in a single self-contained HTML file, paired with a single `.gs` Google Apps Script
+backend file. There is nothing to `npm install`, build, lint, or run test suites for; verification is done
+by opening the HTML directly in a browser.
 
-## File Overview
+This repo is a git mirror of what was originally a Google Drive folder (note the stray `desktop.ini` files
+under `PROJECTS/` and `ARCHIVED CHATGPT/` — these are Google Drive/Windows artifacts, not project config;
+ignore them). There is no README.md and no CI/build config (`.github/workflows` does not exist) — a handful
+of empty "trigger: retry GitHub Pages deploy" commits exist only to kick a stuck GitHub Pages build.
 
-| File | Purpose |
-|------|---------|
-| `Code_V1.26.gs` | **Active backend** — deploy this. Adds `taskSheetName` to SETTINGS_KEYS; reads settings before import so tab name is applied; SOURCE_SHEET overridable at runtime. |
-| `Code_V1.25.gs` | Previous backend. Keep for reference. |
-| `Code_V1.24.gs` | Previous backend. Keep for reference. |
-| `Code_V1.23.gs` | Previous backend. Keep for reference. |
-| `Code_V1.22.gs` | Previous backend. Keep for reference. |
-| `Code_V1.21.gs` | Previous backend. Keep for reference. |
-| `Code_V1.20.gs` | Previous backend. Keep for reference. |
-| `Code_V1.19.gs` | Previous backend. Keep for reference. |
-| `Code_V1.18.gs` | Previous backend. Keep for reference. |
-| `Code_V1.15.gs` | Previous backend. Keep for reference. |
-| `Code_V1.14.gs` | Previous backend. Keep for reference. |
-| `Code_V1.13.gs` | Previous backend. Keep for reference. |
-| `Code_V1.12.gs` | Previous backend. Keep for reference. |
-| `Code_V1.11.gs` | Previous backend. Keep for reference. |
-| `Code_V1.10.gs` | Previous backend. Keep for reference. |
-| `Code_V1.09.gs` | Previous backend. Keep for reference. |
-| `Code_V1.08.gs` | Previous backend. Keep for reference. |
-| `Code_V1.07.gs` | Previous backend. Keep for reference. |
-| `Code_V1.06.gs` | Previous backend. Keep for reference. |
-| `Code_V1.05.gs` | Previous backend. Keep for reference. |
-| `Code_V1.04.gs` | Previous backend. Keep for reference. |
-| `Code_V1.03.gs` | Previous backend. Keep for reference. |
-| `Code_V1.02.gs` | Previous backend. Keep for reference. |
-| `Code_V1.01.gs` | Previous backend. Keep for reference. |
-| `Code_V1.0.gs` | Original baseline. Keep for reference. |
-| `Code.gs` | Original base script. Keep for reference. |
-| `TIMELINE-V1.26.html` | **Active HTML frontend** — open this in browser. Task Sheet Name field, title cutoff fix, and persisted tab/sort. |
-| `TIMELINE-V1.25.html` | Previous HTML version. Keep for reference. |
-| `TIMELINE-V1.24.html` | Previous HTML version. Keep for reference. |
-| `TIMELINE-V1.23.html` | Previous HTML version. Keep for reference. |
-| `TIMELINE-V1.22.html` | Previous HTML version. Keep for reference. |
-| `TIMELINE-V1.21.html` | Previous HTML version. Keep for reference. |
-| `TIMELINE-V1.20.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.15.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.14.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.13.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.12.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.11.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.10.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.09.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.08.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.07.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.06.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.05.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.04.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.03.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.02.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.01.html` | Previous HTML version. Keep for reference. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE.html` | Older HTML version. |
-| `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE_V1.0.html` | Older HTML version. |
-| `LA_COSTA_HOTEL_TIMELINE.html` | Static (non-interactive) version. |
-| `Google_Apps_Script_Code.js` | Older standalone JS version — superseded by `.gs` files. |
-| `SHEETS_SYNC_SETUP.md` | Full deployment guide for the Apps Script Web App. |
-| `_copy_v101.bat` | Windows batch: copies V1.01 files to working locations. |
+## Active files — always edit these
 
----
+| File | Role |
+|------|------|
+| `TIMELINE-V1.26.html` | **Active HTML frontend.** All chart rendering, drag-to-reschedule, Load/Save, print mode, and the ⚙ Setup modal live here. Open this file directly in a browser to test. |
+| `Code_V1.26.gs` | **Active backend.** Paste into the Google Sheet's Extensions → Apps Script editor and deploy as a Web App. |
+
+Every other `TIMELINE-V*.html` / `Code_V*.gs` file in the repo root is a **superseded version kept for
+reference only** — do not edit them, and do not assume the highest-numbered file you see is necessarily the
+one in active use; check `## Version History` at the bottom of this doc (and the file's own in-file
+`VERSION HISTORY` header comment) to confirm which pair is current before starting work. New feature/fix
+work happens by editing `TIMELINE-V1.26.html` and `Code_V1.26.gs` in place — bump to a new `V1.XX` pair only
+when explicitly asked to cut a new version; mid-flight branch versions (e.g. a stray `TIMELINE-V1.27.html`)
+have historically been merged back into V1.26 rather than kept, so don't assume a new numbered file should
+persist unless told to keep it.
+
+### Deployed/mirrored snapshots — do not treat as sources of truth
+
+- `index.html` (repo root) and `LA_COSTA/index.html`, `SANFORD_145/index.html` are **static GitHub Pages
+  snapshots**, each frozen at whatever `TIMELINE-V*.html` state existed when it was copied in (all three
+  were last touched in commit `271ff6e`, an old V1.15/V1.16-era snapshot — they are **not** kept in sync
+  with `TIMELINE-V1.26.html` automatically). If asked to update a deployed/hosted timeline, that means
+  manually copying the current active HTML over the relevant `index.html` and committing — this repo has no
+  automation that does it for you.
+- `PROJECTS/*.html` and the other files inside `LA_COSTA/` / `SANFORD_145/` are dated, per-client export
+  snapshots (filenames encode project + version + date, e.g. `LA COSTA-TIMELINE-V1.21-20260625.html`).
+  Treat them as historical exports, not code to modify.
+- `ARCHIVED/` and `ARCHIVED CHATGPT/` hold genuinely obsolete early iterations (original `Code.gs`,
+  `Google_Apps_Script_Code.js`, pre-V1.0 HTML). Reference only if tracing very old behavior; never edit.
+
+### Setup Tool
+
+`SETUP-TOOL-V0.03.html` (previous: `V0.0`–`V0.02`) is a standalone utility — unrelated to the Gantt chart
+itself — that uses the browser File System Access API to bulk-patch a Web App URL and/or an embedded logo
+(as base64) directly into one or more local `TIMELINE-V*.html` files on disk, so a deployed copy doesn't
+need the ⚙ Setup panel filled in by hand. It has no server component and isn't wired into the Gantt HTML at
+runtime.
+
+`SHEETS_SYNC_SETUP.md` is an old two-way-sync setup guide written against a much earlier file layout
+(`LA_COSTA_HOTEL_TIMELINE_INTERACTIVE.html` / `Google_Apps_Script_Code.js`, now in `ARCHIVED/`). The
+deployment steps below (under "Deployment") are the current procedure; treat that file as historical.
 
 ## Google Sheet
 
 **URL:** https://docs.google.com/spreadsheets/d/1HShZAkZ7oV4_yDdRRbAeBG2p5Uh5EvH4Chs_64ZZ5WU
 
 **Tabs:**
-- `PROJECT TASK LIST` — source of truth for all tasks (never reformatted by script)
-- `GANTT SETTINGS-DO NOT EDIT` — auto-created by script on first Save; stores chart UI settings
+- `PROJECT TASK LIST` — source of truth for all tasks (default name; user-overridable per-project via the
+  `taskSheetName` setting — see below). Never reformatted by the script.
+- `GANTT SETTINGS-DO NOT EDIT` — auto-created by the script on first Save; stores chart UI settings.
+- `GANTT TASK PARAMS` — auto-created; stores per-task Gantt-only display overrides (color, bar type/style,
+  symbol) keyed by task, independent of the main task list.
 
----
-
-## Apps Script Architecture (`Code_V1.03.gs`)
+## Apps Script architecture (`Code_V1.26.gs`)
 
 ### Entry points
-- `doGet(e)` — called by HTML on Load. Reads tasks via `importFromTaskList()` and chart settings via `readSettings()`. Returns JSON.
-- `doPost(e)` — called by HTML on Save. Runs `saveBackToTaskList(payload)` AND `writeSettings(payload.settings)` independently (settings save always runs even if task save fails).
+- `doGet(e)` — called by the HTML on Load. Reads chart settings via `readSettings()` **first** (so a
+  custom `taskSheetName` is honored), then imports tasks via `importFromTaskList()` and merges in
+  `readTaskParams()`. Returns tasks + task params + settings as one JSON response.
+- `doPost(e)` — called by the HTML on Save. Runs `saveBackToTaskList(payload)`, `writeTaskParams(payload)`,
+  and `writeSettings(payload.settings)` independently, each in its own try/catch, so a failure in one never
+  blocks the others (e.g. a bad task write still lets settings persist).
+- `onOpen()` — injects a **📊 Gantt Timeline** custom menu into the Sheets UI (Get Web App URL, About/Setup
+  Help). Only takes effect after redeploying — menu registration doesn't apply retroactively.
 
 ### Key functions
-- `importFromTaskList()` — scans PROJECT TASK LIST for rows where SCHEDULE=TRUE or MILESTONE=TRUE, with valid START DATE + END DATE. Returns tasks array + meta.
-- `saveBackToTaskList(payload)` — matches tasks by `DISCIPLINE|TASKNAME` key and updates START DATE, END DATE, STATUS. Appends brand-new tasks after their discipline group. Uses `LockService` to prevent race conditions.
-- `readSettings()` / `writeSettings(settings)` — read/write the GANTT SETTINGS tab.
-- `readTaskParams()` / `writeTaskParams(tasks)` — read/write the GANTT TASK PARAMS tab (per-task colour override, type, style, symbol).
+- `importFromTaskList()` — scans the task sheet for rows where `SCHEDULE=TRUE` or `MILESTONE=TRUE`, with
+  valid START DATE + END DATE. Returns `{ tasks: [...], meta: {...} }`.
+- `saveBackToTaskList(payload)` — matches tasks by a `DISCIPLINE|TASKNAME` composite key; updates START
+  DATE, END DATE, STATUS, MILESTONE (always written explicitly, TRUE or FALSE, so unchecking it in the
+  sheet is respected next Load), and NOTES. Appends brand-new tasks after their discipline group (unknown
+  disciplines go to the bottom). Deletes rows for tasks removed in the chart. Uses `LockService` to guard
+  against concurrent Save race conditions.
+- `readSettings()` / `writeSettings(settings)` — read/write the `GANTT SETTINGS` tab. The deployed Web App
+  URL is itself stored as the first settings row on every Save; `applySettings()` in the HTML adopts it as
+  `sheetsURL` if it differs from what's stored, since the sheet is treated as the source of truth for the
+  URL, not the browser's local copy.
+- `readTaskParams()` / `writeTaskParams(tasks)` — read/write the `GANTT TASK PARAMS` tab.
 
-### Column mapping (PROJECT TASK LIST)
+### Column mapping (task sheet)
+Columns are auto-detected by header name, falling back to a fixed index only if the header isn't found:
+
 | Header | Default col index |
 |--------|------------------|
 | DISCIPLINE | 1 |
@@ -104,81 +113,86 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 | PRIORITY | 13 |
 | NOTES | 20 |
 
-Script auto-detects columns by header name (falls back to index if header not found).
+### Status → bar color map (`STATUS_COLORS`, top of `Code_V1.26.gs`)
+`IN PROGRESS` green `#16a34a` · `UPCOMING` amber `#f59e0b` · `DOWNSTREAM` purple `#8b5cf6` ·
+`PENDING` yellow `#d9c34a` · `COMPLETED` / `ON HOLD` grey `#94a3b8` · `CANCELLED` / `URGENT` red `#dc2626` ·
+`75% COMPLETE` light green `#22c55e` · `WAITING ON OTHERS` / `WITING ON THE CITY` [sic, do not "fix" the
+typo without checking live sheet data for that exact string] orange `#f97316` · `UNDER REVIEW` cyan
+`#06b6d4`. Unknown status falls back to slate `#64748b`. This map is duplicated conceptually on the HTML
+side as `STATUS_COLOR_MAP` for the "Status Colors" display toggle — keep both in sync when editing.
 
-### Status → bar colour map
-Defined in `STATUS_COLORS` at top of script. Key statuses:
-- IN PROGRESS → green `#16a34a`
-- UPCOMING → amber `#f59e0b`
-- COMPLETED → grey `#94a3b8`
-- CANCELLED / URGENT → red `#dc2626`
-- NOTE → light blue `#60a5fa`
-
-Default (unknown status) → `#64748b` (slate).
-
-### Chart settings keys (saved to GANTT SETTINGS tab)
-Fixed keys: `userLabelWidth`, `ganttBarFontSize`, `showTodayLine`, `darkMode`, `flatMode`, `barTextColor`, `collapsedGroups`, `disciplineOrder`, `showName`, `showPhase`, `showNote`
-
-Section colors: one row per discipline → `groupColor.DISCIPLINE_NAME : #hexcolor` (sorted A–Z). Reconstructed into `groupColors` JSON on read.
-
----
+### Chart settings (`SETTINGS_KEYS` array + `SETTINGS_DESCRIPTIONS` object, `Code_V1.26.gs`)
+Persisted to the `GANTT SETTINGS` tab as flat key/value rows — covers project meta (name/subtitle/date/note),
+layout (label width, font size, dark/flat mode, bar text color), independent per-tab collapse state
+(`collapsedGroups`, `ganttCollapsedGroups`, `milestonesCollapsedGroups`, `flagsCollapsedGroups`), group
+ordering, column visibility toggles, print/zoom state, dependencies, today-line color, status-color toggle,
+the configurable `taskSheetName`, and persisted sort/tab state (`sortColumn`, `sortDirection`, `currentTab`).
+**Section colors** are the one exception: stored as individual `groupColor.DISCIPLINE_NAME: #hexcolor` rows
+(one per discipline, sorted A–Z) rather than as a key in `SETTINGS_KEYS`, so they're directly readable/
+editable in the sheet; reconstructed into a `groupColors` JSON object on read.
 
 ## Deployment (Apps Script)
 
-1. Open the Google Sheet → Extensions → Apps Script
-2. Paste `Code_V1.01.gs` contents → Save
-3. Deploy → New deployment → Web app
+1. Open the Google Sheet → Extensions → Apps Script.
+2. Paste the contents of `Code_V1.26.gs` → Save.
+3. Deploy → New deployment → Web app:
    - Execute as: **Me**
    - Who has access: **Anyone** ← must be exactly this, not "Anyone within [domain]"
-4. Copy the Web App URL → paste into the HTML's ⚙ Setup panel
-5. **To update after code changes:** Deploy → Manage deployments → pencil → New version → Deploy (URL stays the same)
+4. Copy the Web App URL → paste into the HTML's ⚙ Setup panel.
+5. **To update after code changes:** Deploy → Manage deployments → pencil → New version → Deploy (URL stays
+   the same — no need to re-paste into the HTML).
 
-> ⚠️ **Google Workspace gotcha:** On Workspace accounts the default access is often set to
-> `Anyone within [domain].com` which generates a domain-locked URL:
-> `https://script.google.com/a/macros/yourdomain.com/s/.../exec`
-> This URL requires a signed-in Workspace account — the HTML tool calls it anonymously so
-> it will always fail with a connection error. Fix: change access to **Anyone** (no domain),
-> which generates `https://script.google.com/macros/s/.../exec` (no domain in path).
+> ⚠️ **Google Workspace gotcha:** on Workspace accounts the default access is often
+> `Anyone within [domain].com`, which generates a domain-locked URL
+> (`https://script.google.com/a/macros/yourdomain.com/s/.../exec`) that requires a signed-in Workspace
+> account. The HTML calls it anonymously, so it will always fail with a connection error. Fix: set access to
+> **Anyone** (no domain), which generates `https://script.google.com/macros/s/.../exec`.
 
----
+### Test functions (run manually in the Apps Script editor, not an automated suite)
+- `testImport()` — verifies the sheet is readable; logs task count to the Execution Log.
+- `testWriteSettings()` — writes dummy settings to the `GANTT SETTINGS` tab; verifies write works.
+- `testCreateSettingsTab()` — creates/recreates the `GANTT SETTINGS` tab from scratch.
 
-## Test Functions (run manually in Apps Script editor)
-- `testImport()` — verifies sheet is readable; logs task count to Execution Log
-- `testWriteSettings()` — writes dummy settings to GANTT SETTINGS tab; verifies write works
-- `testCreateSettingsTab()` — creates/recreates the GANTT SETTINGS tab from scratch
+## Common tasks
 
----
+- **Edit the status color map:** `STATUS_COLORS` in `Code_V1.26.gs`, and mirror in `STATUS_COLOR_MAP` inside
+  `TIMELINE-V1.26.html` if the change should also affect the "Status Colors" display toggle.
+- **Add a new chart setting:** add the key to `SETTINGS_KEYS` and describe it in `SETTINGS_DESCRIPTIONS` in
+  `Code_V1.26.gs`, then read/write it from `collectSettings()` / `applySettings()` in the HTML frontend.
+  Redeploy the Apps Script for the new key to actually persist.
+- **Change which rows appear on the chart:** filter logic in `importFromTaskList()` in `Code_V1.26.gs`
+  (currently: `SCHEDULE=TRUE` OR `MILESTONE=TRUE`, plus valid dates).
+- **Change how new tasks are appended on Save:** `saveBackToTaskList()` in `Code_V1.26.gs` — new rows go
+  after the last row of their discipline group; unknown disciplines go to the bottom.
+- **Frontend changes (rendering, drag-to-reschedule, print mode, Load/Save, ⚙ Setup modal):** all in
+  `TIMELINE-V1.26.html`, a single self-contained file with no external dependencies to install. Open it
+  directly in a browser to iterate — there's no dev server or hot reload.
 
-## Version History
-- **V1.26** (2026-07-07) — HTML + backend. **User-configurable task sheet name**: Setup panel gains a "Task Sheet Name" text field; value saved as `taskSheetName` in GANTT SETTINGS tab; backend reads settings before importing tasks so the tab name is applied on every Load and Save. **Fix project title cutoff**: `renderCornerSvg()` now word-wraps title/subtitle against `leftLabelWidth` (not `sideWidth`) so text stays within the label column when Date/Duration columns are enabled. **Persist active tab and sort order**: `collectSettings()` saves `sortColumn`, `sortDirection`, and `currentTab`; `applySettings()` restores all three on Load — sort indicators update, tab buttons and panel visibility switch to match; load callback calls `applySort()` + `updateSortIndicators()` on the freshly-loaded task list.
-- **V1.23** (2026-07-02) — HTML only. **Status Colors toggle**: "Status Colors" checkbox in the toolbar switches all bar / milestone / flag fills between assigned colors (`colorOverride → task.color`) and status-derived colors (`STATUS_COLOR_MAP[task.status]`). `_effectiveBarColor(task)` helper centralises the colour logic; all rendering paths (interactive bars, milestones, flags, collapsed markers, flat disc rows, print individual task rows, print collapsed markers) and the task-table colour dot are wired to it. Toggle persisted to settings as `useStatusColors`. Backend unchanged. Also includes per-group variable flat-mode row heights: each discipline row height is computed from its own max outside-label line count (`_flatMaxLabelLines` changed from global scalar to per-group dict); `geom.rowYOffsets[]` replaces the old uniform stride; all rendering updated to use per-row heights.
-- **V1.22** (2026-07-01) — HTML only. Flat mode bar labels repositioned **above** each bar instead of inside it. `getEffectiveRowHeight()` now adds a label area (`Math.round(ganttBarFontSize * 1.4) + 4` px) above the bar so rows are tall enough to accommodate the label without overlapping the bar row above. `renderTaskBar` flat-mode branch: `barY` shifted down by `_flatLabelH`; labels rendered at `yTop + ganttBarFontSize + 2` (above bar baseline); `lineGap` set to `ganttBarFontSize + 2`; clipPath covers only the label area (horizontally constrained to bar x-span). Label fill uses chart text colour (not bar-contrast) since labels sit on the row background. Same layout mirrored in `_buildPrintPageEl` disc rows. Backend unchanged (no redeploy needed).
-- **V1.15** (2026-05-22) — HTML only. Shift+click multi-select on Gantt bars, milestones, and flags. `ganttMultiSelected` object tracks selected IDs. `onBarMouseDown` handles three cases: shift+click (toggle in multi-set, rebuild `drag.multiOriginals`), plain click on multi-selected item (start multi-drag), plain click on unselected item (clear selection, single drag). `onMouseMove` checks `drag.isMulti` and moves all tasks in `multiOriginals` by the same day delta, preserving bar durations. Multi-selected items render with amber stroke/glow (`.task-bar.multi-selected` CSS class). Status bar shows count + ESC hint when 2+ items selected. ESC key and background click clear `ganttMultiSelected`. Also includes all V1.14 features: Milestones/Flags tabs, independent collapse states per tab, global ◉ Markers toggle, print mode parity, 4 new settings keys.
-- **V1.14** (2026-05-22) — HTML + backend. Milestones tab and Flags tab: filtered task-list views alongside the existing Tasks tab. Four independent collapse-state variables (`collapsedGroups`, `milestonesCollapsedGroups`, `flagsCollapsedGroups`, `ganttCollapsedGroups`). Global ◉ Markers toggle button shows/hides milestone & flag markers on collapsed rollup bars; button only visible when any group is collapsed. Print mode updated to respect Gantt collapse state, flag shapes, and markers toggle. Four new settings keys in `SETTINGS_KEYS`: `ganttCollapsedGroups`, `milestonesCollapsedGroups`, `flagsCollapsedGroups`, `ganttRollupMarkersVisible`. Fixed `applySettings()` scope bug (inline `getElementById` replaces closure call).
-- **V1.13** (2026-05-21) — Backend only. Adds `onOpen()` which injects a permanent **📊 Gantt Timeline** custom menu into the Google Sheets UI. Menu items: **Get Web App URL** (shows deployed URL via `ScriptApp.getService().getUrl()`, falls back to `appScriptURL` row in GANTT SETTINGS tab, shows HTML dialog with Copy button; shows deployment instructions if not yet deployed) and **About / Setup Help** (5-step setup guide dialog). Requires one redeployment to activate; menu persists on every sheet open thereafter.
-- **V1.12** (2026-05-21) — HTML only. Hover tooltip on Gantt bars: hovering any bar, milestone, or flag shows a floating white card with Group, Task Name, Start/End dates, and Note (if present). Tooltip follows cursor and stays within viewport. Dismissed on mouse-leave or when drag starts.
-- **V1.11** (2026-05-20) — HTML only. Interactive drag-to-connect dependency grips: hover any bar to reveal small grey circles at its Start and End; click-drag from a circle to another bar's circle to create a link; rubber-band dashed blue line follows cursor during drag; target circles highlight blue when in range; drop creates `{id, to}` dep entry and re-renders arrows + task table. Works for bars, milestones, and flags.
-- **V1.10** (2026-05-20) — HTML + backend. Print mode: two-row month ruler (years top, months bottom — no overlap); vertical grid lines rendered after row fills so they're always visible; grid line colors lightened; alternating row stripe vs grid line contrast fixed. Auto-load on every open/reload — fires from `initSheetsSync` before any other code can block it; `localStorage` URL takes priority over embedded URL so the last confirmed-working URL is reused on next open. **Task dependencies**: Finish-to-Start link arrows drawn on Gantt between predecessor end → successor start; elbow-routed SVG paths; arrowhead at successor; red dashed when constraint violated (successor starts before predecessor ends). DEPS column added to task table (🔗 button opens picker modal). Dependencies persisted to GANTT TASK PARAMS tab as tilde-separated `GROUP|NAME` keys (stable across reloads); resolved back to runtime IDs on Load.
-- **V1.09** (2026-05-19) — HTML only. Removed outer border rect from Gantt print mode pages.
-- **V1.08** (2026-05-19) — HTML + backend. App Script URL saved as first row of GANTT SETTINGS tab on every Save; `readSettings()` returns it; `applySettings()` adopts it as `sheetsURL` if it differs from the stored value (sheet is source of truth for URL). Title and subtitle word-wrap in the corner SVG. Date display strips time/timezone. Saved project meta (name, subtitle, date, note) restored from settings on Load. Group header backgrounds use SVG-compliant `fill` + `fill-opacity` attributes (fixes black export in SVG). V1.07 files kept for reference.
-- **V1.06** (2026-05-19) — HTML only. Separate Task List print mode with its own overlay, controls (page size, orientation, font, row height, column toggles), auto vertical pagination, discipline color as left-border accent. Removed color background tint from discipline group rows in the task table.
-- **V1.05** (2026-05-18) — HTML only. Print mode: full-screen preview overlay, page size/orientation controls, label/row/font sliders, date range, optional horizontal timeline split (N months/page), auto vertical pagination. Each page is SVG-rendered with group headers, bars, milestones, today line. `window.print()` + dynamic `@page` CSS.
-- **V1.04** (2026-05-18) — HTML + backend. Bar text renders LEFT of bar (no overlap) when estimated label width exceeds bar width. NOTES column added to task table — editable inline, saved back to PROJECT TASK LIST column 20 on Save.
-- **V1.03** (2026-05-18) — HTML + backend. New `GANTT TASK PARAMS` tab stores per-task colour override, bar type, bar style, and symbol. `doGet` merges params into tasks on Load; `doPost` writes them independently. Colour picker restored in task table; bar colour priority: override → section → status.
-- **V1.02** (2026-05-18) — HTML + backend. Section colors saved as individual `groupColor.DISCIPLINE` rows in the settings tab (human-readable, directly editable in sheet). Section color tints group header background; task rows get matching left border. Bar color inherits section color. Removed per-task color picker. Fixed bar text color override.
-- **V1.01** (2026-05-18) — Added GANTT SETTINGS tab. `doGet` now returns settings. `doPost` saves settings independently. `readSettings()` / `writeSettings()` added.
-- **V1.0** (2026-05-18) — Baseline. Reads PROJECT TASK LIST, filters by SCHEDULE/MILESTONE checkbox. Status → bar colour. Two-way save.
+## Version history
 
----
+See the `VERSION HISTORY` comment block at the top of `TIMELINE-V1.26.html` and `Code_V1.26.gs` for the
+authoritative, detailed per-release changelog (both files carry their own). Highlights of the current
+(V1.26) state relative to earlier majors documented in prior revisions of this file:
 
-## Common Tasks for Claude Code
+- **V1.26** — User-configurable task sheet name (`taskSheetName` setting; Setup panel field), applied to
+  every Load/Save. Project title word-wrap fixed against the label column width so it no longer gets
+  painted over when Date/Duration columns are shown. Active tab and task-table sort column/direction persist
+  across loads. Group sort controls added to the Task Properties section (`taskListGroupSortMode`).
+- **V1.25** — Print mode restyled to match the main settings-card UI and made collapsible; editable zoom %
+  input with working per-page CSS zoom; Export PDF (lazy-loaded html2canvas + jsPDF from CDN) across all
+  print modes; logo upload + size controls (topbar and print); today-line color picker; dark-mode axis-label
+  fix; several settings that were collected but never persisted (`todayLineColor`, `metaDetailsCollapsed`,
+  `statusColors`) wired into `SETTINGS_KEYS`.
+- **V1.23** — "Status Colors" toolbar toggle switches all bar/milestone/flag/table fills between assigned
+  colors and status-derived colors via a new `_effectiveBarColor(task)` helper used consistently across
+  every render path. Per-group variable flat-mode row heights.
+- **V1.15** — Shift+click multi-select and multi-drag across bars/milestones/flags; Milestones and Flags
+  tabs with independent per-tab collapse state; global ◉ Markers toggle for collapsed rollup rows.
+- **V1.10** — Print mode two-row month ruler; task dependency arrows (finish-to-start) persisted to
+  `GANTT TASK PARAMS` by stable `GROUP|NAME` keys; auto-load on open using `localStorage`-cached URL.
+- **V1.0–V1.08** — Baseline sheet import/export, `GANTT SETTINGS` tab, per-task color/type/style overrides
+  in `GANTT TASK PARAMS`, section colors, NOTES column round-trip.
 
-**Edit the status colour map:** `STATUS_COLORS` object at top of `Code_V1.02.gs`
-
-**Add a new chart setting:** Add the key to `SETTINGS_KEYS` array and `SETTINGS_DESCRIPTIONS` object in `Code_V1.02.gs`, then handle it in the HTML frontend.
-
-**Change which rows appear on the chart:** Edit the filter logic in `importFromTaskList()` around lines 183–185 (currently: SCHEDULE=TRUE OR MILESTONE=TRUE, plus valid dates).
-
-**Change how new tasks are appended:** See `saveBackToTaskList()` — new rows go after the last row of their discipline group; unknown disciplines go to the bottom.
-
-**HTML frontend:** All chart rendering, drag-to-reschedule, Load/Save buttons, and ⚙ Setup modal are in `LA_COSTA_HOTEL_TIMELINE_INTERACTIVE-V1.02.html`. It's a single self-contained file — no external dependencies to install.
+When making a change, prefer updating this summary only for genuinely repo-wide/structural shifts (new
+active file pair, new folder convention, new deployment step) — routine feature work should just extend the
+in-file `VERSION HISTORY` comments in the active `.html`/`.gs` pair, which are the detailed record.
