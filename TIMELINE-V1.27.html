@@ -1443,6 +1443,7 @@
     var taskTableVisible = true;
     var searchFilter    = '';
     var selectedTaskIds = {};
+    var _lastCheckedTaskId = null; // anchor for shift+click range-select in task list
     var ganttMultiSelected = {}; // taskId → true — set of Gantt bars in multi-selection (shift+click)
 
     function taskMatchesFilter(t) {
@@ -2203,8 +2204,19 @@
                 tr.style.borderLeft = '4px solid ' + (groupColors[discipline] || '#64748b');
           if (task.id === selectedTaskId) tr.classList.add('selected-row');
           tr.addEventListener('click', function(e) {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+            if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+            if (e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') return;
             if (e.target.classList && e.target.classList.contains('grip-icon')) return;
+            if (e.ctrlKey || e.metaKey) {
+              // Ctrl/Cmd+click: toggle this row's checkbox selection
+              var cb = tr.querySelector('input[type="checkbox"]');
+              if (selectedTaskIds[task.id]) { delete selectedTaskIds[task.id]; if (cb) cb.checked = false; }
+              else { selectedTaskIds[task.id] = true; if (cb) cb.checked = true; }
+              _lastCheckedTaskId = task.id;
+              updateBatchBar();
+              return;
+            }
+            if (e.target.tagName === 'INPUT') return; // let checkbox handle itself
             selectTask(task.id);
           });
 
@@ -2227,8 +2239,30 @@
       rowCb.style.cssText = 'width:14px;height:14px;cursor:pointer;margin:0;display:block;';
       rowCb.checked = !!selectedTaskIds[task.id];
       (function(t, cb) {
-        cb.addEventListener('change', function() {
-          if (cb.checked) selectedTaskIds[t.id] = true; else delete selectedTaskIds[t.id];
+        cb.addEventListener('click', function(e) {
+          e.stopPropagation(); // prevent row click handler from firing
+          if (e.shiftKey && _lastCheckedTaskId && _lastCheckedTaskId !== t.id) {
+            // Range-select: find all visible task rows, select the span between anchor and current
+            var allRows = Array.from(taskTableBody.querySelectorAll('tr[data-task-id]'));
+            var ids = allRows.map(function(r) { return r.dataset.taskId; });
+            var anchorIdx = ids.indexOf(_lastCheckedTaskId);
+            var currentIdx = ids.indexOf(t.id);
+            if (anchorIdx !== -1 && currentIdx !== -1) {
+              var lo = Math.min(anchorIdx, currentIdx);
+              var hi = Math.max(anchorIdx, currentIdx);
+              var targetState = cb.checked; // the state the clicked checkbox just moved to
+              for (var ri = lo; ri <= hi; ri++) {
+                var rangeId = ids[ri];
+                var rangeCb = allRows[ri].querySelector('input[type="checkbox"]');
+                if (targetState) { selectedTaskIds[rangeId] = true; }
+                else { delete selectedTaskIds[rangeId]; }
+                if (rangeCb) rangeCb.checked = targetState;
+              }
+            }
+          } else {
+            if (cb.checked) selectedTaskIds[t.id] = true; else delete selectedTaskIds[t.id];
+            _lastCheckedTaskId = t.id;
+          }
           updateBatchBar();
         });
       })(task, rowCb);
@@ -5786,6 +5820,7 @@
       if (selAllCb) {
         selAllCb.addEventListener('change', function() {
           selectedTaskIds = {};
+          _lastCheckedTaskId = null;
           if (selAllCb.checked) tasks.forEach(function(t) { selectedTaskIds[t.id] = true; });
           refreshTaskTable();
           updateBatchBar();
@@ -5839,13 +5874,13 @@
       if (batchDelete) {
         batchDelete.addEventListener('click', function() {
           tasks = tasks.filter(function(t) { return !selectedTaskIds[t.id]; });
-          selectedTaskIds = {};
+          selectedTaskIds = {}; _lastCheckedTaskId = null;
           refreshTaskTable(); renderGantt(); updateBatchBar();
         });
       }
       if (batchClear) {
         batchClear.addEventListener('click', function() {
-          selectedTaskIds = {};
+          selectedTaskIds = {}; _lastCheckedTaskId = null;
           refreshTaskTable(); updateBatchBar();
         });
       }
