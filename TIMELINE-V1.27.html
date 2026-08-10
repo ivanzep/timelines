@@ -1,10 +1,22 @@
 <!--
   ============================================================
   Interactive Project Timeline
-  File: TIMELINE-V1.26.html
+  File: TIMELINE-V1.27.html
 
   VERSION HISTORY
   ───────────────
+  V1.27  2026-08-10
+    • Fix task status not saving to spreadsheet. saveToSheets() now checks
+      result.taskError returned by the backend and shows a warning in the
+      status bar when any row writes failed. Previously the UI always showed
+      "Saved X tasks" even when the backend silently errored on a row.
+    • Print preview settings (Gantt and Task List panels) now persist across
+      sessions via localStorage. Settings are saved when the panel closes and
+      restored when it opens. Date range (pr-from / pr-to) is always
+      auto-populated from the loaded task data and is not persisted.
+    • Backend: Code_V1.27.gs adds per-task write isolation and STATUS always
+      written. Redeploy required to get the improved write behaviour.
+
   V1.26  2026-07-07
     • Setup panel: "Task Sheet Name" field lets users specify which Google Sheet
       tab the Apps Script reads tasks from. Defaults to "PROJECT TASK LIST".

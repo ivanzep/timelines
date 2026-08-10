@@ -1,6 +1,6 @@
 // ============================================================
 //  TIMELINE SYNC  |  Google Apps Script
-//  File: Code_V1.26.gs
+//  File: Code_V1.27.gs
 //
 //  PURPOSE
 //  ───────
@@ -31,6 +31,18 @@
 //
 //  VERSION HISTORY
 //  ───────────────
+//  V1.27  2026-08-10
+//    • saveBackToTaskList() — per-task write isolation: each task's row writes
+//      are wrapped in an individual try/catch so one failed row no longer aborts
+//      updates for all subsequent tasks in the Save payload.
+//    • STATUS write has its own inner try/catch so a Google Sheets data-validation
+//      rejection on the STATUS cell is logged (Logger.log) and skipped without
+//      stopping the rest of that task's writes or any following tasks.
+//    • STATUS always written unconditionally (was previously skipped when t.note
+//      was falsy, preventing the status from being cleared to empty string).
+//    • No new SETTINGS_KEYS. No redeploy needed for other logic; redeploy required
+//      to get the more robust write behaviour.
+//
 //  V1.26  2026-07-07
 //    • SETTINGS_KEYS expanded with 5 new keys:
 //        taskSheetName        — user-configurable task sheet tab name
