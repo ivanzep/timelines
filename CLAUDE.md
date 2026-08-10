@@ -9,7 +9,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 
 | File | Purpose |
 |------|---------|
-| `Code_V1.26.gs` | **Active backend** — deploy this. Adds `taskSheetName` to SETTINGS_KEYS; reads settings before import so tab name is applied; SOURCE_SHEET overridable at runtime. |
+| `Code_V1.27.gs` | **Active backend** — deploy this. Per-task write isolation: each row's writes are wrapped in a try/catch so one failure doesn't abort subsequent tasks; STATUS write has its own inner try/catch to survive sheet data-validation rejection; always writes STATUS (allows clearing to empty). |
+| `Code_V1.26.gs` | Previous backend. Keep for reference. |
 | `Code_V1.25.gs` | Previous backend. Keep for reference. |
 | `Code_V1.24.gs` | Previous backend. Keep for reference. |
 | `Code_V1.23.gs` | Previous backend. Keep for reference. |
@@ -35,7 +36,8 @@ An interactive HTML Gantt chart for the LA COSTA HOTEL project schedule, backed 
 | `Code_V1.01.gs` | Previous backend. Keep for reference. |
 | `Code_V1.0.gs` | Original baseline. Keep for reference. |
 | `Code.gs` | Original base script. Keep for reference. |
-| `TIMELINE-V1.26.html` | **Active HTML frontend** — open this in browser. Task Sheet Name field, title cutoff fix, and persisted tab/sort. |
+| `TIMELINE-V1.27.html` | **Active HTML frontend** — open this in browser. Status save fix: surfaces backend `taskError` in the status bar so failed writes are visible. Print settings persist via localStorage. |
+| `TIMELINE-V1.26.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.25.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.24.html` | Previous HTML version. Keep for reference. |
 | `TIMELINE-V1.23.html` | Previous HTML version. Keep for reference. |
@@ -150,6 +152,7 @@ Section colors: one row per discipline → `groupColor.DISCIPLINE_NAME : #hexcol
 ---
 
 ## Version History
+- **V1.27** (2026-08-10) — HTML + backend. **Fix task status not saving to spreadsheet**: `saveBackToTaskList` now wraps each task's row writes in an individual try/catch so one failed row doesn't abort subsequent tasks; STATUS write has its own inner try/catch to survive Google Sheets data-validation rejection on that cell; STATUS is always written (was previously skipped when `t.note` was falsy, preventing status from being cleared). **Frontend error visibility**: `saveToSheets()` now checks `result.taskError` from the backend response and shows a warning in the status bar when any row writes failed — previously the UI always showed "Saved X tasks" even if the backend silently errored. **Print preview persistence**: print panel settings (Gantt and Task List) saved to `localStorage` and restored on each open; date range always auto-populated from task data.
 - **V1.26** (2026-07-07) — HTML + backend. **User-configurable task sheet name**: Setup panel gains a "Task Sheet Name" text field; value saved as `taskSheetName` in GANTT SETTINGS tab; backend reads settings before importing tasks so the tab name is applied on every Load and Save. **Fix project title cutoff**: `renderCornerSvg()` now word-wraps title/subtitle against `leftLabelWidth` (not `sideWidth`) so text stays within the label column when Date/Duration columns are enabled. **Persist active tab and sort order**: `collectSettings()` saves `sortColumn`, `sortDirection`, and `currentTab`; `applySettings()` restores all three on Load — sort indicators update, tab buttons and panel visibility switch to match; load callback calls `applySort()` + `updateSortIndicators()` on the freshly-loaded task list.
 - **V1.23** (2026-07-02) — HTML only. **Status Colors toggle**: "Status Colors" checkbox in the toolbar switches all bar / milestone / flag fills between assigned colors (`colorOverride → task.color`) and status-derived colors (`STATUS_COLOR_MAP[task.status]`). `_effectiveBarColor(task)` helper centralises the colour logic; all rendering paths (interactive bars, milestones, flags, collapsed markers, flat disc rows, print individual task rows, print collapsed markers) and the task-table colour dot are wired to it. Toggle persisted to settings as `useStatusColors`. Backend unchanged. Also includes per-group variable flat-mode row heights: each discipline row height is computed from its own max outside-label line count (`_flatMaxLabelLines` changed from global scalar to per-group dict); `geom.rowYOffsets[]` replaces the old uniform stride; all rendering updated to use per-row heights.
 - **V1.22** (2026-07-01) — HTML only. Flat mode bar labels repositioned **above** each bar instead of inside it. `getEffectiveRowHeight()` now adds a label area (`Math.round(ganttBarFontSize * 1.4) + 4` px) above the bar so rows are tall enough to accommodate the label without overlapping the bar row above. `renderTaskBar` flat-mode branch: `barY` shifted down by `_flatLabelH`; labels rendered at `yTop + ganttBarFontSize + 2` (above bar baseline); `lineGap` set to `ganttBarFontSize + 2`; clipPath covers only the label area (horizontally constrained to bar x-span). Label fill uses chart text colour (not bar-contrast) since labels sit on the row background. Same layout mirrored in `_buildPrintPageEl` disc rows. Backend unchanged (no redeploy needed).
