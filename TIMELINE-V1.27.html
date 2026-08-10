@@ -1232,7 +1232,7 @@
 
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
         <div class="status-text" id="status-text">Loading La Costa Hotel project schedule...</div>
-        <div style="font-size:0.66rem;font-weight:600;color:var(--text-soft);letter-spacing:0.06em;white-space:nowrap;flex-shrink:0;padding-right:4px;">V1.26</div>
+        <div style="font-size:0.66rem;font-weight:600;color:var(--text-soft);letter-spacing:0.06em;white-space:nowrap;flex-shrink:0;padding-right:4px;">V1.27</div>
       </div>
     </div>
   </div>
@@ -6689,8 +6689,14 @@
         });
         var result = await resp.json();
         if (result.success) {
-          _syncDot('ok', 'Saved ' + tasks.length + ' tasks');
-          if (statusText) statusText.textContent = '☁ Saved ' + tasks.length + ' tasks to Google Sheets at ' + new Date().toLocaleTimeString();
+          if (result.taskError) {
+            _syncDot('warn', 'Saved with errors');
+            if (statusText) statusText.textContent = '⚠ Saved ' + tasks.length + ' tasks but some rows may not have updated. Error: ' + result.taskError;
+            console.warn('[GANTT] saveBackToTaskList error:', result.taskError);
+          } else {
+            _syncDot('ok', 'Saved ' + tasks.length + ' tasks');
+            if (statusText) statusText.textContent = '☁ Saved ' + tasks.length + ' tasks to Google Sheets at ' + new Date().toLocaleTimeString();
+          }
         } else {
           throw new Error(result.error || 'Unknown error from script');
         }
