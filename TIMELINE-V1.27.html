@@ -2210,9 +2210,10 @@
             if (e.ctrlKey || e.metaKey) {
               // Ctrl/Cmd+click: toggle this row's checkbox selection
               var cb = tr.querySelector('input[type="checkbox"]');
-              if (selectedTaskIds[task.id]) { delete selectedTaskIds[task.id]; if (cb) cb.checked = false; }
-              else { selectedTaskIds[task.id] = true; if (cb) cb.checked = true; }
-              _lastCheckedTaskId = task.id;
+              var _tid = String(task.id);
+              if (selectedTaskIds[_tid]) { delete selectedTaskIds[_tid]; if (cb) cb.checked = false; }
+              else { selectedTaskIds[_tid] = true; if (cb) cb.checked = true; }
+              _lastCheckedTaskId = _tid;
               updateBatchBar();
               return;
             }
@@ -2241,12 +2242,13 @@
       (function(t, cb) {
         cb.addEventListener('click', function(e) {
           e.stopPropagation(); // prevent row click handler from firing
-          if (e.shiftKey && _lastCheckedTaskId && _lastCheckedTaskId !== t.id) {
+          var tid = String(t.id);
+          if (e.shiftKey && _lastCheckedTaskId && _lastCheckedTaskId !== tid) {
             // Range-select: find all visible task rows, select the span between anchor and current
             var allRows = Array.from(taskTableBody.querySelectorAll('tr[data-task-id]'));
-            var ids = allRows.map(function(r) { return r.dataset.taskId; });
+            var ids = allRows.map(function(r) { return r.dataset.taskId; }); // strings
             var anchorIdx = ids.indexOf(_lastCheckedTaskId);
-            var currentIdx = ids.indexOf(t.id);
+            var currentIdx = ids.indexOf(tid);
             if (anchorIdx !== -1 && currentIdx !== -1) {
               var lo = Math.min(anchorIdx, currentIdx);
               var hi = Math.max(anchorIdx, currentIdx);
@@ -2259,9 +2261,10 @@
                 if (rangeCb) rangeCb.checked = targetState;
               }
             }
+            // anchor stays at _lastCheckedTaskId — matches OS shift+click behaviour
           } else {
-            if (cb.checked) selectedTaskIds[t.id] = true; else delete selectedTaskIds[t.id];
-            _lastCheckedTaskId = t.id;
+            if (cb.checked) selectedTaskIds[tid] = true; else delete selectedTaskIds[tid];
+            _lastCheckedTaskId = tid;
           }
           updateBatchBar();
         });
