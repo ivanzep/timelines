@@ -763,19 +763,34 @@ function saveBackToTaskList(payload) {
 //  adds separator rows for new groups and removes them for deleted ones.
 // ============================================================
 function writeGroupSeparators(payload) {
-  if (!payload.groups && !payload.deletedGroups) return;
-
-  var groups        = payload.groups        || [];
-  var deletedGroups = payload.deletedGroups || [];
+  var groups        = (payload.groups        || []).slice();
+  var deletedGroups = (payload.deletedGroups || []).slice();
   if (!groups.length && !deletedGroups.length) return;
 
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SOURCE_SHEET);
   if (!sheet) return;
 
-  var raw   = sheet.getDataRange().getValues();
+  // ── Helper: scan raw data → sepRows and firstDataRow maps ──
+  function scanSheet(rawData, hRowIdx, discIdx, taskIdx) {
+    var sep  = {};  // normKey(disc) → 1-based row of the separator ("–" row)
+    var first = {}; // normKey(disc) → 1-based row of the first non-separator data row
+    for (var r = hRowIdx + 1; r < rawData.length; r++) {
+      var d = String(rawData[r][discIdx] || '').trim();
+      var t = String(rawData[r][taskIdx] || '').trim();
+      if (!d) continue;
+      var dk = normKey(d);
+      if (/^[\s\-]+$/.test(t)) {
+        if (!sep[dk])  sep[dk]  = r + 1;
+      } else if (t) {
+        if (!first[dk]) first[dk] = r + 1;
+      }
+    }
+    return { sep: sep, first: first };
+  }
 
-  // Find header row
+  // ── Find header row ──
+  var raw  = sheet.getDataRange().getValues();
   var hRow = -1;
   for (var i = 0; i < Math.min(raw.length, 10); i++) {
     for (var c = 0; c < raw[i].length; c++) {
@@ -787,48 +802,63 @@ function writeGroupSeparators(payload) {
 
   var cols = {};
   raw[hRow].forEach(function(h, idx) { cols[String(h).trim().toUpperCase()] = idx; });
-  var CI = {
-    discipline: ci(cols, 'DISCIPLINE', 1),
-    task:       ci(cols, 'TASK',       3)
-  };
+  var discIdx  = ci(cols, 'DISCIPLINE', 1);
+  var taskIdx  = ci(cols, 'TASK',       3);
+  var totalCols = raw[hRow].length || 21;
 
-  // Scan existing separator rows — map normKey(disc) → 1-based row number
-  // A separator row has TASK = "-" (or pure-whitespace/hyphen pattern) and a non-empty DISCIPLINE.
-  var sepRows = {}; // normKey(disc) → 1-based row number
-  for (var row = hRow + 1; row < raw.length; row++) {
-    var disc = String(raw[row][CI.discipline] || '').trim();
-    var task = String(raw[row][CI.task]       || '').trim();
-    if (disc && /^[\s\-]+$/.test(task)) {
-      sepRows[normKey(disc)] = row + 1;
-    }
-  }
+  var maps = scanSheet(raw, hRow, discIdx, taskIdx);
 
-  // Delete separator rows for removed groups (process in descending row order
-  // so row-index shifts from earlier deletes don't corrupt later ones).
+  // ── 1. Delete separator rows for removed groups ──
+  // Process in descending row order so earlier deletions don't shift later indices.
   var toDelete = [];
   deletedGroups.forEach(function(g) {
-    var key = normKey(g);
-    if (sepRows[key]) toDelete.push(sepRows[key]);
+    var r = maps.sep[normKey(g)];
+    if (r) toDelete.push(r);
   });
-  toDelete.sort(function(a, b) { return b - a; }); // descending
+  toDelete.sort(function(a, b) { return b - a; });
   toDelete.forEach(function(r) { sheet.deleteRow(r); });
 
-  // Refresh raw data after deletions before appending
-  if (toDelete.length) raw = sheet.getDataRange().getValues();
-
-  // Add separator rows for new groups that don't yet have one
-  var newGroups = groups.filter(function(g) { return !sepRows[normKey(g)]; });
-  if (newGroups.length) {
-    var lastRow = sheet.getLastRow();
-    var totalCols = raw[hRow].length || 21;
-    newGroups.forEach(function(g) {
-      lastRow++;
-      var sepRow = new Array(totalCols).fill('');
-      sepRow[CI.discipline] = g.toUpperCase();
-      sepRow[CI.task]       = '-';
-      sheet.appendRow(sepRow);
-    });
+  // Re-scan after deletions so firstDataRow indices are accurate for insertions.
+  if (toDelete.length) {
+    raw  = sheet.getDataRange().getValues();
+    maps = scanSheet(raw, hRow, discIdx, taskIdx);
   }
+
+  // ── 2. Insert separator rows for new groups ──
+  // A separator row has DISCIPLINE = <group name>, TASK = "-", all other cells blank.
+  var newGroups = groups.filter(function(g) { return !maps.sep[normKey(g)]; });
+
+  // Build a blank row template (loop, no Array.fill for GAS compatibility).
+  function blankRow() {
+    var r = [];
+    for (var _i = 0; _i < totalCols; _i++) r.push('');
+    return r;
+  }
+
+  // Sort descending by insertion row so each insert doesn't shift the others.
+  // Groups whose discipline already has data rows get inserted ABOVE that first data row.
+  // Groups with no data rows yet get appended at the end (largest row number = last).
+  newGroups.sort(function(a, b) {
+    var ra = maps.first[normKey(a)] || (sheet.getLastRow() + 1);
+    var rb = maps.first[normKey(b)] || (sheet.getLastRow() + 1);
+    return rb - ra; // descending
+  });
+
+  newGroups.forEach(function(g) {
+    var sepRow = blankRow();
+    sepRow[discIdx] = g.toUpperCase();
+    sepRow[taskIdx] = '-';
+
+    var insertAt = maps.first[normKey(g)]; // 1-based row of first data row for this group
+    if (insertAt) {
+      // Insert a blank row above the first data row, then write the separator into it.
+      sheet.insertRowBefore(insertAt);
+      sheet.getRange(insertAt, 1, 1, totalCols).setValues([sepRow]);
+    } else {
+      // No existing data rows for this group — append at the end.
+      sheet.appendRow(sepRow);
+    }
+  });
 }
 
 // ============================================================
