@@ -348,19 +348,22 @@ function doPost(e) {
       }
     }
 
-    // 4. Write / delete group separator rows in the task sheet
+    // 4. Write / delete group separator rows (handles empty groups + deletions)
+    var groupSepError = '';
     try {
       writeGroupSeparators(payload);
     } catch (gsErr) {
+      groupSepError = gsErr.toString();
       Logger.log('writeGroupSeparators error: ' + gsErr);
     }
 
     return buildResponse({
-      success:         true,
-      message:         taskMsg,
-      taskError:       taskErr,
-      taskParamsError: taskParamsErr,
-      settingsError:   settingsErr
+      success:          true,
+      message:          taskMsg,
+      taskError:        taskErr,
+      taskParamsError:  taskParamsErr,
+      settingsError:    settingsErr,
+      groupSepError:    groupSepError
     });
 
   } catch (err) {
@@ -524,6 +527,7 @@ function saveBackToTaskList(payload) {
   // Build lookup: "DISCIPLINE|TASKNAME" → 1-based sheet row (scheduled/milestone rows only)
   var lookup      = {};
   var discLastRow = {};
+  var discSepRow  = {}; // normKey(disc) → 1-based row of existing separator ("-") row
   var lastDisc    = '';
   for (var row = hRow + 1; row < raw.length; row++) {
     var disc = String(raw[row][CI.discipline] || '').trim();
@@ -535,6 +539,9 @@ function saveBackToTaskList(payload) {
       var key = normKey(lastDisc + '|' + task);
       if ((isRowScheduled || isRowMilestone) && !lookup[key]) lookup[key] = row + 1;
       discLastRow[normKey(lastDisc)] = row + 1;
+    } else if (task && /^[\s\-]+$/.test(task) && lastDisc) {
+      // Separator / divider row ("-") — track so we know not to add a duplicate
+      if (!discSepRow[normKey(lastDisc)]) discSepRow[normKey(lastDisc)] = row + 1;
     }
   }
 
@@ -738,9 +745,31 @@ function saveBackToTaskList(payload) {
     });
 
     if (newRowsOrphaned.length) {
+      // Group orphaned rows by discipline so we can write one separator per discipline.
+      var orphansByDisc = {};
+      var orphanDiscOrder = [];
+      newRowsOrphaned.forEach(function(rowArr) {
+        var dk = normKey(String(rowArr[CI.discipline] || '').trim());
+        if (!orphansByDisc[dk]) { orphansByDisc[dk] = []; orphanDiscOrder.push(dk); }
+        orphansByDisc[dk].push(rowArr);
+      });
+
       var lastRow = sheet.getLastRow();
-      sheet.getRange(lastRow + 1, 1, newRowsOrphaned.length, newRowsOrphaned[0].length)
-           .setValues(newRowsOrphaned);
+      orphanDiscOrder.forEach(function(dk) {
+        var rows = orphansByDisc[dk];
+        // Write separator row first if none exists for this discipline
+        if (!discSepRow[dk]) {
+          var sepRow = [];
+          for (var _si = 0; _si < rows[0].length; _si++) sepRow.push('');
+          sepRow[CI.discipline] = String(rows[0][CI.discipline] || '').trim();
+          sepRow[CI.task]       = '-';
+          sheet.getRange(lastRow + 1, 1, 1, sepRow.length).setValues([sepRow]);
+          discSepRow[dk] = lastRow + 1;
+          lastRow++;
+        }
+        sheet.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
+        lastRow += rows.length;
+      });
     }
 
   } finally {
