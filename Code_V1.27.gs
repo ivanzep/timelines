@@ -725,8 +725,17 @@ function saveBackToTaskList(payload) {
           });
           discLastRow[m.targetDiscKey] = insertAfter + 1;
         } else {
-          // Target discipline not yet in sheet — append at end
+          // Target discipline not yet in sheet — write separator first, then task
           var lastRow = sheet.getLastRow();
+          if (!discSepRow[m.targetDiscKey]) {
+            var mSepRow = [];
+            for (var _msi = 0; _msi < m.newRow.length; _msi++) mSepRow.push('');
+            mSepRow[CI.discipline] = m.newRow[CI.discipline];
+            mSepRow[CI.task]       = '-';
+            sheet.getRange(lastRow + 1, 1, 1, mSepRow.length).setValues([mSepRow]);
+            discSepRow[m.targetDiscKey] = lastRow + 1;
+            lastRow++;
+          }
           sheet.getRange(lastRow + 1, 1, 1, m.newRow.length).setValues([m.newRow]);
           discLastRow[m.targetDiscKey] = lastRow + 1;
         }
@@ -769,6 +778,25 @@ function saveBackToTaskList(payload) {
         }
         sheet.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
         lastRow += rows.length;
+      });
+    }
+
+    // ── 5. Separator rows for empty groups ─────────────────────
+    // Any group in payload.groups that still has no separator row in the sheet
+    // (e.g. a group created via Add Group with no tasks assigned yet).
+    if (payload.groups && payload.groups.length) {
+      var totalColsG = raw[hRow].length || 21;
+      payload.groups.forEach(function(g) {
+        var gkey = normKey(g);
+        if (!discSepRow[gkey]) {
+          var gLastRow = sheet.getLastRow();
+          var gSepRow = [];
+          for (var _gi = 0; _gi < totalColsG; _gi++) gSepRow.push('');
+          gSepRow[CI.discipline] = g.toUpperCase();
+          gSepRow[CI.task]       = '-';
+          sheet.getRange(gLastRow + 1, 1, 1, gSepRow.length).setValues([gSepRow]);
+          discSepRow[gkey] = gLastRow + 1;
+        }
       });
     }
 
