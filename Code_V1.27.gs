@@ -348,6 +348,13 @@ function doPost(e) {
       }
     }
 
+    // 4. Write / delete group separator rows in the task sheet
+    try {
+      writeGroupSeparators(payload);
+    } catch (gsErr) {
+      Logger.log('writeGroupSeparators error: ' + gsErr);
+    }
+
     return buildResponse({
       success:         true,
       message:         taskMsg,
@@ -745,6 +752,83 @@ function saveBackToTaskList(payload) {
   if (deleted)  msg += ', deleted ' + deleted  + ' task(s)';
   msg += ' in "' + SOURCE_SHEET + '".';
   return msg;
+}
+
+// ============================================================
+//  GROUP SEPARATOR ROWS — write / delete
+//
+//  Groups/sections appear in the PROJECT TASK LIST tab as rows with
+//  DISCIPLINE = <group name> and TASK = "-". These rows are skipped
+//  on import but preserved visually in the spreadsheet. This function
+//  adds separator rows for new groups and removes them for deleted ones.
+// ============================================================
+function writeGroupSeparators(payload) {
+  if (!payload.groups && !payload.deletedGroups) return;
+
+  var groups        = payload.groups        || [];
+  var deletedGroups = payload.deletedGroups || [];
+  if (!groups.length && !deletedGroups.length) return;
+
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SOURCE_SHEET);
+  if (!sheet) return;
+
+  var raw   = sheet.getDataRange().getValues();
+
+  // Find header row
+  var hRow = -1;
+  for (var i = 0; i < Math.min(raw.length, 10); i++) {
+    for (var c = 0; c < raw[i].length; c++) {
+      if (String(raw[i][c]).trim().toUpperCase() === 'DISCIPLINE') { hRow = i; break; }
+    }
+    if (hRow >= 0) break;
+  }
+  if (hRow < 0) return;
+
+  var cols = {};
+  raw[hRow].forEach(function(h, idx) { cols[String(h).trim().toUpperCase()] = idx; });
+  var CI = {
+    discipline: ci(cols, 'DISCIPLINE', 1),
+    task:       ci(cols, 'TASK',       3)
+  };
+
+  // Scan existing separator rows — map normKey(disc) → 1-based row number
+  // A separator row has TASK = "-" (or pure-whitespace/hyphen pattern) and a non-empty DISCIPLINE.
+  var sepRows = {}; // normKey(disc) → 1-based row number
+  for (var row = hRow + 1; row < raw.length; row++) {
+    var disc = String(raw[row][CI.discipline] || '').trim();
+    var task = String(raw[row][CI.task]       || '').trim();
+    if (disc && /^[\s\-]+$/.test(task)) {
+      sepRows[normKey(disc)] = row + 1;
+    }
+  }
+
+  // Delete separator rows for removed groups (process in descending row order
+  // so row-index shifts from earlier deletes don't corrupt later ones).
+  var toDelete = [];
+  deletedGroups.forEach(function(g) {
+    var key = normKey(g);
+    if (sepRows[key]) toDelete.push(sepRows[key]);
+  });
+  toDelete.sort(function(a, b) { return b - a; }); // descending
+  toDelete.forEach(function(r) { sheet.deleteRow(r); });
+
+  // Refresh raw data after deletions before appending
+  if (toDelete.length) raw = sheet.getDataRange().getValues();
+
+  // Add separator rows for new groups that don't yet have one
+  var newGroups = groups.filter(function(g) { return !sepRows[normKey(g)]; });
+  if (newGroups.length) {
+    var lastRow = sheet.getLastRow();
+    var totalCols = raw[hRow].length || 21;
+    newGroups.forEach(function(g) {
+      lastRow++;
+      var sepRow = new Array(totalCols).fill('');
+      sepRow[CI.discipline] = g.toUpperCase();
+      sepRow[CI.task]       = '-';
+      sheet.appendRow(sepRow);
+    });
+  }
 }
 
 // ============================================================
