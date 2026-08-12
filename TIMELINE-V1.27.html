@@ -1142,6 +1142,7 @@
           <button id="add-task-btn"     class="primary">+ Add Task</button>
           <button id="add-milestone-btn" class="secondary">+ Add Milestone</button>
           <button id="add-flag-btn"     class="secondary">+ Add Flag</button>
+          <button id="add-group-btn"    class="secondary" title="Add a new empty group/section">+ Add Group</button>
           <button id="clear-tasks-btn"  class="danger">Clear All</button>
           <button id="task-print-btn"   class="secondary" title="Print task list">Print</button>
         </div>
@@ -1445,6 +1446,8 @@
     var selectedTaskIds = {};
     var _lastCheckedTaskId = null; // anchor for shift+click range-select in task list
     var ganttMultiSelected = {}; // taskId → true — set of Gantt bars in multi-selection (shift+click)
+    var emptyGroups   = []; // group names created via Add Group that have no tasks yet
+    var deletedGroups = []; // group names removed since last Save — sent to backend for separator cleanup
 
     function taskMatchesFilter(t) {
       var sf = searchFilter.trim().toLowerCase();
@@ -1900,6 +1903,44 @@
       renderGantt();
     }
 
+    function addGroup() {
+      var name = prompt('Enter new group / section name:');
+      if (!name) return;
+      name = name.trim().toUpperCase();
+      if (!name) return;
+      var exists = tasks.some(function(t) { return (t.group || '').toUpperCase() === name; })
+                   || emptyGroups.indexOf(name) !== -1;
+      if (exists) { alert('A group named "' + name + '" already exists.'); return; }
+      emptyGroups.push(name);
+      if (taskListOrder.indexOf(name) === -1) taskListOrder.push(name);
+      if (disciplineOrder.indexOf(name) === -1) disciplineOrder.push(name);
+      // Undo any pending deletion of the same name
+      var di = deletedGroups.indexOf(name);
+      if (di !== -1) deletedGroups.splice(di, 1);
+      refreshTaskTable();
+      renderGantt();
+    }
+
+    function deleteGroup(name, taskCount) {
+      if (taskCount > 0) {
+        if (!confirm('Delete group "' + name + '" and all ' + taskCount + ' task(s)?\nThey will be removed from the spreadsheet on the next Save.')) return;
+        tasks = tasks.filter(function(t) { return (t.group || '').toUpperCase() !== name; });
+        if (selectedTaskId && !tasks.some(function(t) { return t.id === selectedTaskId; })) selectedTaskId = null;
+        selectedTaskIds = {}; _lastCheckedTaskId = null;
+      }
+      var ei = emptyGroups.indexOf(name);
+      if (ei !== -1) emptyGroups.splice(ei, 1);
+      var tli = taskListOrder.indexOf(name);
+      if (tli !== -1) taskListOrder.splice(tli, 1);
+      var doi = disciplineOrder.indexOf(name);
+      if (doi !== -1) disciplineOrder.splice(doi, 1);
+      if (deletedGroups.indexOf(name) === -1) deletedGroups.push(name);
+      refreshTaskTable();
+      updateStatusText();
+      renderGantt();
+      updateBatchBar();
+    }
+
     // -----------------------------
     // Sort
     // -----------------------------
@@ -2071,6 +2112,14 @@
           groupOrder.push(_gk); _knownInList[_gk] = true; taskListOrder.push(_gk);
         }
       }
+      // Append empty groups (created via Add Group, no tasks yet)
+      for (var _egi = 0; _egi < emptyGroups.length; _egi++) {
+        var _egk = emptyGroups[_egi];
+        if (!_knownInList[_egk]) {
+          groupOrder.push(_egk); _knownInList[_egk] = true;
+          if (taskListOrder.indexOf(_egk) === -1) taskListOrder.push(_egk);
+        }
+      }
 
       var TOTAL_COLS = 15; // number of <th> columns in the header row
 
@@ -2147,10 +2196,25 @@
 
           var headTd = document.createElement('td');
           headTd.colSpan = TOTAL_COLS - 3;
+          headTd.style.cssText = 'display:flex;align-items:center;gap:4px;';
           headTd.appendChild(toggle);
           headTd.appendChild(document.createTextNode(discipline));
           headTd.appendChild(countSpan);
+
+          // Delete group button — shown on hover
+          var delGroupBtn = document.createElement('button');
+          delGroupBtn.textContent = '× Remove';
+          delGroupBtn.className = 'secondary';
+          delGroupBtn.style.cssText = 'font-size:0.62rem;padding:1px 5px;margin-left:auto;opacity:0;transition:opacity 0.15s;flex-shrink:0;color:var(--danger,#dc2626);border-color:var(--danger,#dc2626);';
+          delGroupBtn.title = groupTasks.length ? 'Delete group and all its tasks' : 'Delete empty group';
+          (function(disc, gtasks) {
+            delGroupBtn.addEventListener('click', function(e) { e.stopPropagation(); deleteGroup(disc, gtasks.length); });
+          })(discipline, groupTasks);
+          headTd.appendChild(delGroupBtn);
           headTr.appendChild(headTd);
+
+          headTr.addEventListener('mouseenter', function() { delGroupBtn.style.opacity = '1'; });
+          headTr.addEventListener('mouseleave', function() { delGroupBtn.style.opacity = '0'; });
 
           // Collapse toggle — not when clicking grip, checkbox, or color picker
           headTr.addEventListener('click', function(e) {
@@ -2226,7 +2290,7 @@
               })(groupTasks[ti]);
             }
           }
-        })(groupOrder[gi2], groupMap[groupOrder[gi2]]);
+        })(groupOrder[gi2], groupMap[groupOrder[gi2]] || []);
       }
       updateSortIndicators();
     }
@@ -5525,6 +5589,8 @@
       addTaskBtn.addEventListener('click', function() { addTask('bar'); });
       addMilestoneBtn.addEventListener('click', function() { addTask('milestone'); });
       addFlagBtn.addEventListener('click', function() { addTask('flag'); });
+      var addGroupBtn = document.getElementById('add-group-btn');
+      if (addGroupBtn) addGroupBtn.addEventListener('click', addGroup);
       clearTasksBtn.addEventListener('click', clearTasks);
       reloadDefaultsBtn.addEventListener('click', loadDefaults);
       exportCsvBtn.addEventListener('click', exportToCSV);
@@ -6685,7 +6751,7 @@
     // Save tasks TO Google Sheets ← timeline
     async function saveToSheets() {
       if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
-      if (!tasks.length) { alert('No tasks to save.'); return; }
+      if (!tasks.length && !emptyGroups.length && !deletedGroups.length) { alert('No tasks or groups to save.'); return; }
       captureMetaFromInputs();
       _syncDot('busy', 'Saving…');
 
@@ -6726,6 +6792,8 @@
           updated:  projectMeta.updated  || '',
           note:     projectMeta.note     || ''
         },
+        groups:        taskListOrder.slice(),
+        deletedGroups: deletedGroups.slice(),
         settings: collectSettings()
       };
 
@@ -6739,6 +6807,7 @@
         });
         var result = await resp.json();
         if (result.success) {
+          deletedGroups = []; // backend has processed them — clear so they're not re-sent
           if (result.taskError) {
             _syncDot('warn', 'Saved with errors');
             if (statusText) statusText.textContent = '⚠ Saved ' + tasks.length + ' tasks but some rows may not have updated. Error: ' + result.taskError;
