@@ -6808,10 +6808,11 @@
         var result = await resp.json();
         if (result.success) {
           deletedGroups = []; // backend has processed them — clear so they're not re-sent
-          if (result.taskError) {
+          var _anyErr = result.taskError || result.groupSepError;
+          if (_anyErr) {
             _syncDot('warn', 'Saved with errors');
-            if (statusText) statusText.textContent = '⚠ Saved ' + tasks.length + ' tasks but some rows may not have updated. Error: ' + result.taskError;
-            console.warn('[GANTT] saveBackToTaskList error:', result.taskError);
+            if (statusText) statusText.textContent = '⚠ Saved with errors: ' + _anyErr;
+            console.warn('[GANTT] save errors:', result);
           } else {
             _syncDot('ok', 'Saved ' + tasks.length + ' tasks');
             if (statusText) statusText.textContent = '☁ Saved ' + tasks.length + ' tasks to Google Sheets at ' + new Date().toLocaleTimeString();
