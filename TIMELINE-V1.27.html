@@ -401,7 +401,7 @@
     button.primary:hover { filter: brightness(1.06); background: linear-gradient(180deg, #0ea5e9, #0284c7); }
     button.secondary { background: var(--bg-alt); }
     button.danger { border-color: #fca5a5; color: var(--danger); background: #fef2f2; }
-    #sheets-save-btn.save-dirty { background: #f59e0b; border-color: #d97706; color: #fff; font-weight: 600; }
+    #sheets-save-btn.save-dirty, #overflow-menu-btn.save-dirty { background: #f59e0b; border-color: #d97706; color: #fff; font-weight: 600; }
     button.danger:hover { background: #fee2e2; }
     button:active { transform: translateY(0); }
 
@@ -1451,13 +1451,17 @@
     function markDirty() {
       if (_isDirty) return;
       _isDirty = true;
-      var btn = document.getElementById('sheets-save-btn');
-      if (btn) btn.classList.add('save-dirty');
+      var saveBtn = document.getElementById('sheets-save-btn');
+      if (saveBtn) saveBtn.classList.add('save-dirty');
+      var menuBtn = document.getElementById('overflow-menu-btn');
+      if (menuBtn) menuBtn.classList.add('save-dirty');
     }
     function clearDirty() {
       _isDirty = false;
-      var btn = document.getElementById('sheets-save-btn');
-      if (btn) btn.classList.remove('save-dirty');
+      var saveBtn = document.getElementById('sheets-save-btn');
+      if (saveBtn) saveBtn.classList.remove('save-dirty');
+      var menuBtn = document.getElementById('overflow-menu-btn');
+      if (menuBtn) menuBtn.classList.remove('save-dirty');
     }
     var ganttMultiSelected = {}; // taskId → true — set of Gantt bars in multi-selection (shift+click)
     var emptyGroups   = []; // group names created via Add Group that have no tasks yet

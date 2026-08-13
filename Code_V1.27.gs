@@ -493,7 +493,9 @@ function importFromTaskList() {
 //  (color, style, symbol, type) are handled by writeTaskParams().
 // ============================================================
 function saveBackToTaskList(payload) {
-  if (!payload.tasks || !payload.tasks.length) return 'Nothing to save.';
+  var hasTasks        = payload.tasks        && payload.tasks.length        > 0;
+  var hasDeletedGroups = payload.deletedGroups && payload.deletedGroups.length > 0;
+  if (!hasTasks && !hasDeletedGroups) return 'Nothing to save.';
 
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SOURCE_SHEET);
@@ -679,20 +681,28 @@ function saveBackToTaskList(payload) {
     });
 
     // ── 2. Delete rows that were removed from the chart ─────────
-    // Rows in the lookup that are NOT in the payload were deleted
-    // by the user. Remove them from the sheet top-to-bottom
-    // reversed so row indices stay valid as we go.
+    // Rows in the lookup that are NOT in the payload were deleted by the user.
+    // Also delete separator rows for groups removed from the chart.
+    // Process all deletions together in descending order so indices stay valid.
     var rowsToDelete = [];
     Object.keys(lookup).forEach(function(key) {
       if (!payloadKeys[key]) rowsToDelete.push(lookup[key]);
     });
+    if (payload.deletedGroups && payload.deletedGroups.length) {
+      payload.deletedGroups.forEach(function(g) {
+        var sr = discSepRow[normKey(g)];
+        if (sr) rowsToDelete.push(sr);
+      });
+    }
     rowsToDelete.sort(function(a, b) { return b - a; }); // descending
     rowsToDelete.forEach(function(rowNum) {
       sheet.deleteRow(rowNum);
       deleted++;
-      // Adjust discLastRow for any discipline whose last row was at or after the deleted row
       Object.keys(discLastRow).forEach(function(dk) {
         if (discLastRow[dk] >= rowNum) discLastRow[dk]--;
+      });
+      Object.keys(discSepRow).forEach(function(dk) {
+        if (discSepRow[dk] >= rowNum) discSepRow[dk]--;
       });
     });
 
@@ -820,9 +830,8 @@ function saveBackToTaskList(payload) {
 //  adds separator rows for new groups and removes them for deleted ones.
 // ============================================================
 function writeGroupSeparators(payload) {
-  var groups        = (payload.groups        || []).slice();
-  var deletedGroups = (payload.deletedGroups || []).slice();
-  if (!groups.length && !deletedGroups.length) return;
+  var groups = (payload.groups || []).slice();
+  if (!groups.length) return; // separator deletions handled in saveBackToTaskList
 
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SOURCE_SHEET);
@@ -863,25 +872,12 @@ function writeGroupSeparators(payload) {
   var taskIdx  = ci(cols, 'TASK',       3);
   var totalCols = raw[hRow].length || 21;
 
+  // Separator row deletions for removed groups are handled inside saveBackToTaskList
+  // (step 2), which already has the discSepRow map from its initial sheet scan and
+  // processes all row deletions in one descending pass. We only handle insertion here.
   var maps = scanSheet(raw, hRow, discIdx, taskIdx);
 
-  // ── 1. Delete separator rows for removed groups ──
-  // Process in descending row order so earlier deletions don't shift later indices.
-  var toDelete = [];
-  deletedGroups.forEach(function(g) {
-    var r = maps.sep[normKey(g)];
-    if (r) toDelete.push(r);
-  });
-  toDelete.sort(function(a, b) { return b - a; });
-  toDelete.forEach(function(r) { sheet.deleteRow(r); });
-
-  // Re-scan after deletions so firstDataRow indices are accurate for insertions.
-  if (toDelete.length) {
-    raw  = sheet.getDataRange().getValues();
-    maps = scanSheet(raw, hRow, discIdx, taskIdx);
-  }
-
-  // ── 2. Insert separator rows for new groups ──
+  // ── Insert separator rows for new groups ──
   // A separator row has DISCIPLINE = <group name>, TASK = "-", all other cells blank.
   var newGroups = groups.filter(function(g) { return !maps.sep[normKey(g)]; });
 
