@@ -565,7 +565,7 @@
 
     /* ---- Tasks-only fullscreen mode ---- */
     .tasks-fullscreen .task-table-wrapper { max-height: none !important; overflow: visible !important; }
-    .tasks-fullscreen th { position: static; }   /* sticky headers need a scroll ancestor; disable when page scrolls */
+    .tasks-fullscreen th { position: relative; }   /* sticky headers need a scroll ancestor; disable when page scrolls (relative, not static, so th still anchors the column-resize handle) */
 
     /* ---- Google Sheets Two-Way Sync ---- */
     .sync-indicator { display:inline-flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--text-muted); padding:3px 9px; border-radius:999px; background:var(--panel-soft); border:1px solid var(--border); white-space:nowrap; }
@@ -2180,24 +2180,28 @@
     // -----------------------------
     // Task table - column resize + visibility
     // -----------------------------
+    // Sets each <col>'s width based on stored width + visibility state. Under
+    // table-layout:fixed, a <col>'s "display:none" is NOT honored by all browsers
+    // to actually hide the column — collapsing its width to 0 is what reliably
+    // removes it visually (th/td already have overflow:hidden to clip content).
     function applyTaskTableColWidths() {
       var colgroup = document.getElementById('task-table-colgroup');
       if (!colgroup) return;
       Array.prototype.forEach.call(colgroup.children, function(col) {
         var key = col.dataset.col;
+        var isToggleable = TASK_COL_KEYS.indexOf(key) !== -1;
+        if (isToggleable && taskTableColVisible[key] === false) {
+          col.style.width = '0px';
+          return;
+        }
         var w = taskTableColWidths[key] || TASK_COL_DEFAULT_WIDTHS[key];
         col.style.width = w ? (w + 'px') : '';
       });
     }
 
+    // Kept as an alias — visibility is applied as part of applyTaskTableColWidths().
     function applyTaskTableColVisibility() {
-      var colgroup = document.getElementById('task-table-colgroup');
-      if (!colgroup) return;
-      Array.prototype.forEach.call(colgroup.children, function(col) {
-        var key = col.dataset.col;
-        if (TASK_COL_KEYS.indexOf(key) === -1) return; // check/grip/actions always visible
-        col.style.display = (taskTableColVisible[key] === false) ? 'none' : '';
-      });
+      applyTaskTableColWidths();
     }
 
     function saveTaskTableColPrefs() {
