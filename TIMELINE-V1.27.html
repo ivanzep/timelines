@@ -550,9 +550,10 @@
     }
 
     /* ---- Task table: discipline group headings ---- */
-    .disc-group-header { background: var(--panel-soft); cursor: pointer; user-select: none; position: sticky; z-index: 2; }
-    .disc-group-header:hover td { background: var(--border); }
-    .disc-group-header td { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em; color: var(--text); padding: 4px 7px; text-transform: uppercase; border-bottom: 1px solid var(--border-strong); border-top: 1px solid var(--border-strong); background: var(--panel-soft); }
+    /* --group-row-bg is set per-row (inline) from that group's assigned color, spanning every column */
+    .disc-group-header { background: var(--group-row-bg, var(--panel-soft)); cursor: pointer; user-select: none; position: sticky; z-index: 2; }
+    .disc-group-header:hover td { filter: brightness(0.94); }
+    .disc-group-header td { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em; color: var(--text); padding: 4px 7px; text-transform: uppercase; border-bottom: 1px solid var(--border-strong); border-top: 1px solid var(--border-strong); background: var(--group-row-bg, var(--panel-soft)); }
     .disc-group-toggle { display: inline-block; width: 14px; margin-right: 5px; font-style: normal; transition: transform 0.15s; }
     .disc-group-toggle.collapsed { transform: rotate(-90deg); }
     .disc-group-count { font-size: 0.68rem; font-weight: 500; color: var(--text-soft); margin-left: 8px; }
@@ -1617,6 +1618,14 @@
       var mult = dark ? 1.12 : 0.67;
       return ('0' + Math.min(255, Math.round(val / 100 * 255 * mult)).toString(16)).slice(-2);
     }
+    // Apply a group's assigned color as the Task Properties table's group header
+    // row background (via a CSS custom property so every cell in the row — including
+    // the colspan cell — picks it up uniformly, spanning the full row width).
+    function _applyGroupHeaderRowColor(tr, hex) {
+      var rgb = _hexToRgbStr(hex || '#94a3b8');
+      var alpha = darkMode ? 0.35 : 0.22;
+      tr.style.setProperty('--group-row-bg', 'rgba(' + rgb + ',' + alpha + ')');
+    }
     function groupTintHex(dark) { return tintToHex(groupTint, dark); }
     // Header tint: straight 0→FF so 100% = fully opaque (no dark-mode mult)
     function groupHeaderTintHex() {
@@ -2492,17 +2501,21 @@
           countSpan.className = 'disc-group-count';
           countSpan.textContent = '(' + groupTasks.length + ' task' + (groupTasks.length !== 1 ? 's' : '') + ')';
 
-          // Group header color picker — tints Gantt side header + rollup bar
+          // Group header color picker — tints Gantt side header + rollup bar,
+          // and this table's group header row background (spans all columns).
           var gcPicker = document.createElement('input');
           gcPicker.type = 'color';
-          gcPicker.title = 'Section color — applied to header background and rollup bar';
+          gcPicker.title = 'Section / line color — applied to this header row (all columns), the Gantt header, and the rollup bar';
           gcPicker.style.cssText = 'width:22px;height:18px;padding:1px;vertical-align:middle;cursor:pointer;border-radius:4px;border:1px solid var(--border-strong);flex-shrink:0;display:block;margin:0 auto;';
           var initColor = groupColors[discipline] || (groupTasks[0] ? groupTasks[0].color : '#0284c7');
           if (!groupColors[discipline]) groupColors[discipline] = initColor;
           gcPicker.value = initColor;
+          _applyGroupHeaderRowColor(headTr, initColor);
           gcPicker.addEventListener('input', function(e) {
             e.stopPropagation();
             groupColors[discipline] = gcPicker.value;
+            _applyGroupHeaderRowColor(headTr, gcPicker.value);
+            markDirty();
             renderGantt();
           });
           gcPicker.addEventListener('click', function(e) { e.stopPropagation(); });
