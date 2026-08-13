@@ -1854,13 +1854,46 @@
       if (!defaultStart) defaultStart = new Date();
 
       var t = asType || 'bar';
+
+      // Collect all known groups (existing tasks + unsaved empty groups) for the prompt hint.
+      var knownGroups = [];
+      var _seenG = {};
+      for (var _gi = 0; _gi < tasks.length; _gi++) {
+        var _g = (tasks[_gi].group || '').trim().toUpperCase();
+        if (_g && !_seenG[_g]) { knownGroups.push(_g); _seenG[_g] = true; }
+      }
+      for (var _ei = 0; _ei < emptyGroups.length; _ei++) {
+        if (!_seenG[emptyGroups[_ei]]) { knownGroups.push(emptyGroups[_ei]); _seenG[emptyGroups[_ei]] = true; }
+      }
+
+      // Prompt for task name.
+      var defaultName = t === 'milestone' ? 'NEW MILESTONE' : t === 'flag' ? 'NEW FLAG' : 'NEW TASK';
+      var taskName = prompt('Task name:', defaultName);
+      if (taskName === null) return;
+      taskName = taskName.trim() || defaultName;
+
+      // Prompt for group.
+      var groupHint = knownGroups.length ? '\nGroups: ' + knownGroups.join(', ') : '';
+      var groupName = prompt('Assign to group:' + groupHint, knownGroups[0] || '');
+      if (groupName === null) return;
+      groupName = groupName.trim().toUpperCase();
+      if (!groupName) {
+        if (knownGroups.length) { groupName = knownGroups[0]; }
+        else { alert('Please enter a group name.'); return; }
+      }
+
+      // If this is a brand-new group, register it so it shows up before Save.
+      if (!_seenG[groupName]) {
+        emptyGroups.push(groupName);
+        if (taskListOrder.indexOf(groupName) === -1) taskListOrder.push(groupName);
+        if (disciplineOrder.indexOf(groupName) === -1) disciplineOrder.push(groupName);
+      }
+
       var newTask = {
         id: taskIdCounter++,
         taskId: null,
-        name: t === 'milestone' ? ("MILESTONE " + taskIdCounter) :
-              t === 'flag' ? ("FLAG " + taskIdCounter) :
-              ("NEW TASK " + taskIdCounter),
-        group: (t === 'milestone' || t === 'flag') ? "MILE" : "BP",
+        name: taskName,
+        group: groupName,
         sub: t === 'milestone' ? "MILESTONE" : (t === 'flag' ? "FLAG" : "CDP DESIGN"),
         note: "",
         dashed: false,
@@ -2387,7 +2420,18 @@
           seen[tasks[j].group] = true;
         }
       }
-      groupInp.addEventListener('change', function() { task.group = groupInp.value.trim().toUpperCase(); renderGantt(); });
+      // Also include unsaved groups created via Add Group (no tasks yet).
+      for (var _ej = 0; _ej < emptyGroups.length; _ej++) {
+        if (!seen[emptyGroups[_ej]]) {
+          var _eopt = document.createElement('option'); _eopt.value = emptyGroups[_ej]; dl.appendChild(_eopt);
+          seen[emptyGroups[_ej]] = true;
+        }
+      }
+      groupInp.addEventListener('change', function() {
+        task.group = groupInp.value.trim().toUpperCase();
+        refreshTaskTable();
+        renderGantt();
+      });
       tdGroup.appendChild(dl); tdGroup.appendChild(groupInp);
       tr.appendChild(tdGroup);
 
