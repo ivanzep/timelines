@@ -400,6 +400,7 @@
     button:hover { transform: translateY(-1px); border-color: var(--accent); background: var(--panel-soft); }
     button.primary:hover { filter: brightness(1.06); background: linear-gradient(180deg, #0ea5e9, #0284c7); }
     button.secondary { background: var(--bg-alt); }
+    button.secondary.active { background: var(--accent); border-color: var(--accent); color: #ffffff; }
     button.danger { border-color: #fca5a5; color: var(--danger); background: #fef2f2; }
     #sheets-save-btn.save-dirty, #overflow-menu-btn.save-dirty { background: #f59e0b; border-color: #d97706; color: #fff; font-weight: 600; }
     button.danger:hover { background: #fee2e2; }
@@ -529,6 +530,11 @@
     .row-input.symbol-input { width: 50px; text-align: center; font-size: 1rem; }
     .row-input:disabled { opacity: 0.35; cursor: not-allowed; }
     select.row-input { appearance: auto; -webkit-appearance: auto; background: transparent; cursor: pointer; }
+    .row-input.wrap-textarea {
+      white-space: pre-wrap; word-break: break-word; overflow: hidden; resize: none;
+      min-height: 20px; line-height: 1.35; padding-top: 4px; padding-bottom: 4px; vertical-align: top;
+    }
+    td.wrap-cell { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; vertical-align: top !important; }
 
     .btn-icon { padding: 3px 7px; font-size: 0.7rem; border-radius: 4px; }
     .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; padding: 8px 12px; border-radius: 12px; background: var(--panel-soft); border: 1px solid var(--border); }
@@ -1194,6 +1200,7 @@
           <button id="collapse-all-btn" class="secondary" title="Collapse all groups">⊟ Collapse All</button>
           <button id="hide-tasks-btn"   class="secondary" title="Show / hide task list">▼ Hide Tasks</button>
           <button id="zebra-btn"       class="secondary active" title="Toggle alternating row colors">▤ Zebra</button>
+          <button id="wrap-text-btn"   class="secondary" title="Wrap long task names / notes instead of truncating">↵ Wrap Text</button>
           <button id="add-task-btn"     class="primary">+ Add Task</button>
           <button id="add-milestone-btn" class="secondary">+ Add Milestone</button>
           <button id="add-flag-btn"     class="secondary">+ Add Flag</button>
@@ -1525,6 +1532,7 @@
     var DURATION_COL_W     = 60;       // width of the duration column
     var taskRowTint        = 50;       // 0–100: opacity of grey alternating stripe in task label column (0=none, 50=default)
     var tableZebra         = true;     // alternating row tint in task properties table
+    var taskListWrapText   = false;    // wrap long TASK NAME / NOTES text instead of truncating with ellipsis
     var metaDetailsCollapsed = false;  // whether the subtitle/date/note block is folded
     var projectLogo        = null;     // base64 data URL of uploaded logo (not persisted to sheet)
     var logoDisplayH       = 52;      // display height of logo in topbar and print header (px)
@@ -2976,18 +2984,30 @@
       setupRowDragDrop(tr, grip, task);
     }
 
+    // Fields that support wrap-to-textarea when taskListWrapText is on.
+    var WRAPPABLE_FIELDS = { name: true, notes: true };
+
+    function _autoGrowTextarea(el) {
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    }
+
     function makeInputCell(task, field, type, cls) {
       var td = document.createElement('td');
-      var inp = document.createElement('input');
-      inp.type = type;
-      inp.className = 'row-input ' + (cls || '');
+      var wrap = taskListWrapText && WRAPPABLE_FIELDS[field];
+      var inp = document.createElement(wrap ? 'textarea' : 'input');
+      if (!wrap) inp.type = type;
+      else { inp.rows = 1; inp.wrap = 'soft'; }
+      inp.className = 'row-input ' + (cls || '') + (wrap ? ' wrap-textarea' : '');
       inp.value = task[field] || '';
       inp.addEventListener('input', function() {
         task[field] = inp.value;
         markDirty();
+        if (wrap) _autoGrowTextarea(inp);
         if (field === 'name' || field === 'sub' || field === 'note') renderGantt();
       });
       td.appendChild(inp);
+      if (wrap) { td.classList.add('wrap-cell'); setTimeout(function() { _autoGrowTextarea(inp); }, 0); }
       return td;
     }
 
@@ -6026,6 +6046,17 @@
         });
       }
 
+      // Wrap Text toggle — TASK NAME / NOTES render as auto-growing textareas instead of truncating
+      var wrapTextBtn = document.getElementById('wrap-text-btn');
+      if (wrapTextBtn) {
+        wrapTextBtn.addEventListener('click', function() {
+          taskListWrapText = !taskListWrapText;
+          wrapTextBtn.classList.toggle('active', taskListWrapText);
+          markDirty();
+          refreshTaskTable();
+        });
+      }
+
       addTaskBtn.addEventListener('click', function() { addTask('bar'); });
       addMilestoneBtn.addEventListener('click', function() { addTask('milestone'); });
       addFlagBtn.addEventListener('click', function() { addTask('flag'); });
@@ -6783,7 +6814,8 @@
         taskListUseUniformRowColor: taskListUseUniformRowColor ? 'true' : 'false',
         taskListUniformRowColor:    taskListUniformRowColor    || '#94a3b8',
         taskListRowColorTint:       taskListRowColorTint,
-        taskListGroupTextColor:     taskListGroupTextColor     || '#1e293b'
+        taskListGroupTextColor:     taskListGroupTextColor     || '#1e293b',
+        taskListWrapText:           taskListWrapText ? 'true' : 'false'
       };
     }
 
@@ -7101,6 +7133,14 @@
         if (rcTintEl)    rcTintEl.value = taskListRowColorTint;
         if (rcTintValEl) rcTintValEl.textContent = taskListRowColorTint + '%';
         if (rcTextEl)    rcTextEl.value = taskListGroupTextColor;
+        refreshTaskTable();
+      }
+
+      // Restore Wrap Text toggle
+      if (s.taskListWrapText !== undefined) {
+        taskListWrapText = (s.taskListWrapText === 'true');
+        var wrapBtnEl = document.getElementById('wrap-text-btn');
+        if (wrapBtnEl) wrapBtnEl.classList.toggle('active', taskListWrapText);
         refreshTaskTable();
       }
     }
