@@ -401,6 +401,7 @@
     button.primary:hover { filter: brightness(1.06); background: linear-gradient(180deg, #0ea5e9, #0284c7); }
     button.secondary { background: var(--bg-alt); }
     button.danger { border-color: #fca5a5; color: var(--danger); background: #fef2f2; }
+    #sheets-save-btn.save-dirty { background: #f59e0b; border-color: #d97706; color: #fff; font-weight: 600; }
     button.danger:hover { background: #fee2e2; }
     button:active { transform: translateY(0); }
 
@@ -1445,6 +1446,19 @@
     var searchFilter    = '';
     var selectedTaskIds = {};
     var _lastCheckedTaskId = null; // anchor for shift+click range-select in task list
+    var _isDirty = false; // true when there are unsaved changes
+
+    function markDirty() {
+      if (_isDirty) return;
+      _isDirty = true;
+      var btn = document.getElementById('sheets-save-btn');
+      if (btn) btn.classList.add('save-dirty');
+    }
+    function clearDirty() {
+      _isDirty = false;
+      var btn = document.getElementById('sheets-save-btn');
+      if (btn) btn.classList.remove('save-dirty');
+    }
     var ganttMultiSelected = {}; // taskId → true — set of Gantt bars in multi-selection (shift+click)
     var emptyGroups   = []; // group names created via Add Group that have no tasks yet
     var deletedGroups = []; // group names removed since last Save — sent to backend for separator cleanup
@@ -1905,6 +1919,7 @@
         dependencies: []
       };
       tasks.push(newTask);
+      markDirty();
       selectedTaskId = newTask.id;
       sortState = { column: null, direction: 1 };
       refreshTaskTable();
@@ -1931,6 +1946,7 @@
       tasks = tasks.filter(function(t) { return t.id !== id; });
       if (selectedTaskId === id) selectedTaskId = null;
       delete ganttMultiSelected[id];
+      markDirty();
       refreshTaskTable();
       updateStatusText();
       renderGantt();
@@ -1950,6 +1966,7 @@
       // Undo any pending deletion of the same name
       var di = deletedGroups.indexOf(name);
       if (di !== -1) deletedGroups.splice(di, 1);
+      markDirty();
       refreshTaskTable();
       renderGantt();
     }
@@ -1968,6 +1985,7 @@
       var doi = disciplineOrder.indexOf(name);
       if (doi !== -1) disciplineOrder.splice(doi, 1);
       if (deletedGroups.indexOf(name) === -1) deletedGroups.push(name);
+      markDirty();
       refreshTaskTable();
       updateStatusText();
       renderGantt();
@@ -2429,6 +2447,7 @@
       }
       groupInp.addEventListener('change', function() {
         task.group = groupInp.value.trim().toUpperCase();
+        markDirty();
         refreshTaskTable();
         renderGantt();
       });
@@ -2444,7 +2463,7 @@
       typeSelect.addEventListener('change', function() {
         task.type = typeSelect.value;
         if (task.type !== 'bar') { task.end = new Date(task.start.getTime()); if (!task.symbol) task.symbol = task.type === 'milestone' ? '*' : 'F'; }
-        refreshTaskTable(); renderGantt();
+        markDirty(); refreshTaskTable(); renderGantt();
       });
       tdType.appendChild(typeSelect); tr.appendChild(tdType);
 
@@ -2474,6 +2493,7 @@
         var newEnd = addDays(task.start, Math.round(wks * 7));
         if (newEnd <= task.start) newEnd = addDays(task.start, 1);
         task.end = newEnd;
+        markDirty();
         refreshTaskTable();
         renderGantt();
         updateStatusText();
@@ -2508,6 +2528,7 @@
       statusSel.addEventListener('change', function() {
         task.note = statusSel.value;
         applyStatusSelectColor(statusSel, statusSel.value);
+        markDirty();
         renderGantt();
       });
       tdStatus.appendChild(statusSel); tr.appendChild(tdStatus);
@@ -2520,7 +2541,7 @@
       styleSelect.addEventListener('change', function() {
         task.dashed = styleSelect.value === 'dashed';
         task.dashedOutline = styleSelect.value === 'dashed-outline';
-        refreshTaskTable(); renderGantt();
+        markDirty(); refreshTaskTable(); renderGantt();
       });
       tdStyle.appendChild(styleSelect); tr.appendChild(tdStyle);
 
@@ -2564,6 +2585,7 @@
       inp.value = task[field] || '';
       inp.addEventListener('input', function() {
         task[field] = inp.value;
+        markDirty();
         if (field === 'name' || field === 'sub' || field === 'note') renderGantt();
       });
       td.appendChild(inp);
@@ -2585,6 +2607,7 @@
             if (field === 'start') task.end = addDays(task.start, 1);
             else task.start = addDays(task.end, -1);
           }
+          markDirty();
           refreshTaskTable();
           renderGantt();
           updateStatusText();
@@ -5003,6 +5026,7 @@
       if (drag) {
         drag = null;
         document.body.style.cursor = '';
+        markDirty();
         refreshTaskTable();
       }
     }
@@ -6760,6 +6784,7 @@
           updateStatusText();
           autoSetDateRange();
           renderGantt();
+          clearDirty();
           _syncDot('ok', 'Loaded ' + loaded.length + ' tasks');
           if (statusText) statusText.textContent = '☁ Loaded ' + loaded.length + ' tasks from Google Sheets at ' + new Date().toLocaleTimeString();
           _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets');
@@ -6862,6 +6887,7 @@
         var result = await resp.json();
         if (result.success) {
           deletedGroups = []; // backend has processed them — clear so they're not re-sent
+          clearDirty();
           var _anyErr = result.taskError || result.groupSepError;
           if (_anyErr) {
             _syncDot('warn', 'Saved with errors');
@@ -6883,6 +6909,7 @@
             headers: { 'Content-Type': 'text/plain' },
             body:   JSON.stringify(payload)
           });
+          clearDirty();
           _syncDot('ok', 'Save sent ✓');
           if (statusText) statusText.textContent = '☁ Save request sent to Google Sheets at ' + new Date().toLocaleTimeString() + ' (open the sheet to confirm).';
         } catch(err2) {
