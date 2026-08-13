@@ -1140,7 +1140,8 @@ var SETTINGS_KEYS = [
   'taskSheetName',
   'sortColumn', 'sortDirection', 'currentTab',
   'taskListGroupSortMode',
-  'taskTableColWidths', 'taskTableColVisible'
+  'taskTableColWidths', 'taskTableColVisible',
+  'taskListUseUniformRowColor', 'taskListUniformRowColor'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -1195,7 +1196,9 @@ var SETTINGS_DESCRIPTIONS = {
   currentTab:              'Active view tab — gantt | tasks | milestones | flags',
   taskListGroupSortMode:   'Task Properties group ordering mode — date | alpha | custom',
   taskTableColWidths:      'JSON object: Task Properties table column widths in px, keyed by column key',
-  taskTableColVisible:     'JSON object: Task Properties table column visibility, keyed by column key (false = hidden)'
+  taskTableColVisible:     'JSON object: Task Properties table column visibility, keyed by column key (false = hidden)',
+  taskListUseUniformRowColor: 'When true, every Task Properties group header row uses taskListUniformRowColor instead of that group\'s own assigned color (true/false)',
+  taskListUniformRowColor:    'Hex color used for all Task Properties group header rows when taskListUseUniformRowColor is true'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.

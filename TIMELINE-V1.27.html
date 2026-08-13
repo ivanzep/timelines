@@ -495,9 +495,9 @@
     /* ---- Columns visibility popup ---- */
     .col-toggle-wrapper { position: relative; display: inline-block; }
     .col-toggle-popup {
-      display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+      display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 200;
       background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px;
-      box-shadow: var(--shadow-soft); padding: 8px; min-width: 170px; max-height: 300px; overflow-y: auto;
+      box-shadow: var(--shadow-soft); padding: 8px; min-width: 170px; max-width: 260px; max-height: 300px; overflow-y: auto;
     }
     .col-toggle-popup.open { display: block; }
     .col-toggle-popup label { display: flex; align-items: center; gap: 7px; font-size: 0.76rem; padding: 4px 6px; border-radius: 5px; cursor: pointer; color: var(--text); white-space: nowrap; }
@@ -1204,6 +1204,20 @@
             <button id="col-toggle-btn" class="secondary" title="Show / hide table columns">▤ Columns</button>
             <div class="col-toggle-popup" id="col-toggle-popup"></div>
           </div>
+          <div class="col-toggle-wrapper">
+            <button id="row-color-btn" class="secondary" title="Set the group header row line color">🎨 Line Color</button>
+            <div class="col-toggle-popup" id="row-color-popup">
+              <label>
+                <input type="checkbox" id="row-color-uniform-toggle" />
+                Same color for all groups
+              </label>
+              <hr class="col-toggle-divider" />
+              <div style="display:flex;align-items:center;gap:8px;padding:4px 6px;">
+                <input type="color" id="row-color-uniform-picker" value="#94a3b8" style="width:30px;height:24px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" />
+                <span style="font-size:0.74rem;color:var(--text-muted);">Line color</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:7px;flex-wrap:wrap;">
@@ -1534,6 +1548,12 @@
     };
     var taskTableColWidths  = {}; // colKey -> px number
     var taskTableColVisible = {}; // colKey -> false when hidden (default: visible)
+
+    // Task Properties table — group header row "line color" (separate from the
+    // per-group Gantt/bar color picker). When enabled, every group header row uses
+    // the same shared color instead of that group's own assigned color.
+    var taskListUseUniformRowColor = false;
+    var taskListUniformRowColor    = '#94a3b8';
 
     var searchFilter    = '';
     var selectedTaskIds = {};
@@ -2403,6 +2423,38 @@
       });
     }
 
+    function initRowColorMenu() {
+      var btn      = document.getElementById('row-color-btn');
+      var popup    = document.getElementById('row-color-popup');
+      var toggleCb = document.getElementById('row-color-uniform-toggle');
+      var picker   = document.getElementById('row-color-uniform-picker');
+      if (!btn || !popup || !toggleCb || !picker) return;
+
+      toggleCb.checked = taskListUseUniformRowColor;
+      picker.value     = taskListUniformRowColor;
+      picker.disabled  = !taskListUseUniformRowColor;
+
+      toggleCb.addEventListener('change', function() {
+        taskListUseUniformRowColor = toggleCb.checked;
+        picker.disabled = !taskListUseUniformRowColor;
+        markDirty();
+        refreshTaskTable();
+      });
+      picker.addEventListener('input', function() {
+        taskListUniformRowColor = picker.value;
+        markDirty();
+        refreshTaskTable();
+      });
+
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        popup.classList.toggle('open');
+      });
+      document.addEventListener('click', function(e) {
+        if (!popup.contains(e.target) && e.target !== btn) popup.classList.remove('open');
+      });
+    }
+
     // -----------------------------
     // Task table - render
     // -----------------------------
@@ -2501,20 +2553,22 @@
           countSpan.className = 'disc-group-count';
           countSpan.textContent = '(' + groupTasks.length + ' task' + (groupTasks.length !== 1 ? 's' : '') + ')';
 
-          // Group header color picker — tints Gantt side header + rollup bar,
-          // and this table's group header row background (spans all columns).
+          // Group header color picker — tints Gantt side header + rollup bar.
+          // The Task Properties row background normally follows this same color,
+          // spanning all columns, UNLESS "Same color for all groups" (line-color
+          // toggle) is on, in which case every row uses that one shared color instead.
           var gcPicker = document.createElement('input');
           gcPicker.type = 'color';
-          gcPicker.title = 'Section / line color — applied to this header row (all columns), the Gantt header, and the rollup bar';
+          gcPicker.title = 'Section color — applied to the Gantt header and rollup bar (and this row, unless a uniform line color is set)';
           gcPicker.style.cssText = 'width:22px;height:18px;padding:1px;vertical-align:middle;cursor:pointer;border-radius:4px;border:1px solid var(--border-strong);flex-shrink:0;display:block;margin:0 auto;';
           var initColor = groupColors[discipline] || (groupTasks[0] ? groupTasks[0].color : '#0284c7');
           if (!groupColors[discipline]) groupColors[discipline] = initColor;
           gcPicker.value = initColor;
-          _applyGroupHeaderRowColor(headTr, initColor);
+          _applyGroupHeaderRowColor(headTr, taskListUseUniformRowColor ? taskListUniformRowColor : initColor);
           gcPicker.addEventListener('input', function(e) {
             e.stopPropagation();
             groupColors[discipline] = gcPicker.value;
-            _applyGroupHeaderRowColor(headTr, gcPicker.value);
+            if (!taskListUseUniformRowColor) _applyGroupHeaderRowColor(headTr, gcPicker.value);
             markDirty();
             renderGantt();
           });
@@ -2537,12 +2591,17 @@
           headTdColor.appendChild(gcPicker);
           headTr.appendChild(headTdColor);
 
+          // NOTE: the flex layout lives on an inner wrapper div, not on the <td> itself.
+          // Under table-layout:fixed, display:flex directly on a colspan <td> makes the
+          // browser shrink the cell to fit its flex content instead of the full spanned-
+          // column width, leaving the row's background looking cut off after a few columns.
           var headTd = document.createElement('td');
           headTd.colSpan = TOTAL_COLS - 3;
-          headTd.style.cssText = 'display:flex;align-items:center;gap:4px;';
-          headTd.appendChild(toggle);
-          headTd.appendChild(document.createTextNode(discipline));
-          headTd.appendChild(countSpan);
+          var headTdInner = document.createElement('div');
+          headTdInner.style.cssText = 'display:flex;align-items:center;gap:4px;width:100%;';
+          headTdInner.appendChild(toggle);
+          headTdInner.appendChild(document.createTextNode(discipline));
+          headTdInner.appendChild(countSpan);
 
           // Delete group button — shown on hover
           var delGroupBtn = document.createElement('button');
@@ -2553,7 +2612,8 @@
           (function(disc, gtasks) {
             delGroupBtn.addEventListener('click', function(e) { e.stopPropagation(); deleteGroup(disc, gtasks.length); });
           })(discipline, groupTasks);
-          headTd.appendChild(delGroupBtn);
+          headTdInner.appendChild(delGroupBtn);
+          headTd.appendChild(headTdInner);
           headTr.appendChild(headTd);
 
           headTr.addEventListener('mouseenter', function() { delGroupBtn.style.opacity = '1'; });
@@ -6398,6 +6458,7 @@
       applyTaskTableColVisibility();
       initTaskTableColResize();
       initColumnToggleMenu();
+      initRowColorMenu();
 
       // Start blank — no tasks loaded until user connects a sheet
       tasks = [];
@@ -6664,7 +6725,9 @@
         currentTab:            currentTab              || 'gantt',
         taskListGroupSortMode: taskListGroupSortMode   || 'custom',
         taskTableColWidths:    JSON.stringify(taskTableColWidths),
-        taskTableColVisible:   JSON.stringify(taskTableColVisible)
+        taskTableColVisible:   JSON.stringify(taskTableColVisible),
+        taskListUseUniformRowColor: taskListUseUniformRowColor ? 'true' : 'false',
+        taskListUniformRowColor:    taskListUniformRowColor    || '#94a3b8'
       };
     }
 
@@ -6963,6 +7026,17 @@
         applyTaskTableColVisibility();
         buildColTogglePopup();
         saveTaskTableColPrefs();
+      }
+
+      // Restore Task Properties uniform group-row line color
+      if (s.taskListUseUniformRowColor !== undefined || s.taskListUniformRowColor !== undefined) {
+        if (s.taskListUseUniformRowColor !== undefined) taskListUseUniformRowColor = (s.taskListUseUniformRowColor === 'true');
+        if (s.taskListUniformRowColor) taskListUniformRowColor = s.taskListUniformRowColor;
+        var rcToggleEl  = document.getElementById('row-color-uniform-toggle');
+        var rcPickerEl  = document.getElementById('row-color-uniform-picker');
+        if (rcToggleEl) rcToggleEl.checked  = taskListUseUniformRowColor;
+        if (rcPickerEl) { rcPickerEl.value = taskListUniformRowColor; rcPickerEl.disabled = !taskListUseUniformRowColor; }
+        refreshTaskTable();
       }
     }
     // ─────────────────────────────────────────────────────────────
