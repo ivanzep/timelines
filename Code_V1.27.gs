@@ -726,7 +726,7 @@ function saveBackToTaskList(payload) {
           discLastRow[m.targetDiscKey] = insertAfter + 1;
         } else {
           // Target discipline not yet in sheet — write separator first, then task
-          var lastRow = sheet.getLastRow();
+          var lastRow = findLastContentRow(sheet, CI.discipline + 1, CI.task + 1);
           if (!discSepRow[m.targetDiscKey]) {
             var mSepRow = [];
             for (var _msi = 0; _msi < m.newRow.length; _msi++) mSepRow.push('');
@@ -763,7 +763,7 @@ function saveBackToTaskList(payload) {
         orphansByDisc[dk].push(rowArr);
       });
 
-      var lastRow = sheet.getLastRow();
+      var lastRow = findLastContentRow(sheet, CI.discipline + 1, CI.task + 1);
       orphanDiscOrder.forEach(function(dk) {
         var rows = orphansByDisc[dk];
         // Write separator row first if none exists for this discipline
@@ -789,7 +789,7 @@ function saveBackToTaskList(payload) {
       payload.groups.forEach(function(g) {
         var gkey = normKey(g);
         if (!discSepRow[gkey]) {
-          var gLastRow = sheet.getLastRow();
+          var gLastRow = findLastContentRow(sheet, CI.discipline + 1, CI.task + 1);
           var gSepRow = [];
           for (var _gi = 0; _gi < totalColsG; _gi++) gSepRow.push('');
           gSepRow[CI.discipline] = g.toUpperCase();
@@ -892,12 +892,22 @@ function writeGroupSeparators(payload) {
     return r;
   }
 
+  // Compute the last content row from raw data (avoids counting checkbox-only empty rows).
+  var contentLastRow = 0;
+  for (var _cr = raw.length - 1; _cr >= 0; _cr--) {
+    if (String(raw[_cr][discIdx] || '').trim() || String(raw[_cr][taskIdx] || '').trim()) {
+      contentLastRow = _cr + 1; // 1-based
+      break;
+    }
+  }
+  if (!contentLastRow) contentLastRow = sheet.getLastRow();
+
   // Sort descending by insertion row so each insert doesn't shift the others.
   // Groups whose discipline already has data rows get inserted ABOVE that first data row.
   // Groups with no data rows yet get appended at the end (largest row number = last).
   newGroups.sort(function(a, b) {
-    var ra = maps.first[normKey(a)] || (sheet.getLastRow() + 1);
-    var rb = maps.first[normKey(b)] || (sheet.getLastRow() + 1);
+    var ra = maps.first[normKey(a)] || (contentLastRow + 1);
+    var rb = maps.first[normKey(b)] || (contentLastRow + 1);
     return rb - ra; // descending
   });
 
@@ -912,8 +922,9 @@ function writeGroupSeparators(payload) {
       sheet.insertRowBefore(insertAt);
       sheet.getRange(insertAt, 1, 1, totalCols).setValues([sepRow]);
     } else {
-      // No existing data rows for this group — append at the end.
-      sheet.appendRow(sepRow);
+      // No existing data rows for this group — write after the last content row.
+      sheet.getRange(contentLastRow + 1, 1, 1, totalCols).setValues([sepRow]);
+      contentLastRow++;
     }
   });
 }
@@ -1302,6 +1313,23 @@ function statusColor(status) {
 // Normalise a key string: trim, uppercase, collapse internal spaces
 function normKey(s) {
   return String(s).trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+// Returns the 1-based row number of the last row in the sheet where either
+// the DISCIPLINE column (discCol, 1-based) or the TASK column (taskCol, 1-based)
+// contains non-empty, non-whitespace content. Falls back to sheet.getLastRow()
+// when no such row is found. Used to avoid appending after checkbox-only empty rows.
+function findLastContentRow(sheet, discCol, taskCol) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 1) return 0;
+  var discVals = sheet.getRange(1, discCol, lastRow, 1).getValues();
+  var taskVals = sheet.getRange(1, taskCol, lastRow, 1).getValues();
+  for (var r = lastRow - 1; r >= 0; r--) {
+    if (String(discVals[r][0] || '').trim() || String(taskVals[r][0] || '').trim()) {
+      return r + 1; // convert 0-based index to 1-based row
+    }
+  }
+  return lastRow;
 }
 
 // ============================================================
