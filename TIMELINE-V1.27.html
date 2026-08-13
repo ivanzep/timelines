@@ -6815,7 +6815,8 @@
         taskListUniformRowColor:    taskListUniformRowColor    || '#94a3b8',
         taskListRowColorTint:       taskListRowColorTint,
         taskListGroupTextColor:     taskListGroupTextColor     || '#1e293b',
-        taskListWrapText:           taskListWrapText ? 'true' : 'false'
+        taskListWrapText:           taskListWrapText ? 'true' : 'false',
+        taskPrintHeaderColor:       taskPrintHeaderColor       || '#1e293b'
       };
     }
 
@@ -7142,6 +7143,13 @@
         var wrapBtnEl = document.getElementById('wrap-text-btn');
         if (wrapBtnEl) wrapBtnEl.classList.toggle('active', taskListWrapText);
         refreshTaskTable();
+      }
+
+      // Restore Task List print header color
+      if (s.taskPrintHeaderColor) {
+        taskPrintHeaderColor = s.taskPrintHeaderColor;
+        var tpHdrEl = document.getElementById('tp-header-color');
+        if (tpHdrEl) tpHdrEl.value = taskPrintHeaderColor;
       }
     }
     // ─────────────────────────────────────────────────────────────
@@ -8715,7 +8723,8 @@
         colStatus: _gc('tp-col-status'), colNotes: _gc('tp-col-notes'), colType: _gc('tp-col-type'),
         mt: _g('tp-mt'), mb: _g('tp-mb'), ml: _g('tp-ml'), mr: _g('tp-mr'),
         gridLines: _gc('tp-grid-lines'), zebra: _gc('tp-zebra'),
-        logoH: _g('tp-logo-h'), zoom: tpZoom
+        logoH: _g('tp-logo-h'), zoom: tpZoom,
+        headerColor: taskPrintHeaderColor
       };
     }
     function _saveTpSettings() {
@@ -8746,6 +8755,11 @@
           tpLogoH = parseInt(s.logoH, 10) || 42;
         }
         if (s.zoom != null) tpZoom = s.zoom;
+        if (s.headerColor) {
+          taskPrintHeaderColor = s.headerColor;
+          var hcEl = document.getElementById('tp-header-color');
+          if (hcEl) hcEl.value = taskPrintHeaderColor;
+        }
       } catch(e) {}
     }
 
@@ -8999,6 +9013,14 @@
 
     var tpZoom = 100; // task-list print preview zoom %
     var _lastTpPgW = 816; // page width of last task print render (for Fit zoom)
+    var taskPrintHeaderColor = '#1e293b'; // Task List print/export table column-header background
+
+    // Pick readable text color (light or dark) for a given background hex.
+    function _autoContrastText(hex) {
+      var rgb = _hexToRgbStr(hex || '#1e293b').split(',').map(Number);
+      var lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+      return lum > 0.6 ? '#0f172a' : '#e2e8f0';
+    }
 
     function applyTpZoom() {
       var scale = tpZoom / 100;
@@ -9164,10 +9186,12 @@
         var thead = document.createElement('thead');
         var headTr = document.createElement('tr');
         headTr.style.height = thH + 'px';
+        var hdrBg = taskPrintHeaderColor || '#1e293b';
+        var hdrTextColor = _autoContrastText(hdrBg);
         cols.forEach(function(c) {
           var th = document.createElement('th');
           th.textContent = c.label;
-          th.style.cssText = 'width:' + c.w + 'px;max-width:' + c.w + 'px;background:#1e293b;color:#e2e8f0;text-align:left;padding:0 6px;font-size:' + (opts.fs-1) + 'px;letter-spacing:.05em;height:' + thH + 'px;overflow:hidden;border-bottom:none;border-right:' + (opts.showGridLines ? '1px solid #334155' : 'none') + ';';
+          th.style.cssText = 'width:' + c.w + 'px;max-width:' + c.w + 'px;background:' + hdrBg + ';color:' + hdrTextColor + ';text-align:left;padding:0 6px;font-size:' + (opts.fs-1) + 'px;letter-spacing:.05em;height:' + thH + 'px;overflow:hidden;border-bottom:none;border-right:' + (opts.showGridLines ? '1px solid #334155' : 'none') + ';';
           headTr.appendChild(th);
         });
         thead.appendChild(headTr);
@@ -9196,11 +9220,18 @@
             var task = row.task;
             var isEven = taskRowIdx % 2 === 1;
             taskRowIdx++;
-            tr.style.cssText = 'height:' + opts.rowH + 'px;' + (opts.showZebra && isEven ? 'background:#f8fafc;' : '');
+            // When Wrap Text is on in the live Task Properties table, match that here too:
+            // let long TASK NAME / NOTES text wrap instead of truncating, and don't force a
+            // fixed row height so the row can grow (pagination height is still estimated via
+            // opts.rowH, so very long wrapped text may run slightly past its planned slot).
+            tr.style.cssText = (taskListWrapText ? '' : ('height:' + opts.rowH + 'px;')) + (opts.showZebra && isEven ? 'background:#f8fafc;' : '');
             var discColor2 = groupColors[row.disc] || '#64748b';
             cols.forEach(function(c) {
               var td2 = document.createElement('td');
-              td2.style.cssText = 'padding:0 6px;color:#1e293b;border-bottom:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';border-right:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';overflow:hidden;max-width:' + c.w + 'px;white-space:nowrap;text-overflow:ellipsis;';
+              var wrapCss = taskListWrapText
+                ? 'white-space:normal;word-break:break-word;overflow:visible;text-overflow:clip;vertical-align:top;padding-top:3px;padding-bottom:3px;'
+                : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+              td2.style.cssText = 'padding:0 6px;color:#1e293b;border-bottom:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';border-right:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';max-width:' + c.w + 'px;' + wrapCss;
               if (c.key === 'name') {
                 td2.style.borderLeft = '3px solid ' + discColor2;
                 td2.textContent = task.name || '';
@@ -9261,6 +9292,16 @@
       ['tp-col-dates','tp-col-dur','tp-col-status','tp-col-notes','tp-col-type','tp-grid-lines','tp-zebra'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', reRender);
       });
+
+      var tpHeaderColorEl = document.getElementById('tp-header-color');
+      if (tpHeaderColorEl) {
+        tpHeaderColorEl.value = taskPrintHeaderColor;
+        tpHeaderColorEl.addEventListener('input', function() {
+          taskPrintHeaderColor = tpHeaderColorEl.value;
+          markDirty();
+          reRender();
+        });
+      }
 
       var tpZoomIn    = document.getElementById('tp-zoom-in');
       var tpZoomOut   = document.getElementById('tp-zoom-out');
@@ -9371,6 +9412,7 @@
             <div class="pr-sec-label">Style</div>
             <label class="pr-row"><input type="checkbox" id="tp-grid-lines" checked /> Grid lines</label>
             <label class="pr-row"><input type="checkbox" id="tp-zebra" checked /> Row stripes</label>
+            <div class="pr-row">Header <input type="color" id="tp-header-color" value="#1e293b" style="width:26px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" /></div>
           </div>
 
           <div class="pr-section">

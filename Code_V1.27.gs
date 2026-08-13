@@ -1142,7 +1142,7 @@ var SETTINGS_KEYS = [
   'taskListGroupSortMode',
   'taskTableColWidths', 'taskTableColVisible',
   'taskListUseUniformRowColor', 'taskListUniformRowColor', 'taskListRowColorTint',
-  'taskListGroupTextColor', 'taskListWrapText'
+  'taskListGroupTextColor', 'taskListWrapText', 'taskPrintHeaderColor'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -1202,7 +1202,8 @@ var SETTINGS_DESCRIPTIONS = {
   taskListUniformRowColor:    'Hex color used for all Task Properties group header rows when taskListUseUniformRowColor is true',
   taskListRowColorTint:       'Opacity (0-100) of the Task Properties group header row color tint',
   taskListGroupTextColor:     'Hex text color for Task Properties group header row labels (also used in Task List print/export)',
-  taskListWrapText:           'Wrap long TASK NAME / NOTES text in the Task Properties table instead of truncating with ellipsis (true/false)'
+  taskListWrapText:           'Wrap long TASK NAME / NOTES text in the Task Properties table instead of truncating with ellipsis (true/false)',
+  taskPrintHeaderColor:       'Hex background color for the Task List print/export table\'s column header row'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.
