@@ -1216,6 +1216,12 @@
                 <input type="color" id="row-color-uniform-picker" value="#94a3b8" style="width:30px;height:24px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" />
                 <span style="font-size:0.74rem;color:var(--text-muted);">Line color</span>
               </div>
+              <hr class="col-toggle-divider" />
+              <div style="display:flex;align-items:center;gap:8px;padding:4px 6px;">
+                <span style="font-size:0.74rem;color:var(--text-muted);white-space:nowrap;">Tint</span>
+                <input type="range" id="row-color-tint-slider" min="0" max="100" value="22" style="flex:1;min-width:90px;" />
+                <span style="font-size:0.72rem;color:var(--text-muted);width:30px;text-align:right;" id="row-color-tint-val">22%</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1554,6 +1560,7 @@
     // the same shared color instead of that group's own assigned color.
     var taskListUseUniformRowColor = false;
     var taskListUniformRowColor    = '#94a3b8';
+    var taskListRowColorTint       = 22; // 0-100: opacity of the group header row background tint
 
     var searchFilter    = '';
     var selectedTaskIds = {};
@@ -1641,10 +1648,12 @@
     // Apply a group's assigned color as the Task Properties table's group header
     // row background (via a CSS custom property so every cell in the row — including
     // the colspan cell — picks it up uniformly, spanning the full row width).
+    // Intensity is driven by taskListRowColorTint (0-100, user adjustable slider).
     function _applyGroupHeaderRowColor(tr, hex) {
       var rgb = _hexToRgbStr(hex || '#94a3b8');
-      var alpha = darkMode ? 0.35 : 0.22;
-      tr.style.setProperty('--group-row-bg', 'rgba(' + rgb + ',' + alpha + ')');
+      var mult = darkMode ? 1.6 : 1.0;
+      var alpha = Math.min(1, (taskListRowColorTint / 100) * mult);
+      tr.style.setProperty('--group-row-bg', 'rgba(' + rgb + ',' + alpha.toFixed(3) + ')');
     }
     function groupTintHex(dark) { return tintToHex(groupTint, dark); }
     // Header tint: straight 0→FF so 100% = fully opaque (no dark-mode mult)
@@ -2424,15 +2433,19 @@
     }
 
     function initRowColorMenu() {
-      var btn      = document.getElementById('row-color-btn');
-      var popup    = document.getElementById('row-color-popup');
-      var toggleCb = document.getElementById('row-color-uniform-toggle');
-      var picker   = document.getElementById('row-color-uniform-picker');
+      var btn        = document.getElementById('row-color-btn');
+      var popup      = document.getElementById('row-color-popup');
+      var toggleCb   = document.getElementById('row-color-uniform-toggle');
+      var picker     = document.getElementById('row-color-uniform-picker');
+      var tintSlider = document.getElementById('row-color-tint-slider');
+      var tintVal    = document.getElementById('row-color-tint-val');
       if (!btn || !popup || !toggleCb || !picker) return;
 
       toggleCb.checked = taskListUseUniformRowColor;
       picker.value     = taskListUniformRowColor;
       picker.disabled  = !taskListUseUniformRowColor;
+      if (tintSlider) tintSlider.value = taskListRowColorTint;
+      if (tintVal)    tintVal.textContent = taskListRowColorTint + '%';
 
       toggleCb.addEventListener('change', function() {
         taskListUseUniformRowColor = toggleCb.checked;
@@ -2445,6 +2458,14 @@
         markDirty();
         refreshTaskTable();
       });
+      if (tintSlider) {
+        tintSlider.addEventListener('input', function() {
+          taskListRowColorTint = parseInt(tintSlider.value, 10);
+          if (tintVal) tintVal.textContent = taskListRowColorTint + '%';
+          markDirty();
+          refreshTaskTable();
+        });
+      }
 
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -6727,7 +6748,8 @@
         taskTableColWidths:    JSON.stringify(taskTableColWidths),
         taskTableColVisible:   JSON.stringify(taskTableColVisible),
         taskListUseUniformRowColor: taskListUseUniformRowColor ? 'true' : 'false',
-        taskListUniformRowColor:    taskListUniformRowColor    || '#94a3b8'
+        taskListUniformRowColor:    taskListUniformRowColor    || '#94a3b8',
+        taskListRowColorTint:       taskListRowColorTint
       };
     }
 
@@ -7028,14 +7050,19 @@
         saveTaskTableColPrefs();
       }
 
-      // Restore Task Properties uniform group-row line color
-      if (s.taskListUseUniformRowColor !== undefined || s.taskListUniformRowColor !== undefined) {
+      // Restore Task Properties uniform group-row line color + tint
+      if (s.taskListUseUniformRowColor !== undefined || s.taskListUniformRowColor !== undefined || s.taskListRowColorTint !== undefined) {
         if (s.taskListUseUniformRowColor !== undefined) taskListUseUniformRowColor = (s.taskListUseUniformRowColor === 'true');
         if (s.taskListUniformRowColor) taskListUniformRowColor = s.taskListUniformRowColor;
+        if (s.taskListRowColorTint !== undefined) taskListRowColorTint = parseInt(s.taskListRowColorTint, 10) || 22;
         var rcToggleEl  = document.getElementById('row-color-uniform-toggle');
         var rcPickerEl  = document.getElementById('row-color-uniform-picker');
+        var rcTintEl    = document.getElementById('row-color-tint-slider');
+        var rcTintValEl = document.getElementById('row-color-tint-val');
         if (rcToggleEl) rcToggleEl.checked  = taskListUseUniformRowColor;
         if (rcPickerEl) { rcPickerEl.value = taskListUniformRowColor; rcPickerEl.disabled = !taskListUseUniformRowColor; }
+        if (rcTintEl)    rcTintEl.value = taskListRowColorTint;
+        if (rcTintValEl) rcTintValEl.textContent = taskListRowColorTint + '%';
         refreshTaskTable();
       }
     }

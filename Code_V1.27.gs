@@ -1141,7 +1141,7 @@ var SETTINGS_KEYS = [
   'sortColumn', 'sortDirection', 'currentTab',
   'taskListGroupSortMode',
   'taskTableColWidths', 'taskTableColVisible',
-  'taskListUseUniformRowColor', 'taskListUniformRowColor'
+  'taskListUseUniformRowColor', 'taskListUniformRowColor', 'taskListRowColorTint'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -1198,7 +1198,8 @@ var SETTINGS_DESCRIPTIONS = {
   taskTableColWidths:      'JSON object: Task Properties table column widths in px, keyed by column key',
   taskTableColVisible:     'JSON object: Task Properties table column visibility, keyed by column key (false = hidden)',
   taskListUseUniformRowColor: 'When true, every Task Properties group header row uses taskListUniformRowColor instead of that group\'s own assigned color (true/false)',
-  taskListUniformRowColor:    'Hex color used for all Task Properties group header rows when taskListUseUniformRowColor is true'
+  taskListUniformRowColor:    'Hex color used for all Task Properties group header rows when taskListUseUniformRowColor is true',
+  taskListRowColorTint:       'Opacity (0-100) of the Task Properties group header row color tint'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.
