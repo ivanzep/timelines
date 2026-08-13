@@ -2095,6 +2095,13 @@
         if (matches) groupMap[gkey].push(t0);
       }
 
+      // Prune taskListOrder: drop groups that no longer have tasks and were not
+      // explicitly created via Add Group (emptyGroups). Prevents stale defaults
+      // like "BP" from lingering after a task is moved to a different group.
+      taskListOrder = taskListOrder.filter(function(g) {
+        return !!groupMap[g] || emptyGroups.indexOf(g) !== -1;
+      });
+
       // Build groupOrder using taskListOrder (task-list-only order, independent of Gantt).
       // If taskListOrder is empty (first render or after data load), seed it from task insertion order.
       var _knownInList = {};
@@ -6792,7 +6799,10 @@
           updated:  projectMeta.updated  || '',
           note:     projectMeta.note     || ''
         },
-        groups:        taskListOrder.slice(),
+        groups: taskListOrder.filter(function(g) {
+          return tasks.some(function(t) { return (t.group || '') === g; })
+                 || emptyGroups.indexOf(g) !== -1;
+        }),
         deletedGroups: deletedGroups.slice(),
         settings: collectSettings()
       };
