@@ -8722,7 +8722,7 @@
         colDates: _gc('tp-col-dates'), colDur: _gc('tp-col-dur'),
         colStatus: _gc('tp-col-status'), colNotes: _gc('tp-col-notes'), colType: _gc('tp-col-type'),
         mt: _g('tp-mt'), mb: _g('tp-mb'), ml: _g('tp-ml'), mr: _g('tp-mr'),
-        gridLines: _gc('tp-grid-lines'), zebra: _gc('tp-zebra'),
+        gridLines: _gc('tp-grid-lines'), zebra: _gc('tp-zebra'), colorMarks: _gc('tp-color-marks'),
         logoH: _g('tp-logo-h'), zoom: tpZoom,
         headerColor: taskPrintHeaderColor
       };
@@ -8747,7 +8747,7 @@
         _sc('tp-col-dates', s.colDates); _sc('tp-col-dur', s.colDur);
         _sc('tp-col-status', s.colStatus); _sc('tp-col-notes', s.colNotes); _sc('tp-col-type', s.colType);
         _s('tp-mt', s.mt); _s('tp-mb', s.mb); _s('tp-ml', s.ml); _s('tp-mr', s.mr);
-        _sc('tp-grid-lines', s.gridLines); _sc('tp-zebra', s.zebra);
+        _sc('tp-grid-lines', s.gridLines); _sc('tp-zebra', s.zebra); _sc('tp-color-marks', s.colorMarks);
         if (s.logoH != null) {
           var lhEl = document.getElementById('tp-logo-h');
           var lhVEl = document.getElementById('tp-logo-h-val');
@@ -8997,7 +8997,8 @@
         showNotes:     document.getElementById('tp-col-notes').checked,
         showType:      document.getElementById('tp-col-type').checked,
         showGridLines: document.getElementById('tp-grid-lines').checked,
-        showZebra:     document.getElementById('tp-zebra').checked
+        showZebra:     document.getElementById('tp-zebra').checked,
+        showColorMarks: document.getElementById('tp-color-marks').checked
       };
     }
 
@@ -9233,7 +9234,7 @@
                 : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
               td2.style.cssText = 'padding:0 6px;color:#1e293b;border-bottom:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';border-right:' + (opts.showGridLines ? '1px solid #e2e8f0' : 'none') + ';max-width:' + c.w + 'px;' + wrapCss;
               if (c.key === 'name') {
-                td2.style.borderLeft = '3px solid ' + discColor2;
+                if (opts.showColorMarks) td2.style.borderLeft = '3px solid ' + discColor2;
                 td2.textContent = task.name || '';
               } else if (c.key === 'type')   { td2.textContent = task.type || 'bar'; }
               else if (c.key === 'start')  { td2.textContent = _tpFmtDate(task.start); }
@@ -9289,7 +9290,7 @@
           reRender();
         });
       });
-      ['tp-col-dates','tp-col-dur','tp-col-status','tp-col-notes','tp-col-type','tp-grid-lines','tp-zebra'].forEach(function(id) {
+      ['tp-col-dates','tp-col-dur','tp-col-status','tp-col-notes','tp-col-type','tp-grid-lines','tp-zebra','tp-color-marks'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', reRender);
       });
 
@@ -9412,6 +9413,7 @@
             <div class="pr-sec-label">Style</div>
             <label class="pr-row"><input type="checkbox" id="tp-grid-lines" checked /> Grid lines</label>
             <label class="pr-row"><input type="checkbox" id="tp-zebra" checked /> Row stripes</label>
+            <label class="pr-row"><input type="checkbox" id="tp-color-marks" checked /> Color marks</label>
             <div class="pr-row">Header <input type="color" id="tp-header-color" value="#1e293b" style="width:26px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;" /></div>
           </div>
 
