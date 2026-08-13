@@ -612,6 +612,21 @@
     .sheets-steps li { margin-bottom:1px; }
     .sheets-modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
 
+    /* ── Add Task / Milestone / Flag Modal ─────────────────────── */
+    #add-task-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
+    #add-task-overlay.open { display:flex; }
+    #add-task-modal { background:var(--panel); border-radius:18px; padding:26px 26px 20px; width:400px; max-width:93vw; box-shadow:0 24px 64px rgba(15,23,42,0.28); border:1px solid var(--border-strong); }
+    #add-task-modal h3 { margin:0 0 18px; font-size:1.02rem; font-weight:800; display:flex; align-items:center; gap:8px; }
+    .at-field { margin-bottom:14px; }
+    .at-field label { display:block; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:4px; }
+    .at-field input[type="text"], .at-field select {
+      width:100%; padding:8px 10px; border-radius:9px; border:1px solid var(--border-strong);
+      font-size:0.85rem; outline:none; font-family:inherit; background:var(--bg-alt); color:var(--text);
+    }
+    .at-field input[type="text"]:focus, .at-field select:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(2,132,199,0.15); }
+    .at-field select { cursor:pointer; }
+    #add-task-modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+
     /* ── Status Colors Modal ───────────────────────────────────── */
     #status-colors-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
     #status-colors-overlay.open { display:flex; }
@@ -943,6 +958,31 @@
         <div id="status-colors-footer">
           <button class="secondary" id="status-colors-reset">Reset Defaults</button>
           <button class="primary" id="status-colors-done">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Task / Milestone / Flag modal -->
+    <div id="add-task-overlay">
+      <div id="add-task-modal">
+        <h3 id="add-task-modal-title">Add Task</h3>
+        <div class="at-field">
+          <label for="at-name-input">Task Name</label>
+          <input type="text" id="at-name-input" autocomplete="off" />
+        </div>
+        <div class="at-field">
+          <label for="at-group-select">Group</label>
+          <select id="at-group-select">
+            <option value="__new__">+ New group…</option>
+          </select>
+        </div>
+        <div class="at-field" id="at-group-new-field" style="display:none;">
+          <label for="at-group-new-input">New Group Name</label>
+          <input type="text" id="at-group-new-input" autocomplete="off" placeholder="e.g. ARCHITECTURE" />
+        </div>
+        <div id="add-task-modal-footer">
+          <button class="secondary" id="at-cancel-btn">Cancel</button>
+          <button class="primary" id="at-add-btn">Add</button>
         </div>
       </div>
     </div>
@@ -1916,43 +1956,92 @@
       renderGantt();
     }
 
+    var _pendingAddTaskType = 'bar';
+
+    // Collect all known groups (existing tasks + unsaved empty groups), in
+    // their current Task Properties display order.
+    function _knownGroupsInOrder() {
+      var groups = [];
+      var seen = {};
+      var order = taskListOrder.length ? taskListOrder : [];
+      order.forEach(function(g) {
+        if (g && !seen[g]) { groups.push(g); seen[g] = true; }
+      });
+      tasks.forEach(function(t) {
+        var g = (t.group || '').trim().toUpperCase();
+        if (g && !seen[g]) { groups.push(g); seen[g] = true; }
+      });
+      emptyGroups.forEach(function(g) {
+        if (g && !seen[g]) { groups.push(g); seen[g] = true; }
+      });
+      return groups;
+    }
+
     function addTask(asType) {
+      _pendingAddTaskType = asType || 'bar';
+      var t = _pendingAddTaskType;
+
+      var titleEl = document.getElementById('add-task-modal-title');
+      titleEl.textContent = t === 'milestone' ? 'Add Milestone' : t === 'flag' ? 'Add Flag' : 'Add Task';
+
+      var defaultName = t === 'milestone' ? 'NEW MILESTONE' : t === 'flag' ? 'NEW FLAG' : 'NEW TASK';
+      var nameInp = document.getElementById('at-name-input');
+      nameInp.value = defaultName;
+
+      var knownGroups = _knownGroupsInOrder();
+      var groupSel = document.getElementById('at-group-select');
+      groupSel.innerHTML = '';
+      knownGroups.forEach(function(g) {
+        var opt = document.createElement('option');
+        opt.value = g; opt.textContent = g;
+        groupSel.appendChild(opt);
+      });
+      var newOpt = document.createElement('option');
+      newOpt.value = '__new__'; newOpt.textContent = '+ New group…';
+      groupSel.appendChild(newOpt);
+      groupSel.value = knownGroups.length ? knownGroups[0] : '__new__';
+
+      var newField = document.getElementById('at-group-new-field');
+      var newInp   = document.getElementById('at-group-new-input');
+      newInp.value = '';
+      newField.style.display = groupSel.value === '__new__' ? '' : 'none';
+
+      var overlay = document.getElementById('add-task-overlay');
+      overlay.classList.add('open');
+      setTimeout(function() {
+        nameInp.focus();
+        nameInp.select();
+      }, 30);
+    }
+
+    function closeAddTaskModal() {
+      document.getElementById('add-task-overlay').classList.remove('open');
+    }
+
+    function confirmAddTask() {
+      var t = _pendingAddTaskType;
+      var defaultName = t === 'milestone' ? 'NEW MILESTONE' : t === 'flag' ? 'NEW FLAG' : 'NEW TASK';
+      var taskName = document.getElementById('at-name-input').value.trim() || defaultName;
+
+      var groupSel = document.getElementById('at-group-select');
+      var groupName;
+      if (groupSel.value === '__new__') {
+        groupName = document.getElementById('at-group-new-input').value.trim().toUpperCase();
+        if (!groupName) { alert('Please enter a group name.'); return; }
+      } else {
+        groupName = groupSel.value;
+      }
+
+      var knownGroups = _knownGroupsInOrder();
+      var isNewGroup = knownGroups.indexOf(groupName) === -1;
+
       var chartStart = parseDate(chartStartInput.value);
       var defaultStart = chartStart;
       if (!defaultStart && tasks.length > 0) defaultStart = tasks[0].start;
       if (!defaultStart) defaultStart = new Date();
 
-      var t = asType || 'bar';
-
-      // Collect all known groups (existing tasks + unsaved empty groups) for the prompt hint.
-      var knownGroups = [];
-      var _seenG = {};
-      for (var _gi = 0; _gi < tasks.length; _gi++) {
-        var _g = (tasks[_gi].group || '').trim().toUpperCase();
-        if (_g && !_seenG[_g]) { knownGroups.push(_g); _seenG[_g] = true; }
-      }
-      for (var _ei = 0; _ei < emptyGroups.length; _ei++) {
-        if (!_seenG[emptyGroups[_ei]]) { knownGroups.push(emptyGroups[_ei]); _seenG[emptyGroups[_ei]] = true; }
-      }
-
-      // Prompt for task name.
-      var defaultName = t === 'milestone' ? 'NEW MILESTONE' : t === 'flag' ? 'NEW FLAG' : 'NEW TASK';
-      var taskName = prompt('Task name:', defaultName);
-      if (taskName === null) return;
-      taskName = taskName.trim() || defaultName;
-
-      // Prompt for group.
-      var groupHint = knownGroups.length ? '\nGroups: ' + knownGroups.join(', ') : '';
-      var groupName = prompt('Assign to group:' + groupHint, knownGroups[0] || '');
-      if (groupName === null) return;
-      groupName = groupName.trim().toUpperCase();
-      if (!groupName) {
-        if (knownGroups.length) { groupName = knownGroups[0]; }
-        else { alert('Please enter a group name.'); return; }
-      }
-
       // If this is a brand-new group, register it so it shows up before Save.
-      if (!_seenG[groupName]) {
+      if (isNewGroup) {
         emptyGroups.push(groupName);
         if (taskListOrder.indexOf(groupName) === -1) taskListOrder.push(groupName);
         if (disciplineOrder.indexOf(groupName) === -1) disciplineOrder.push(groupName);
@@ -1977,6 +2066,7 @@
       markDirty();
       selectedTaskId = newTask.id;
       sortState = { column: null, direction: 1 };
+      closeAddTaskModal();
       refreshTaskTable();
       updateStatusText();
       renderGantt();
@@ -5812,6 +5902,34 @@
       addTaskBtn.addEventListener('click', function() { addTask('bar'); });
       addMilestoneBtn.addEventListener('click', function() { addTask('milestone'); });
       addFlagBtn.addEventListener('click', function() { addTask('flag'); });
+
+      // Add Task / Milestone / Flag modal wiring
+      (function() {
+        var overlay  = document.getElementById('add-task-overlay');
+        var groupSel = document.getElementById('at-group-select');
+        var newField = document.getElementById('at-group-new-field');
+        var newInp   = document.getElementById('at-group-new-input');
+        var nameInp  = document.getElementById('at-name-input');
+
+        groupSel.addEventListener('change', function() {
+          var isNew = groupSel.value === '__new__';
+          newField.style.display = isNew ? '' : 'none';
+          if (isNew) setTimeout(function() { newInp.focus(); }, 20);
+        });
+
+        document.getElementById('at-cancel-btn').addEventListener('click', closeAddTaskModal);
+        document.getElementById('at-add-btn').addEventListener('click', confirmAddTask);
+
+        overlay.addEventListener('click', function(e) {
+          if (e.target === overlay) closeAddTaskModal();
+        });
+
+        overlay.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') { e.preventDefault(); closeAddTaskModal(); }
+          else if (e.key === 'Enter') { e.preventDefault(); confirmAddTask(); }
+        });
+      })();
+
       var addGroupBtn = document.getElementById('add-group-btn');
       if (addGroupBtn) addGroupBtn.addEventListener('click', addGroup);
       clearTasksBtn.addEventListener('click', clearTasks);
