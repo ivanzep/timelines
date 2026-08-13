@@ -482,12 +482,29 @@
     /* ── Task Properties: Excel / spreadsheet grid style ── */
     .task-table-wrapper { margin-top: 8px; border-radius: 3px; border: 1px solid var(--border-strong); max-height: 420px; overflow: auto; background: var(--panel); }
     table { width: 100%; border-collapse: collapse; font-size: 0.78rem; min-width: 100%; }
-    th, td { padding: 3px 7px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
+    .task-table-wrapper table { table-layout: fixed; }
+    th, td { padding: 3px 7px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); white-space: nowrap; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
     th:last-child, td:last-child { border-right: none; }
     th { position: sticky; top: 0; background: var(--panel-soft); z-index: 10; text-align: left; font-weight: 700; font-size: 0.67rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text); border-bottom: 2px solid var(--border-strong); border-right: 1px solid var(--border-strong); padding: 5px 7px; }
     th[data-sort] { cursor: pointer; user-select: none; }
     th[data-sort]:hover { background: var(--border); }
     .sort-indicator { color: var(--accent); margin-left: 4px; font-size: 11px; }
+    .col-resize-handle { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 12; user-select: none; }
+    .col-resize-handle:hover, .col-resize-handle.resizing { background: var(--accent); opacity: 0.5; }
+
+    /* ---- Columns visibility popup ---- */
+    .col-toggle-wrapper { position: relative; display: inline-block; }
+    .col-toggle-popup {
+      display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+      background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px;
+      box-shadow: var(--shadow-soft); padding: 8px; min-width: 170px; max-height: 300px; overflow-y: auto;
+    }
+    .col-toggle-popup.open { display: block; }
+    .col-toggle-popup label { display: flex; align-items: center; gap: 7px; font-size: 0.76rem; padding: 4px 6px; border-radius: 5px; cursor: pointer; color: var(--text); white-space: nowrap; }
+    .col-toggle-popup label:hover { background: var(--panel-soft); }
+    .col-toggle-popup input[type="checkbox"] { width: 13px; height: 13px; cursor: pointer; flex-shrink: 0; }
+    .col-toggle-popup .col-toggle-divider { border: none; border-top: 1px solid var(--border); margin: 5px 0; }
+    .col-toggle-popup .col-toggle-reset { width: 100%; text-align: center; font-size: 0.72rem; padding: 4px; margin-top: 3px; }
     tr:last-child td { border-bottom: none; }
     .task-table-wrapper.zebra tr:nth-child(even) td { background: rgba(0,0,0,0.018); }
     tr.selected-row td { background: rgba(2,132,199,0.10) !important; }
@@ -539,10 +556,6 @@
     .disc-group-toggle { display: inline-block; width: 14px; margin-right: 5px; font-style: normal; transition: transform 0.15s; }
     .disc-group-toggle.collapsed { transform: rotate(-90deg); }
     .disc-group-count { font-size: 0.68rem; font-weight: 500; color: var(--text-soft); margin-left: 8px; }
-
-    /* ---- Column resize handles on task table ---- */
-    .col-resizer { position: absolute; top: 0; right: 0; bottom: 0; width: 5px; cursor: col-resize; z-index: 2; background: transparent; border-radius: 0 4px 4px 0; }
-    .col-resizer:hover { background: rgba(2,132,199,0.35); }
 
     /* ---- App view tabs ---- */
     .app-tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 2px solid var(--border-strong); }
@@ -1146,6 +1159,10 @@
           <button id="add-group-btn"    class="secondary" title="Add a new empty group/section">+ Add Group</button>
           <button id="clear-tasks-btn"  class="danger">Clear All</button>
           <button id="task-print-btn"   class="secondary" title="Print task list">Print</button>
+          <div class="col-toggle-wrapper">
+            <button id="col-toggle-btn" class="secondary" title="Show / hide table columns">▤ Columns</button>
+            <div class="col-toggle-popup" id="col-toggle-popup"></div>
+          </div>
         </div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:7px;flex-wrap:wrap;">
@@ -1221,23 +1238,40 @@
 
       <div class="task-table-wrapper" id="task-table-wrapper">
         <table>
+          <colgroup id="task-table-colgroup">
+            <col data-col="check">
+            <col data-col="grip">
+            <col data-col="color">
+            <col data-col="name">
+            <col data-col="group">
+            <col data-col="type">
+            <col data-col="start">
+            <col data-col="end">
+            <col data-col="duration">
+            <col data-col="symbol">
+            <col data-col="status">
+            <col data-col="style">
+            <col data-col="notes">
+            <col data-col="deps">
+            <col data-col="actions">
+          </colgroup>
           <thead>
             <tr id="task-table-head">
               <th style="width:24px;"><input type="checkbox" id="select-all-cb" style="width:14px;height:14px;cursor:pointer;" title="Select / deselect all" /></th>
               <th style="width:28px;"></th>
-              <th data-sort="color" style="width:34px;">COLOR</th>
-              <th data-sort="name">TASK</th>
-              <th data-sort="group">DISCIPLINE</th>
-              <th data-sort="type">TYPE</th>
-              <th data-sort="start">START DATE</th>
-              <th data-sort="end">END DATE</th>
-              <th>DURATION (WKS)</th>
-              <th data-sort="symbol">SYMBOL</th>
-              <th data-sort="note">STATUS</th>
-              <th>STYLE</th>
-              <th>NOTES</th>
-              <th style="min-width:42px">DEPS</th>
-              <th></th>
+              <th data-sort="color" data-col="color" style="width:34px;">COLOR<span class="col-resize-handle" data-col="color"></span></th>
+              <th data-sort="name" data-col="name">TASK<span class="col-resize-handle" data-col="name"></span></th>
+              <th data-sort="group" data-col="group">DISCIPLINE<span class="col-resize-handle" data-col="group"></span></th>
+              <th data-sort="type" data-col="type">TYPE<span class="col-resize-handle" data-col="type"></span></th>
+              <th data-sort="start" data-col="start">START DATE<span class="col-resize-handle" data-col="start"></span></th>
+              <th data-sort="end" data-col="end">END DATE<span class="col-resize-handle" data-col="end"></span></th>
+              <th data-col="duration">DURATION (WKS)<span class="col-resize-handle" data-col="duration"></span></th>
+              <th data-sort="symbol" data-col="symbol">SYMBOL<span class="col-resize-handle" data-col="symbol"></span></th>
+              <th data-sort="note" data-col="status">STATUS<span class="col-resize-handle" data-col="status"></span></th>
+              <th data-col="style">STYLE<span class="col-resize-handle" data-col="style"></span></th>
+              <th data-col="notes">NOTES<span class="col-resize-handle" data-col="notes"></span></th>
+              <th style="min-width:42px" data-col="deps">DEPS<span class="col-resize-handle" data-col="deps"></span></th>
+              <th data-col="actions"></th>
             </tr>
           </thead>
           <tbody id="task-table-body"></tbody>
@@ -1443,6 +1477,23 @@
     var taskListOrder   = [];       // Task List section group order (affected by task-list drag only)
     var taskListGroupSortMode = 'custom'; // 'date' | 'alpha' | 'custom'
     var taskTableVisible = true;
+
+    // Task Properties table — column resize + visibility
+    var TASK_COL_KEYS = ['color','name','group','type','start','end','duration','symbol','status','style','notes','deps'];
+    var TASK_COL_LABELS = {
+      color: 'Color', name: 'Task', group: 'Discipline', type: 'Type',
+      start: 'Start Date', end: 'End Date', duration: 'Duration (wks)',
+      symbol: 'Symbol', status: 'Status', style: 'Style', notes: 'Notes', deps: 'Deps'
+    };
+    var TASK_COL_STORAGE_KEY = 'ganttTaskTableColPrefs.v1';
+    var TASK_COL_DEFAULT_WIDTHS = {
+      check: 24, grip: 28, color: 34, name: 200, group: 130, type: 100,
+      start: 130, end: 130, duration: 110, symbol: 70, status: 160,
+      style: 130, notes: 200, deps: 70, actions: 40
+    };
+    var taskTableColWidths  = {}; // colKey -> px number
+    var taskTableColVisible = {}; // colKey -> false when hidden (default: visible)
+
     var searchFilter    = '';
     var selectedTaskIds = {};
     var _lastCheckedTaskId = null; // anchor for shift+click range-select in task list
@@ -2123,6 +2174,129 @@
         var below = tr.classList.contains('drop-below');
         tr.classList.remove('drop-above', 'drop-below');
         if (srcId && srcId !== task.id) moveTask(srcId, task.id, below);
+      });
+    }
+
+    // -----------------------------
+    // Task table - column resize + visibility
+    // -----------------------------
+    function applyTaskTableColWidths() {
+      var colgroup = document.getElementById('task-table-colgroup');
+      if (!colgroup) return;
+      Array.prototype.forEach.call(colgroup.children, function(col) {
+        var key = col.dataset.col;
+        var w = taskTableColWidths[key] || TASK_COL_DEFAULT_WIDTHS[key];
+        col.style.width = w ? (w + 'px') : '';
+      });
+    }
+
+    function applyTaskTableColVisibility() {
+      var colgroup = document.getElementById('task-table-colgroup');
+      if (!colgroup) return;
+      Array.prototype.forEach.call(colgroup.children, function(col) {
+        var key = col.dataset.col;
+        if (TASK_COL_KEYS.indexOf(key) === -1) return; // check/grip/actions always visible
+        col.style.display = (taskTableColVisible[key] === false) ? 'none' : '';
+      });
+    }
+
+    function saveTaskTableColPrefs() {
+      try {
+        localStorage.setItem(TASK_COL_STORAGE_KEY, JSON.stringify({
+          widths: taskTableColWidths, visible: taskTableColVisible
+        }));
+      } catch(e) {}
+    }
+
+    function loadTaskTableColPrefs() {
+      try {
+        var raw = localStorage.getItem(TASK_COL_STORAGE_KEY);
+        if (!raw) return;
+        var parsed = JSON.parse(raw);
+        if (parsed && parsed.widths)  taskTableColWidths  = parsed.widths;
+        if (parsed && parsed.visible) taskTableColVisible = parsed.visible;
+      } catch(e) {}
+    }
+
+    function initTaskTableColResize() {
+      var handles = document.querySelectorAll('.col-resize-handle');
+      handles.forEach(function(handle) {
+        handle.addEventListener('click', function(e) { e.stopPropagation(); });
+        handle.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var key = handle.dataset.col;
+          var th = handle.closest('th');
+          var startX = e.clientX;
+          var startWidth = th.offsetWidth;
+          handle.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+
+          function onMove(ev) {
+            var newWidth = Math.max(30, startWidth + (ev.clientX - startX));
+            taskTableColWidths[key] = newWidth;
+            applyTaskTableColWidths();
+          }
+          function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            handle.classList.remove('resizing');
+            document.body.style.cursor = '';
+            saveTaskTableColPrefs();
+          }
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+      });
+    }
+
+    function buildColTogglePopup() {
+      var popup = document.getElementById('col-toggle-popup');
+      if (!popup) return;
+      popup.innerHTML = '';
+      TASK_COL_KEYS.forEach(function(key) {
+        var label = document.createElement('label');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = taskTableColVisible[key] !== false;
+        cb.addEventListener('change', function() {
+          taskTableColVisible[key] = cb.checked;
+          applyTaskTableColVisibility();
+          saveTaskTableColPrefs();
+        });
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(TASK_COL_LABELS[key] || key));
+        popup.appendChild(label);
+      });
+      var hr = document.createElement('hr');
+      hr.className = 'col-toggle-divider';
+      popup.appendChild(hr);
+      var resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.className = 'secondary col-toggle-reset';
+      resetBtn.textContent = 'Reset Columns';
+      resetBtn.addEventListener('click', function() {
+        taskTableColWidths  = {};
+        taskTableColVisible = {};
+        applyTaskTableColWidths();
+        applyTaskTableColVisibility();
+        saveTaskTableColPrefs();
+        buildColTogglePopup();
+      });
+      popup.appendChild(resetBtn);
+    }
+
+    function initColumnToggleMenu() {
+      var btn   = document.getElementById('col-toggle-btn');
+      var popup = document.getElementById('col-toggle-popup');
+      if (!btn || !popup) return;
+      buildColTogglePopup();
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        popup.classList.toggle('open');
+      });
+      document.addEventListener('click', function(e) {
+        if (!popup.contains(e.target) && e.target !== btn) popup.classList.remove('open');
       });
     }
 
@@ -5429,40 +5603,6 @@
     // -----------------------------
     // Column resize for task table
     // -----------------------------
-    function initTableColResize() {
-      var headRow = document.getElementById('task-table-head');
-      if (!headRow) return;
-      var ths = headRow.querySelectorAll('th');
-      for (var ci = 0; ci < ths.length; ci++) {
-        if (ci < 3) continue; // skip checkbox, grip, type-icon columns
-        var thEl = ths[ci];
-        var handle = document.createElement('div');
-        handle.className = 'col-resizer';
-        thEl.appendChild(handle);
-        (function(th) {
-          handle.addEventListener('mousedown', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var startX = e.clientX;
-            var startW = th.offsetWidth;
-            document.body.style.cursor = 'col-resize';
-            function onMove(ev) {
-              var newW = Math.max(40, startW + ev.clientX - startX);
-              th.style.width = newW + 'px';
-              th.style.minWidth = newW + 'px';
-            }
-            function onUp() {
-              document.body.style.cursor = '';
-              document.removeEventListener('mousemove', onMove);
-              document.removeEventListener('mouseup', onUp);
-            }
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-          });
-        })(thEl);
-      }
-    }
-
     // -----------------------------
     // Boot
     // -----------------------------
@@ -6117,8 +6257,12 @@
       if (tabMilestonesBtn) tabMilestonesBtn.addEventListener('click', function() { switchTab('milestones'); });
       if (tabFlagsBtn)      tabFlagsBtn.addEventListener('click',      function() { switchTab('flags'); });
 
-      // Column resize handles on task table headers
-      initTableColResize();
+      // Task Properties table — column resize + visibility toggle
+      loadTaskTableColPrefs();
+      applyTaskTableColWidths();
+      applyTaskTableColVisibility();
+      initTaskTableColResize();
+      initColumnToggleMenu();
 
       // Start blank — no tasks loaded until user connects a sheet
       tasks = [];
@@ -6383,7 +6527,9 @@
         sortColumn:            sortState.column        || '',
         sortDirection:         sortState.direction,
         currentTab:            currentTab              || 'gantt',
-        taskListGroupSortMode: taskListGroupSortMode   || 'custom'
+        taskListGroupSortMode: taskListGroupSortMode   || 'custom',
+        taskTableColWidths:    JSON.stringify(taskTableColWidths),
+        taskTableColVisible:   JSON.stringify(taskTableColVisible)
       };
     }
 
@@ -6672,6 +6818,16 @@
       if (s.taskListGroupSortMode !== undefined) {
         taskListGroupSortMode = s.taskListGroupSortMode || 'custom';
         updateTaskListGroupSortButtons();
+      }
+
+      // Restore Task Properties table column widths / visibility
+      if (s.taskTableColWidths || s.taskTableColVisible) {
+        try { if (s.taskTableColWidths)  taskTableColWidths  = JSON.parse(s.taskTableColWidths)  || {}; } catch(e) {}
+        try { if (s.taskTableColVisible) taskTableColVisible = JSON.parse(s.taskTableColVisible) || {}; } catch(e) {}
+        applyTaskTableColWidths();
+        applyTaskTableColVisibility();
+        buildColTogglePopup();
+        saveTaskTableColPrefs();
       }
     }
     // ─────────────────────────────────────────────────────────────

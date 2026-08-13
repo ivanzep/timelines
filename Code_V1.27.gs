@@ -1139,7 +1139,8 @@ var SETTINGS_KEYS = [
   'todayLineColor', 'metaDetailsCollapsed', 'statusColors',
   'taskSheetName',
   'sortColumn', 'sortDirection', 'currentTab',
-  'taskListGroupSortMode'
+  'taskListGroupSortMode',
+  'taskTableColWidths', 'taskTableColVisible'
 ];
 
 var SETTINGS_DESCRIPTIONS = {
@@ -1192,7 +1193,9 @@ var SETTINGS_DESCRIPTIONS = {
   sortColumn:              'Task-table sort column — field name or empty for unsorted',
   sortDirection:           'Task-table sort direction — 1 = ascending, -1 = descending',
   currentTab:              'Active view tab — gantt | tasks | milestones | flags',
-  taskListGroupSortMode:   'Task Properties group ordering mode — date | alpha | custom'
+  taskListGroupSortMode:   'Task Properties group ordering mode — date | alpha | custom',
+  taskTableColWidths:      'JSON object: Task Properties table column widths in px, keyed by column key',
+  taskTableColVisible:     'JSON object: Task Properties table column visibility, keyed by column key (false = hidden)'
 };
 
 // Return { key: value, ... } or null if the tab doesn't exist.
