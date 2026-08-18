@@ -40,6 +40,18 @@
       a minimal { deleteVersionTaskSheetName, versions } payload — the
       backend removes that version's task-list/settings/task-params/task-IDs
       tabs and drops it from the registry — and switches back to Default.
+    • Fix: a group's (empty) header row created in one version kept rendering
+      after switching to a different version, even though the target
+      version's own spreadsheet data had no such group — a display-only bug,
+      never written to any tab. Root cause: emptyGroups/deletedGroups (session
+      -local scratch arrays used to keep a just-created empty group's header
+      row visible before its first Save, and to track pending separator-row
+      deletions) were never cleared on Load, so a stale entry from a prior
+      version kept protecting a phantom header row from refreshTaskTable()'s
+      pruning logic. loadFromSheets() now resets both whenever it actually
+      replaces the task list (a full Load, or forceEmptyClear on an empty
+      sheet) — i.e. every real version switch/reload, same scope as the
+      existing tasks reset.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -7363,6 +7375,12 @@
           taskIdCounter = tasks.length + 1;
           selectedTaskId = null;
           ganttMultiSelected = {};
+          // emptyGroups/deletedGroups are session-local scratch state (groups created via
+          // + Add Group with no tasks yet, groups pending separator-row deletion) — they
+          // must never survive a Load, otherwise a group created in one version keeps
+          // rendering its (now orphaned) header row after switching to another version.
+          emptyGroups = [];
+          deletedGroups = [];
           // Only reset order/sort/collapse if NOT restored from settings
           if (!data.settings || !data.settings.sortColumn) sortState = { column: null, direction: 1 };
           if (!data.settings || !data.settings.taskListOrder)   taskListOrder   = [];
@@ -7388,6 +7406,8 @@
             taskIdCounter = 1;
             selectedTaskId = null;
             ganttMultiSelected = {};
+            emptyGroups = [];
+            deletedGroups = [];
             refreshTaskTable();
             updateStatusText();
             renderGantt();
