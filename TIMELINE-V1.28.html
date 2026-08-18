@@ -24,6 +24,10 @@
       doGet() accepts a taskSheetName query param to select which version to
       load; doPost() creates the target tab on first save into a new version
       and syncs the registry. Redeploy required.
+    • The "📋 <spreadsheet name>" label next to Load/Save is now a clickable
+      link that opens the connected Google Sheet in a new tab. Backend now
+      also returns result.spreadsheetUrl (SpreadsheetApp.getUrl()) on Load;
+      _setSheetNameDisplay() sets it as the label's href when present.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1089,7 +1093,7 @@
               </select>
               <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
               <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
-              <span id="sheet-name-display" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title=""></span>
+              <a id="sheet-name-display" target="_blank" rel="noopener noreferrer" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:none;" title=""></a>
             </div>
           </div>
 
@@ -6614,16 +6618,27 @@
       }
     }
 
-    function _setSheetNameDisplay(name) {
+    function _setSheetNameDisplay(name, url) {
       var el = document.getElementById('sheet-name-display');
       if (!el) return;
       if (name) {
         el.textContent = '📋 ' + name;
-        el.title = name;
+        if (url) {
+          el.href = url;
+          el.title = name + ' — open in Google Sheets';
+          el.style.cursor = 'pointer';
+          el.style.textDecoration = 'underline';
+        } else {
+          el.removeAttribute('href');
+          el.title = name;
+          el.style.cursor = 'default';
+          el.style.textDecoration = 'none';
+        }
         el.style.display = '';
       } else {
         el.style.display = 'none';
         el.textContent = '';
+        el.removeAttribute('href');
       }
     }
 
@@ -7311,7 +7326,7 @@
           clearDirty();
           _syncDot('ok', 'Loaded ' + loaded.length + ' tasks');
           if (statusText) statusText.textContent = '☁ Loaded ' + loaded.length + ' tasks from Google Sheets at ' + new Date().toLocaleTimeString();
-          _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets');
+          _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets', data.spreadsheetUrl);
         } else {
           if (forceEmptyClear) {
             tasks = [];
@@ -7325,7 +7340,7 @@
           }
           _syncDot('ok', 'Sheet empty — use Save to push data');
           if (statusText) statusText.textContent = 'Google Sheet has no tasks yet. Make edits here, then click ⬆ Save.';
-          _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets');
+          _setSheetNameDisplay(data.spreadsheetName || 'Google Sheets', data.spreadsheetUrl);
         }
       } catch(err) {
         _syncDot('err', 'Load failed');

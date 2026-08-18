@@ -71,6 +71,9 @@
 //      or saveBackToTaskList's task-row logic — they already read SOURCE_SHEET
 //      dynamically, so they work unchanged once it's resolved to the active
 //      version. Redeploy required.
+//    • doGet() now also returns result.spreadsheetUrl (SpreadsheetApp.
+//      getUrl()) so the frontend's spreadsheet-name label can link directly
+//      to the sheet. Redeploy required.
 //
 //  V1.27  2026-08-10
 //    • saveBackToTaskList() — per-task write isolation: each task's row writes
@@ -377,7 +380,11 @@ function doGet(e) {
       if (s && !allStatusColors[s]) allStatusColors[s] = '#64748b'; // slate default for unknown statuses
     });
     result.statusColors = allStatusColors;
-    try { result.spreadsheetName = SpreadsheetApp.getActiveSpreadsheet().getName(); } catch(e) {}
+    try {
+      var activeSs = SpreadsheetApp.getActiveSpreadsheet();
+      result.spreadsheetName = activeSs.getName();
+      result.spreadsheetUrl  = activeSs.getUrl();
+    } catch(e) {}
     try { result.versions = readVersions(); } catch(e) { result.versions = [{ name: 'Default', taskSheetName: SOURCE_SHEET_DEFAULT }]; }
     result.currentTaskSheetName = SOURCE_SHEET;
     return buildResponse(result);
