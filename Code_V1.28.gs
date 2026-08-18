@@ -74,6 +74,18 @@
 //    • doGet() now also returns result.spreadsheetUrl (SpreadsheetApp.
 //      getUrl()) so the frontend's spreadsheet-name label can link directly
 //      to the sheet. Redeploy required.
+//    • _ensureTaskSheetExists() takes a new `blank` param — when true, the
+//      cloned tab's task rows are cleared (via new _clearTaskRows()) right
+//      after copying, so a "start blank" new version has no tasks of its
+//      own instead of inheriting the source's. doPost() reads this from
+//      payload.newVersionBlank.
+//    • New _deleteVersionTabs(taskSheetName) — deletes a version's task-list
+//      tab plus its settings/task-params/task-IDs tabs (no-op for the
+//      default version). doPost() runs this as an independent step 0 when
+//      payload.deleteVersionTaskSheetName is present (deleteVersionError in
+//      the response), and skips _ensureTaskSheetExists for delete-only
+//      requests that carry no payload.tasks/payload.settings. Redeploy
+//      required.
 //
 //  V1.27  2026-08-10
 //    • saveBackToTaskList() — per-task write isolation: each task's row writes
@@ -414,11 +426,26 @@ function doPost(e) {
     SOURCE_SHEET = (payload.settings && payload.settings.taskSheetName) ? payload.settings.taskSheetName : SOURCE_SHEET_DEFAULT;
     _applyVersionTabs(SOURCE_SHEET);
 
+    // 0. Delete a version's tabs (independent of whatever else this request saves —
+    // used by the Version dropdown's delete action, which sends a minimal payload).
+    var deleteVersionError = '';
+    if (payload.deleteVersionTaskSheetName) {
+      try {
+        _deleteVersionTabs(payload.deleteVersionTaskSheetName);
+      } catch (delErr) {
+        deleteVersionError = delErr.toString();
+        Logger.log('_deleteVersionTabs error: ' + delErr);
+      }
+    }
+
     // If this is the first save into a brand-new version, its task-list tab
     // doesn't exist yet — create it now (as a snapshot copy of the version the
     // frontend branched from, or the default version) before writing to it.
-    try { _ensureTaskSheetExists(SOURCE_SHEET, payload.newVersionSourceSheet); } catch (ensureErr) {
-      Logger.log('_ensureTaskSheetExists error: ' + ensureErr);
+    // Skipped for delete-only requests (no task/settings payload to write).
+    if (payload.tasks || payload.settings) {
+      try { _ensureTaskSheetExists(SOURCE_SHEET, payload.newVersionSourceSheet, !!payload.newVersionBlank); } catch (ensureErr) {
+        Logger.log('_ensureTaskSheetExists error: ' + ensureErr);
+      }
     }
 
     // 1. Update dates + status in the configured task sheet
@@ -467,13 +494,14 @@ function doPost(e) {
     }
 
     return buildResponse({
-      success:          true,
-      message:          taskMsg,
-      taskError:        taskErr,
-      taskParamsError:  taskParamsErr,
-      settingsError:    settingsErr,
-      groupSepError:    groupSepError,
-      versionsError:    versionsError
+      success:            true,
+      message:            taskMsg,
+      taskError:          taskErr,
+      taskParamsError:    taskParamsErr,
+      settingsError:      settingsErr,
+      groupSepError:      groupSepError,
+      versionsError:      versionsError,
+      deleteVersionError: deleteVersionError
     });
 
   } catch (err) {
@@ -545,8 +573,10 @@ function writeVersions(versions) {
 // exist, by copying an existing tab (the version the frontend branched from,
 // falling back to the default version) so the new version starts as a
 // snapshot of its source — header row, data validation, and current tasks
-// all carry over, ready to edit/add on top of.
-function _ensureTaskSheetExists(taskSheetName, sourceSheetName) {
+// all carry over, ready to edit/add on top of. When blank=true, the cloned
+// tab's task rows are cleared (header/formatting/validation stay intact) so
+// the version starts genuinely empty instead of as a copy of the source.
+function _ensureTaskSheetExists(taskSheetName, sourceSheetName, blank) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (ss.getSheetByName(taskSheetName)) return; // already exists — nothing to do
 
@@ -556,9 +586,45 @@ function _ensureTaskSheetExists(taskSheetName, sourceSheetName) {
     var copy = src.copyTo(ss);
     copy.setName(taskSheetName);
     try { ss.setActiveSheet(copy); ss.moveActiveSheet(src.getIndex() + 1); } catch (moveErr) {}
+    if (blank) _clearTaskRows(copy);
   } else {
     ss.insertSheet(taskSheetName); // fallback: no source tab found — blank tab
   }
+}
+
+// Clears all task rows below the header (keeping header text, formatting, and
+// data validation intact) — used to make a freshly cloned tab start empty.
+function _clearTaskRows(sheet) {
+  var raw = sheet.getDataRange().getValues();
+  var hRow = -1;
+  for (var i = 0; i < Math.min(raw.length, 25); i++) {
+    for (var c = 0; c < raw[i].length; c++) {
+      if (String(raw[i][c]).trim().toUpperCase() === 'DISCIPLINE') { hRow = i; break; }
+    }
+    if (hRow >= 0) break;
+  }
+  if (hRow < 0) return;
+  var lastRow = sheet.getLastRow();
+  if (lastRow > hRow + 1) {
+    sheet.getRange(hRow + 2, 1, lastRow - hRow - 1, sheet.getLastColumn()).clearContent();
+  }
+}
+
+// Deletes a version's task-list tab and its settings/task-params/task-IDs
+// tabs. The default version can never be deleted this way.
+function _deleteVersionTabs(taskSheetName) {
+  if (!taskSheetName || normKey(taskSheetName) === normKey(SOURCE_SHEET_DEFAULT)) return;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var names = [
+    taskSheetName,
+    _versionSuffixTab('GANTT SETTINGS-DO NOT EDIT', taskSheetName),
+    _versionSuffixTab('GANTT TASK PARAMS-DO NOT EDIT', taskSheetName),
+    _versionSuffixTab('GANTT TASK IDS-DO NOT EDIT', taskSheetName)
+  ];
+  names.forEach(function(n) {
+    var sh = ss.getSheetByName(n);
+    if (sh) ss.deleteSheet(sh);
+  });
 }
 
 // ============================================================

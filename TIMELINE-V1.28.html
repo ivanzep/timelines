@@ -28,6 +28,18 @@
       link that opens the connected Google Sheet in a new tab. Backend now
       also returns result.spreadsheetUrl (SpreadsheetApp.getUrl()) on Load;
       _setSheetNameDisplay() sets it as the label's href when present.
+    • "+ New Version…" now opens a modal instead of a plain prompt: name the
+      version, then choose to duplicate an existing version (any of them, via
+      a dropdown — not just the currently active one; the source is loaded
+      first if it isn't already in memory) or start fully blank (no tasks).
+      Blank mode tells the backend to clear the cloned tab's task rows
+      (_ensureTaskSheetExists' new blank param) instead of leaving the copy's
+      tasks in place.
+    • New 🗑 delete-version button next to the Version dropdown (hidden for
+      the Default version, which can never be deleted). Confirms, then sends
+      a minimal { deleteVersionTaskSheetName, versions } payload — the
+      backend removes that version's task-list/settings/task-params/task-IDs
+      tabs and drops it from the registry — and switches back to Default.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -658,6 +670,15 @@
     .at-field select { cursor:pointer; }
     #add-task-modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
 
+    /* ── New Version Modal ─────────────────────────────────────── */
+    #new-version-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
+    #new-version-overlay.open { display:flex; }
+    #new-version-modal { background:var(--panel); border-radius:18px; padding:26px 26px 20px; width:400px; max-width:93vw; box-shadow:0 24px 64px rgba(15,23,42,0.28); border:1px solid var(--border-strong); }
+    #new-version-modal h3 { margin:0 0 18px; font-size:1.02rem; font-weight:800; display:flex; align-items:center; gap:8px; }
+    .nv-radio-row { display:flex; align-items:center; gap:7px; font-size:0.82rem; font-weight:400; text-transform:none; letter-spacing:normal; color:var(--text); margin-bottom:8px; cursor:pointer; }
+    .nv-radio-row input[type="radio"] { width:14px; height:14px; cursor:pointer; flex-shrink:0; accent-color:var(--accent); }
+    #new-version-modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+
     /* ── Status Colors Modal ───────────────────────────────────── */
     #status-colors-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
     #status-colors-overlay.open { display:flex; }
@@ -1018,6 +1039,33 @@
       </div>
     </div>
 
+    <!-- New Version modal -->
+    <div id="new-version-overlay">
+      <div id="new-version-modal">
+        <h3>New Version</h3>
+        <div class="at-field">
+          <label for="nv-name-input">Version Name</label>
+          <input type="text" id="nv-name-input" autocomplete="off" placeholder="e.g. Accelerated Schedule" />
+        </div>
+        <div class="at-field">
+          <label>Starting Point</label>
+          <label class="nv-radio-row">
+            <input type="radio" name="nv-mode" id="nv-mode-duplicate" value="duplicate" checked />
+            Duplicate an existing version
+          </label>
+          <select id="nv-source-select" style="margin-bottom:8px;"></select>
+          <label class="nv-radio-row" style="margin-bottom:0;">
+            <input type="radio" name="nv-mode" id="nv-mode-blank" value="blank" />
+            Start blank (no tasks)
+          </label>
+        </div>
+        <div id="new-version-modal-footer">
+          <button class="secondary" id="nv-cancel-btn">Cancel</button>
+          <button class="primary" id="nv-create-btn">Create</button>
+        </div>
+      </div>
+    </div>
+
     <div class="topbar">
       <div class="topbar-top-row">
         <div class="project-meta" style="flex:1; min-width:0;">
@@ -1091,6 +1139,7 @@
               <select id="version-select" class="secondary" title="Switch between task-list versions/scenarios" style="max-width:160px;">
                 <option value="">Default</option>
               </select>
+              <button id="version-delete-btn" class="secondary" title="Delete this version and its spreadsheet tabs" style="display:none;padding:5px 8px;">🗑</button>
               <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
               <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
               <a id="sheet-name-display" target="_blank" rel="noopener noreferrer" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:none;" title=""></a>
@@ -7299,8 +7348,14 @@
 
         // Versions registry + which version this response actually came from —
         // lock in taskSheetName so subsequent loads target the same tabs directly.
+        // The backend always returns the real tab name (e.g. "PROJECT TASK LIST" for the
+        // default version, never ''), so normalize back to '' — the sentinel used
+        // throughout the frontend (dropdown option values, switch/create comparisons) —
+        // whenever it matches the default version's tab name.
         if (data.versions && Array.isArray(data.versions) && data.versions.length) versions = data.versions;
-        if (data.currentTaskSheetName) taskSheetName = data.currentTaskSheetName;
+        if (data.currentTaskSheetName) {
+          taskSheetName = (data.currentTaskSheetName === DEFAULT_TASK_SHEET_NAME) ? '' : data.currentTaskSheetName;
+        }
         populateVersionDropdown();
 
         if (loaded.length > 0) {
@@ -7395,6 +7450,19 @@
       sel.appendChild(newOpt);
       sel.value = prevValue;
       if (sel.value !== prevValue) sel.selectedIndex = 0; // prevValue no longer exists — fall back
+
+      // The default version's tabs are never deletable.
+      var delBtn = document.getElementById('version-delete-btn');
+      if (delBtn) delBtn.style.display = (sel.value && sel.value !== '__new_version__') ? '' : 'none';
+    }
+
+    function _versionDisplayName(taskSheetNameToFind) {
+      var norm = (taskSheetNameToFind || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase();
+      for (var i = 0; i < versions.length; i++) {
+        var vtsn = (versions[i].taskSheetName || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase();
+        if (vtsn === norm) return versions[i].name || versions[i].taskSheetName;
+      }
+      return taskSheetNameToFind || 'Default';
     }
 
     // Switch to a different existing version. Offers to save unsaved changes to the
@@ -7421,15 +7489,47 @@
       }
     }
 
-    // "+ New Version…" — prompts for a name, derives a unique task-sheet tab name, then
-    // saves immediately so the backend creates that tab as a snapshot copy of whichever
-    // version is currently active (current in-memory tasks carry over as the starting point).
-    async function createNewVersion() {
-      var name = prompt('Name this new version (e.g. "Accelerated Schedule"):');
-      if (!name || !name.trim()) { populateVersionDropdown(); return; }
-      name = name.trim();
+    // "+ New Version…" — opens a modal to name the version and choose a starting point:
+    // duplicate an existing version (any of them, not just the active one) or start blank.
+    function openNewVersionModal() {
+      var nameInp    = document.getElementById('nv-name-input');
+      var srcSel     = document.getElementById('nv-source-select');
+      var dupRadio   = document.getElementById('nv-mode-duplicate');
 
-      var sourceTaskSheetName = taskSheetName || DEFAULT_TASK_SHEET_NAME;
+      nameInp.value = '';
+      dupRadio.checked = true;
+
+      srcSel.innerHTML = '';
+      versions.forEach(function(v) {
+        var opt = document.createElement('option');
+        var isDefault = !v.taskSheetName || v.taskSheetName === DEFAULT_TASK_SHEET_NAME;
+        opt.value = isDefault ? '' : v.taskSheetName;
+        opt.textContent = v.name || v.taskSheetName || 'Default';
+        srcSel.appendChild(opt);
+      });
+      srcSel.value = taskSheetName || '';
+      srcSel.disabled = false;
+
+      document.getElementById('new-version-overlay').classList.add('open');
+      setTimeout(function() { nameInp.focus(); }, 30);
+    }
+
+    function closeNewVersionModal() {
+      document.getElementById('new-version-overlay').classList.remove('open');
+      populateVersionDropdown(); // reset the select away from "+ New Version…"
+    }
+
+    // Derives a unique task-sheet tab name, then saves immediately so the backend creates
+    // that tab — either as a snapshot copy of the chosen source version (tasks + settings,
+    // loading the source first if it isn't the one currently in memory) or fully blank.
+    async function confirmCreateVersion() {
+      var nameInp = document.getElementById('nv-name-input');
+      var name = nameInp.value.trim();
+      if (!name) { alert('Please enter a version name.'); nameInp.focus(); return; }
+
+      var isBlank = document.getElementById('nv-mode-blank').checked;
+      var srcSel  = document.getElementById('nv-source-select');
+      var sourceTaskSheetName = isBlank ? (taskSheetName || DEFAULT_TASK_SHEET_NAME) : (srcSel.value || DEFAULT_TASK_SHEET_NAME);
 
       var base = DEFAULT_TASK_SHEET_NAME + ' - ' + name.toUpperCase();
       var candidate = base;
@@ -7440,14 +7540,71 @@
         n++;
       }
 
+      document.getElementById('new-version-overlay').classList.remove('open');
+
+      // Duplicating a version that isn't the one currently loaded — load it first so the
+      // tasks/settings we save into the new tab actually reflect what's being duplicated.
+      if (!isBlank && sourceTaskSheetName !== (taskSheetName || DEFAULT_TASK_SHEET_NAME)) {
+        _syncDot('busy', 'Loading "' + _versionDisplayName(sourceTaskSheetName) + '"…');
+        taskSheetName = sourceTaskSheetName;
+        await loadFromSheets(false, true);
+      }
+
+      if (isBlank) {
+        tasks = [];
+        taskIdCounter = 1;
+        selectedTaskId = null;
+        ganttMultiSelected = {};
+        emptyGroups = [];
+        deletedGroups = [];
+        refreshTaskTable();
+        renderGantt();
+      }
+
       versions.push({ name: name, taskSheetName: candidate });
       taskSheetName = candidate;
       markDirty();
       populateVersionDropdown();
 
       _syncDot('busy', 'Creating version…');
-      await saveToSheets({ newVersionSourceSheet: sourceTaskSheetName });
+      await saveToSheets({ newVersionSourceSheet: sourceTaskSheetName, newVersionBlank: isBlank });
       if (statusText) statusText.textContent = '☁ Created version "' + name + '".';
+    }
+
+    // Deletes the currently active version's task-list tab and its settings/task-params/
+    // task-IDs tabs, then switches to the Default version. The default version can never
+    // be deleted (guarded both here and in the backend).
+    async function deleteCurrentVersion() {
+      if (!taskSheetName) { alert('The default version cannot be deleted.'); return; }
+      if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
+
+      var name = _versionDisplayName(taskSheetName);
+      var ok = confirm('Delete version "' + name + '" and its spreadsheet tabs?\nThis cannot be undone.');
+      if (!ok) return;
+
+      var deletingSheet = taskSheetName;
+      versions = versions.filter(function(v) { return (v.taskSheetName || DEFAULT_TASK_SHEET_NAME) !== deletingSheet; });
+
+      _syncDot('busy', 'Deleting version…');
+      try {
+        var resp = await fetch(sheetsURL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body:    JSON.stringify({ deleteVersionTaskSheetName: deletingSheet, versions: versions.slice() })
+        });
+        var result = await resp.json();
+        if (!result.success) throw new Error(result.error || 'Delete failed');
+        if (result.deleteVersionError) console.warn('[GANTT] deleteVersionError:', result.deleteVersionError);
+      } catch (err) {
+        alert('Could not delete version:\n' + err.message);
+      }
+
+      // Switch to Default regardless of the request outcome above — it's already gone
+      // from the local registry, so there's nothing meaningful left to show for it.
+      taskSheetName = '';
+      populateVersionDropdown();
+      await loadFromSheets(false, true);
+      if (statusText) statusText.textContent = '☁ Deleted version "' + name + '". Switched to Default.';
     }
 
     // Save tasks TO Google Sheets ← timeline
@@ -7508,6 +7665,7 @@
         versions: versions.slice()
       };
       if (opts.newVersionSourceSheet) payload.newVersionSourceSheet = opts.newVersionSourceSheet;
+      if (opts.newVersionBlank) payload.newVersionBlank = true;
 
       // Use text/plain content-type — avoids CORS preflight that Apps Script can't handle.
       // The body is still JSON; Apps Script reads it via e.postData.contents regardless.
@@ -7558,10 +7716,34 @@
       var versionSelect = document.getElementById('version-select');
       if (versionSelect) {
         versionSelect.addEventListener('change', function() {
-          if (versionSelect.value === '__new_version__') createNewVersion();
+          if (versionSelect.value === '__new_version__') openNewVersionModal();
           else switchToVersion(versionSelect.value);
         });
       }
+      var versionDeleteBtn = document.getElementById('version-delete-btn');
+      if (versionDeleteBtn) versionDeleteBtn.addEventListener('click', deleteCurrentVersion);
+
+      // New Version modal wiring
+      (function() {
+        var overlay = document.getElementById('new-version-overlay');
+        var srcSel  = document.getElementById('nv-source-select');
+        var dupRadio   = document.getElementById('nv-mode-duplicate');
+        var blankRadio = document.getElementById('nv-mode-blank');
+
+        dupRadio.addEventListener('change', function() { srcSel.disabled = !dupRadio.checked; });
+        blankRadio.addEventListener('change', function() { srcSel.disabled = blankRadio.checked; });
+
+        document.getElementById('nv-cancel-btn').addEventListener('click', closeNewVersionModal);
+        document.getElementById('nv-create-btn').addEventListener('click', confirmCreateVersion);
+
+        overlay.addEventListener('click', function(e) {
+          if (e.target === overlay) closeNewVersionModal();
+        });
+        overlay.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') { e.preventDefault(); closeNewVersionModal(); }
+          else if (e.key === 'Enter' && e.target.tagName !== 'SELECT') { e.preventDefault(); confirmCreateVersion(); }
+        });
+      })();
 
       // Always use the embedded DEFAULT_SHEETS_URL — no localStorage, no overrides.
       if (DEFAULT_SHEETS_URL) {
