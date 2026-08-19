@@ -68,6 +68,25 @@
       the batch group-color Apply button — all three mutate tasks/groupColors
       directly and were missing the markDirty() call the single-row paths
       already had.
+    • Backend fix (Code_V1.28.gs): task color/type/style/symbol were silently
+      not saved for any task without a persistent ID yet — every brand-new
+      task, most noticeably ones added to a freshly created version before
+      its first reload. doPost() now assigns IDs before writing task params
+      instead of skipping those tasks, and new-version creation now clones
+      the source's task-ID tab too so IDs don't get renumbered on first Load.
+      Redeploy required.
+    • Flat mode: new "Flags" checkbox (Flat Options card) hides flag markers
+      while Flat mode is on — independent of the Flags tab filter. Flags now
+      render anchored to the top of their shared discipline row instead of
+      the same mid-row Y bars use, so a flag's pole/triangle and its name/
+      note text sit above the bar band (and its labels) instead of
+      overlapping it. Persists via a new flatShowFlags setting.
+    • Gantt print/export: milestones and flags previously drew only their
+      marker shape (diamond / pole+triangle) with no name, phase, or status
+      text next to them — the label-drawing block only ran for plain bars.
+      New _printMarkerLabel() draws the same name/phase/note lines used for
+      bars, positioned to the right of the marker, for both milestone and
+      flag rows.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1207,6 +1226,7 @@
                 <div class="sb-label">Flat Options</div>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-outside" /> Outside</label>
+                <label class="sb-row"><input type="checkbox" id="opt-flat-show-flags" checked /> Flags</label>
                 <label class="sb-slider-row">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" class="sb-slider" /> <span class="sb-val" id="opt-flat-barh-val">24</span>px</label>
                 <label class="sb-slider-row">Overflow <input type="range" id="opt-flat-overflow" min="0" max="400" value="0" step="10" class="sb-slider" /> <span class="sb-val" id="opt-flat-overflow-val">0</span>px</label>
               </div>
@@ -1619,6 +1639,7 @@
     var flatBarHeight = 24;          // bar height (px) in flat mode
     var flatLabelOverflow = 0;       // extra px the label clip extends right of bar end
     var flatLabelsOutside = false;   // when true: always place labels outside bar (above/below); default: inside if fits
+    var flatShowFlags = true;        // when false: flags are hidden while Flat mode is on
     var useStatusColors = false;     // when true: bar/milestone/flag fill uses STATUS_COLOR_MAP[task.status]
     var _flatMaxLabelLines = {};     // per-group: disc → max outside lines; pre-computed each render
     var _flatLabelPlacementMap = {}; // task.id → 'above'|'below'|'inside'; set by pre-pass each render
@@ -5149,17 +5170,30 @@
     }
 
     function renderFlag(svg, task) {
+      if (flatMode && !flatShowFlags) return; // Flat mode "Flags" toggle
       var rowIdx = findRowIdx(task);
       if (rowIdx < 0) return;
       var yTop = geom.rowYOffsets[rowIdx] || 0;
       var _fRowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
-      var yMid = yTop + _fRowH / 2;
+      var poleH = Math.min(22, _fRowH - 6);
+      var yMid, topY, bottomY;
+      if (flatMode) {
+        // Flat mode stacks every task/milestone/flag of a discipline into one shared
+        // row, which previously left the flag's pole/text sitting at the same mid-row
+        // Y as the bars underneath and colliding with their labels. Anchor the flag to
+        // the row's top margin instead, so it renders above the bar band (and its
+        // text) rather than on top of/behind it.
+        topY = yTop + 2;
+        bottomY = topY + poleH;
+        yMid = topY + poleH / 2;
+      } else {
+        yMid = yTop + _fRowH / 2;
+        topY = yMid - poleH / 2;
+        bottomY = yMid + poleH / 2;
+      }
       var x = dateToX(task.start);
       // Register in barPositions so dependency arrows can connect to flags.
       barPositions[task.id] = { x1: x, x2: x, midY: yMid };
-      var poleH = Math.min(22, _fRowH - 6);
-      var topY = yMid - poleH / 2;
-      var bottomY = yMid + poleH / 2;
       var flagH = Math.min(11, poleH * 0.55);
 
       var g = document.createElementNS(svgNS, 'g');
@@ -6044,6 +6078,13 @@
           renderGantt();
         });
       }
+      var optFlatShowFlags = document.getElementById('opt-flat-show-flags');
+      if (optFlatShowFlags) {
+        optFlatShowFlags.addEventListener('change', function() {
+          flatShowFlags = this.checked;
+          renderGantt();
+        });
+      }
 
       var optStatusColors = document.getElementById('opt-status-colors');
       if (optStatusColors) {
@@ -6911,6 +6952,7 @@
         flatBarHeight:       flatBarHeight,
         flatLabelOverflow:   flatLabelOverflow,
         flatLabelsOutside:   flatLabelsOutside ? 'true' : 'false',
+        flatShowFlags:       flatShowFlags ? 'true' : 'false',
         useStatusColors:     useStatusColors ? 'true' : 'false',
         barTextColor:        barTextColor  !== null ? barTextColor : '',
         groupColors:         JSON.stringify(groupColors),
@@ -7029,6 +7071,11 @@
         flatLabelsOutside = toBool(s.flatLabelsOutside);
         var _floEl = document.getElementById('opt-flat-outside');
         if (_floEl) _floEl.checked = flatLabelsOutside;
+      }
+      if (s.flatShowFlags !== undefined) {
+        flatShowFlags = toBool(s.flatShowFlags);
+        var _fsfEl = document.getElementById('opt-flat-show-flags');
+        if (_fsfEl) _fsfEl.checked = flatShowFlags;
       }
       if (s.useStatusColors !== undefined) {
         useStatusColors = toBool(s.useStatusColors);
@@ -8164,6 +8211,29 @@
         var el = mk('rect', Object.assign({x:x,y:y,width:w,height:h,fill:fill}, attrs||{}));
         return el;
       }
+      // Milestone/flag name+phase+note label, drawn to the right of the marker —
+      // mirrors the bar-label block below but for point markers, which previously
+      // had no label at all in print (milestones showed just a diamond, flags just
+      // the pole+triangle with no name/notes text next to them).
+      function _printMarkerLabel(t, labelX, cy, fs) {
+        if (!(opts.showName || opts.showPhase || opts.showNote)) return;
+        var lines = [];
+        if (opts.showName)  lines.push({ text: t.name, big: true });
+        if (opts.showPhase && (t.sub || t.group)) lines.push({ text: t.sub || t.group, big: false });
+        if (opts.showNote  && t.note) lines.push({ text: t.note, big: false });
+        if (!lines.length) return;
+        var lineGap = fs + 2;
+        var startY = cy - ((lines.length - 1) * lineGap) / 2 + fs * 0.35;
+        for (var li = 0; li < lines.length; li++) {
+          var lbl = lines[li];
+          var lfs = lbl.big ? fs : Math.max(5, fs - 2);
+          txt(lbl.text, {
+            x: labelX, y: startY + li * lineGap, 'font-size': lfs,
+            fill: lbl.big ? '#0f172a' : '#64748b', 'font-weight': lbl.big ? '700' : '500',
+            'clip-path': 'url(#' + clipId + ')'
+          });
+        }
+      }
 
       // ── Page white background ──────────────────────────────────
       rect(0, 0, opts.pgW, opts.pgH, 'white');
@@ -8702,6 +8772,7 @@
               dia.setAttribute('fill', barColor);
               dia.setAttribute('clip-path', 'url(#' + clipId + ')');
               svg.appendChild(dia);
+              _printMarkerLabel(t, cx + hs + 5, cy, fs);
             } else if (t.type === 'flag') {
               var fx = mL + lw + bx1, fCy = ry + rowH/2;
               var fPH = Math.min(rowH - 4, 18), fFH = Math.min(fPH * 0.5, 8);
@@ -8711,6 +8782,7 @@
               mk('polygon', {
                 points: fx+','+fTop+' '+(fx+11)+','+(fTop+fFH/2)+' '+fx+','+(fTop+fFH),
                 fill: barColor, 'clip-path':'url(#'+clipId+')'});
+              _printMarkerLabel(t, fx + 15, fCy, fs);
             } else {
               var barEl = mk('rect', {
                 x:mL+lw+bC1, y:bY, width:bW, height:bH, rx:2,

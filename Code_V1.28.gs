@@ -86,6 +86,25 @@
 //      the response), and skips _ensureTaskSheetExists for delete-only
 //      requests that carry no payload.tasks/payload.settings. Redeploy
 //      required.
+//    • Fix: task color/type/style/symbol settings were silently dropped on
+//      Save for any task without a persistent taskId yet — which is every
+//      brand-new task (taskId is normally only ever assigned by doGet/Load),
+//      most noticeably right after creating a new version and adding tasks
+//      to it before the first reload. writeTaskParams() requires a taskId to
+//      key each row on and was simply skipping tasks that didn't have one
+//      yet. doPost() now assigns persistent IDs to any task missing one
+//      (same GANTT TASK IDS lookup/increment logic doGet already uses)
+//      immediately before writeTaskParams() runs, so nothing gets skipped.
+//    • _ensureTaskSheetExists() now also clones the source version's GANTT
+//      TASK IDS tab (when not blank) so a new version's tasks keep the same
+//      persistent IDs their params were written with, instead of getting
+//      renumbered on the new version's first Load. readTaskParams()'s KEY
+//      fallback would still recover the params even without this, but this
+//      avoids relying on that fallback for a case that happens on every
+//      single new version. Redeploy required.
+//    • SETTINGS_KEYS gains flatShowFlags (Flat mode "Flags" visibility
+//      toggle — frontend-only rendering change, no other backend logic
+//      involved). Redeploy required for persistence.
 //
 //  V1.27  2026-08-10
 //    • saveBackToTaskList() — per-task write isolation: each task's row writes
@@ -458,6 +477,30 @@ function doPost(e) {
     // 2. Write per-task Gantt params to GANTT TASK PARAMS
     if (payload.tasks) {
       try {
+        // writeTaskParams() requires a persistent taskId to key each row on, but
+        // taskId is normally only ever assigned during doGet (Load) — a brand-new
+        // task saved for the first time (e.g. right after "+ Add Task", or any task
+        // in a freshly created version before its first Load) still has taskId=null
+        // at this point, so its color/type/style/symbol would otherwise be silently
+        // skipped. Assign persistent IDs here too, same as doGet, before writing.
+        var taskIdsForSave = readTaskIds();
+        var taskIdsChanged = false;
+        payload.tasks.forEach(function(t) {
+          if (t.taskId) return;
+          var pKey = normKey((t.group || '') + '|' + (t.name || ''));
+          if (taskIdsForSave.ids[pKey]) {
+            t.taskId = taskIdsForSave.ids[pKey];
+          } else {
+            taskIdsForSave.maxId++;
+            t.taskId = taskIdsForSave.maxId;
+            taskIdsForSave.ids[pKey] = t.taskId;
+            taskIdsChanged = true;
+          }
+        });
+        if (taskIdsChanged) {
+          try { writeTaskIds(taskIdsForSave); } catch (idErr) { Logger.log('writeTaskIds error: ' + idErr); }
+        }
+
         writeTaskParams(payload.tasks);
       } catch (tpErr) {
         taskParamsErr = tpErr.toString();
@@ -576,17 +619,37 @@ function writeVersions(versions) {
 // all carry over, ready to edit/add on top of. When blank=true, the cloned
 // tab's task rows are cleared (header/formatting/validation stay intact) so
 // the version starts genuinely empty instead of as a copy of the source.
+//
+// Also clones the source version's TASK IDS tab (when not blank) so the new
+// version's tasks keep the same persistent IDs their GANTT TASK PARAMS rows
+// were written with, instead of getting renumbered on the new version's
+// first Load. readTaskParams()'s KEY fallback would still recover color/
+// type/style/symbol even without this (it doesn't require IDs to match),
+// but preserving IDs avoids relying on that fallback at all.
 function _ensureTaskSheetExists(taskSheetName, sourceSheetName, blank) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (ss.getSheetByName(taskSheetName)) return; // already exists — nothing to do
 
-  var src = ss.getSheetByName(sourceSheetName || SOURCE_SHEET_DEFAULT) ||
-            ss.getSheetByName(SOURCE_SHEET_DEFAULT);
+  var srcName = sourceSheetName || SOURCE_SHEET_DEFAULT;
+  var src = ss.getSheetByName(srcName) || ss.getSheetByName(SOURCE_SHEET_DEFAULT);
   if (src) {
     var copy = src.copyTo(ss);
     copy.setName(taskSheetName);
     try { ss.setActiveSheet(copy); ss.moveActiveSheet(src.getIndex() + 1); } catch (moveErr) {}
-    if (blank) _clearTaskRows(copy);
+    if (blank) {
+      _clearTaskRows(copy);
+    } else {
+      try {
+        var srcIdsSheet = ss.getSheetByName(_versionSuffixTab('GANTT TASK IDS-DO NOT EDIT', srcName));
+        if (srcIdsSheet) {
+          var idsCopy = srcIdsSheet.copyTo(ss);
+          idsCopy.setName(_versionSuffixTab('GANTT TASK IDS-DO NOT EDIT', taskSheetName));
+          try { ss.setActiveSheet(idsCopy); ss.moveActiveSheet(copy.getIndex() + 1); } catch (moveErr2) {}
+        }
+      } catch (idsCloneErr) {
+        Logger.log('Task IDs clone error: ' + idsCloneErr);
+      }
+    }
   } else {
     ss.insertSheet(taskSheetName); // fallback: no source tab found — blank tab
   }
@@ -1385,7 +1448,7 @@ var SETTINGS_KEYS = [
   'matchHdrToGroupColor', 'showRollupTicks', 'showGroupBars',
   'showDateColumns', 'showDurationColumn',
   'flatTextWrap', 'flatBarHeight',
-  'flatLabelOverflow', 'flatLabelsOutside', 'useStatusColors',
+  'flatLabelOverflow', 'flatLabelsOutside', 'flatShowFlags', 'useStatusColors',
   'todayLineColor', 'metaDetailsCollapsed', 'statusColors',
   'taskSheetName',
   'sortColumn', 'sortDirection', 'currentTab',
@@ -1437,6 +1500,7 @@ var SETTINGS_DESCRIPTIONS = {
   flatBarHeight:        'Bar height in pixels in flat mode (12–72, default 24)',
   flatLabelOverflow:    'Extra px the outside flat-mode label clip extends beyond bar right edge (0–400, default 0)',
   flatLabelsOutside:    'Force all flat-mode labels outside bars (above/below) even when they would fit inside (true/false)',
+  flatShowFlags:        'Show flag markers while Flat mode is on (true/false) — unrelated to the Flags tab filter',
   useStatusColors:      'Use STATUS_COLOR_MAP[task.note] for bar/milestone/flag fill instead of assigned color (true/false)',
   todayLineColor:       'Hex color of the Today vertical line on the Gantt chart (default #ef4444)',
   metaDetailsCollapsed: 'Whether the subtitle / date / note block in the project header is collapsed (true/false)',
