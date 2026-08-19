@@ -135,16 +135,17 @@
       as non-flat print rows already do, so the bar scales with Row ht in
       both directions.
     • Fixed flat-mode print rows overlapping the row below when Row ht was
-      set smaller than a discipline's flag/outside-label clearance needs.
-      Print row Y-positions were always ri*rowH — a fixed, uniform spacing
-      — so a disc row whose content needed more room than that just spilled
-      into the next row's space instead of pushing it down. Pagination now
-      computes each row's actual minimum height up front (_printDiscRowMinH,
-      mirroring the same clearance math the row itself renders with) and
-      lays out rows at real cumulative Y-offsets, growing rowH per-row (and
-      breaking pages on total content height, not a uniform row count) only
-      where a disc row actually needs more space — every other row keeps
-      the exact uniform ri*rowH spacing it always had.
+      set smaller than a discipline's flag/outside-label clearance needs —
+      a disc row whose content needed more room than the fixed uniform
+      ri*rowH spacing just spilled into the next row's space instead of
+      pushing it down. First attempt grew only the affected row, which then
+      looked visually uneven next to disciplines that didn't need the extra
+      room; renderPrintPreview now computes a single effectiveRowH up front
+      (_printDiscRowMinH — the tallest clearance any discipline's flags/
+      outside-labels need, mirroring the exact math the row itself renders
+      with — vs. the raw Row ht) and every row on the print grows together
+      to that value, so the grid stays uniform while still fitting every
+      row's content.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -8286,21 +8287,11 @@
       var lw    = rawLw + dcW + durW;        // total left panel; timeline starts at mL+lw
       var tw  = opts.timelineW;
       var rH  = opts.rulerH;
+      // Already bumped up (uniformly, for every row) by the caller if any flat-mode
+      // disc row's flags/outside-labels need more room than the raw Row ht slider —
+      // see effectiveRowH in renderPrintPreview.
       var rowH = opts.rowH;
       var fs  = opts.fontSize;
-      // Flat-mode disc rows can need more room than the user's Row ht (a flag or an
-      // outside bar label may not fit in it) — opts.rowHeights (parallel to
-      // rowSlice) carries each row's actual height when that happens, so later rows
-      // on the page shift down instead of overlapping. Falls back to uniform rowH
-      // spacing (unchanged behavior) when the caller doesn't supply it.
-      var rowYOffsets = [];
-      (function() {
-        var _cy = 0;
-        for (var _i = 0; _i < opts.rowSlice.length; _i++) {
-          rowYOffsets.push(_cy);
-          _cy += (opts.rowHeights ? opts.rowHeights[_i] : rowH);
-        }
-      })();
 
       var svg = document.createElementNS(NS, 'svg');
       svg.setAttribute('width',  opts.pgW);
@@ -8609,18 +8600,17 @@
       // Layer 1: row background fills — use same group color settings as Gantt view
       for (var ri = 0; ri < opts.rowSlice.length; ri++) {
         var row = opts.rowSlice[ri];
-        var ry  = bodyY + rowYOffsets[ri];
-        var _thisRowH = opts.rowHeights ? opts.rowHeights[ri] : rowH;
+        var ry  = bodyY + ri * rowH;
         if (row.type === 'gh' || row.type === 'disc') {
           var ghGroupColor = groupColors[row.disc] || '#64748b';
           var ghBgColor    = matchHdrToGroupColor ? ghGroupColor : groupHeaderColor;
           var ghOp         = (groupHeaderTint / 100).toFixed(3);
-          rect(mL, ry, lw, _thisRowH, ghBgColor, {'fill-opacity': ghOp});
-          rect(mL, ry, 4, _thisRowH, ghGroupColor);
+          rect(mL, ry, lw, rowH, ghBgColor, {'fill-opacity': ghOp});
+          rect(mL, ry, 4, rowH, ghGroupColor);
         } else {
-          if (ri % 2 === 1) rect(mL, ry, opts.usableW, _thisRowH, '#f8fafc');
+          if (ri % 2 === 1) rect(mL, ry, opts.usableW, rowH, '#f8fafc');
           var tColor = groupColors[row.task.group] || '#64748b';
-          rect(mL, ry, 3, _thisRowH, tColor + '88');
+          rect(mL, ry, 3, rowH, tColor + '88');
         }
       }
 
@@ -8644,8 +8634,7 @@
       // Layer 3: bars, labels, row dividers (on top of everything)
       for (var ri = 0; ri < opts.rowSlice.length; ri++) {
         var row = opts.rowSlice[ri];
-        var ry  = bodyY + rowYOffsets[ri];
-        var _thisRowH = opts.rowHeights ? opts.rowHeights[ri] : rowH;
+        var ry  = bodyY + ri * rowH;
 
         if (row.type === 'gh') {
           // ── Group header row ──
@@ -8729,7 +8718,7 @@
           var dcColor    = groupColors[row.disc] || '#64748b';
           var dcTxtColor = groupHeaderTextColor || '#1e293b';
           txt(_truncate(row.disc, rawLw - 12, fs + 1),
-              {x:mL+8, y:ry+_thisRowH/2+fs*0.38, 'font-size':Math.min(fs+1,10), 'font-weight':'700', fill:dcTxtColor});
+              {x:mL+8, y:ry+rowH/2+fs*0.38, 'font-size':Math.min(fs+1,10), 'font-weight':'700', fill:dcTxtColor});
           // Date / duration columns for disc row
           if (dcW > 0 || durW > 0) {
             var dMin = null, dMax = null;
@@ -8737,17 +8726,17 @@
               if (!dMin || t2.start < dMin) dMin = t2.start;
               if (!dMax || t2.end   > dMax) dMax = t2.end;
             }); }
-            line(mL+rawLw, ry, mL+rawLw, ry+_thisRowH, '#94a3b8', 0.5);
+            line(mL+rawLw, ry, mL+rawLw, ry+rowH, '#94a3b8', 0.5);
             if (dcW > 0) {
               var pDColWd = dcW / 2;
-              if (dMin) txt(fmtShortDate(dMin), {x:mL+rawLw+pDColWd/2,         y:ry+_thisRowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
-              if (dMax) txt(fmtShortDate(dMax), {x:mL+rawLw+pDColWd+pDColWd/2, y:ry+_thisRowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
-              line(mL+rawLw+pDColWd, ry, mL+rawLw+pDColWd, ry+_thisRowH, '#94a3b8', 0.4);
+              if (dMin) txt(fmtShortDate(dMin), {x:mL+rawLw+pDColWd/2,         y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
+              if (dMax) txt(fmtShortDate(dMax), {x:mL+rawLw+pDColWd+pDColWd/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
+              line(mL+rawLw+pDColWd, ry, mL+rawLw+pDColWd, ry+rowH, '#94a3b8', 0.4);
             }
             if (durW > 0 && dMin && dMax) {
               var dDiscDurX = mL + rawLw + dcW;
-              line(dDiscDurX, ry, dDiscDurX, ry+_thisRowH, '#94a3b8', 0.4);
-              txt(fmtDuration(dMin, dMax), {x:dDiscDurX+durW/2, y:ry+_thisRowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
+              line(dDiscDurX, ry, dDiscDurX, ry+rowH, '#94a3b8', 0.4);
+              txt(fmtDuration(dMin, dMax), {x:dDiscDurX+durW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
             }
           }
           // In flat mode: two label areas (above + below), alternating placement per task
@@ -8765,8 +8754,8 @@
           // interactive Bar H setting made the bar ignore Row ht entirely once it
           // exceeded that cap, while still shrinking it down to a near-invisible
           // sliver as Row ht got smaller.
-          var _fbH = opts.flatMode ? Math.max(4, _thisRowH - _pAboveH - _pLabelAreaH - 4) : _thisRowH - 4;
-          var _fbY = ry + (opts.flatMode ? _pAboveH + 2 : Math.floor((_thisRowH - _fbH) / 2));
+          var _fbH = opts.flatMode ? Math.max(4, rowH - _pAboveH - _pLabelAreaH - 4) : rowH - 4;
+          var _fbY = ry + (opts.flatMode ? _pAboveH + 2 : Math.floor((rowH - _fbH) / 2));
           var _pFov = opts.flatLabelOverflow || 0;
           for (var di = 0; di < row.tasks.length; di++) {
             var dt = row.tasks[di];
@@ -9018,7 +9007,7 @@
         }
 
         // Row divider
-        line(mL, ry+_thisRowH, mL+opts.usableW, ry+_thisRowH, '#e2e8f0', 0.4);
+        line(mL, ry+rowH, mL+opts.usableW, ry+rowH, '#e2e8f0', 0.4);
       }
 
       // ── Dependency arrows (print) ──────────────────────────────
@@ -9226,27 +9215,17 @@
 
       var printRows = _buildPrintRows();
       // A flat-mode disc row can need more height than the user's Row ht (a flag or
-      // an outside bar label may not fit in it) — compute each row's actual height
-      // up front so pagination breaks pages on real content height instead of a
-      // uniform row count, and later rows never get pushed into the next row's
-      // space or off the bottom of the page.
-      var printRowHeights = printRows.map(function(pr) {
-        return pr.type === 'disc' ? _printDiscRowMinH(pr.disc, fontSize, rowH) : rowH;
+      // an outside bar label may not fit in it). Rather than growing just that one
+      // row — which made rows look uneven across the page — every row grows
+      // together to whatever the tallest requirement is, so the print grid stays
+      // uniform the way a printed schedule is expected to look.
+      var effectiveRowH = rowH;
+      printRows.forEach(function(pr) {
+        if (pr.type === 'disc') effectiveRowH = Math.max(effectiveRowH, _printDiscRowMinH(pr.disc, fontSize, rowH));
       });
-      var pageRowRanges = [];
-      (function() {
-        var idx = 0;
-        while (idx < printRows.length) {
-          var used = 0, start = idx;
-          while (idx < printRows.length && (used + printRowHeights[idx] <= bodyH || idx === start)) {
-            used += printRowHeights[idx];
-            idx++;
-          }
-          pageRowRanges.push([start, idx]);
-        }
-        if (!pageRowRanges.length) pageRowRanges.push([0, 0]);
-      })();
-      var vPages      = pageRowRanges.length;
+      rowH = effectiveRowH;
+      var rowsPerPage = Math.max(1, Math.floor(bodyH / rowH));
+      var vPages      = Math.ceil(printRows.length / rowsPerPage);
       var totalPages  = vPages * hPages;
 
       // Update @page CSS for actual printing
@@ -9261,16 +9240,14 @@
           var sliceMax = new Date(sliceMin.getTime() + daysPerPage * 86400000);
           if (sliceMax > pTo) sliceMax = new Date(pTo.getTime());
 
-          var rowRange = pageRowRanges[vi];
-          var rowSlice   = printRows.slice(rowRange[0], rowRange[1]);
-          var rowHeights = printRowHeights.slice(rowRange[0], rowRange[1]);
+          var rowSlice = printRows.slice(vi * rowsPerPage, (vi + 1) * rowsPerPage);
 
           var pageEl = _buildPrintPageEl({
             pgW: pgW, pgH: pgH, mT: mT, mB: mB, mL: mL, mR: mR,
             usableW: usableW, usableH: usableH,
             headerH: headerH, rulerH: rulerH, footerH: footerH, bodyH: bodyH,
             labelW: labelW, timelineW: timelineW, dateColW: prDateColW, durColW: prDurColW,
-            rowH: rowH, rowHeights: rowHeights, fontSize: fontSize,
+            rowH: rowH, fontSize: fontSize,
             titleFont: (function() { var el = document.getElementById('pr-title-font'); return el ? (parseInt(el.value, 10) || 13) : 13; })(),
             rowSlice: rowSlice,
             sliceMin: sliceMin, sliceMax: sliceMax,
