@@ -62,6 +62,12 @@
       once at init() and on toggle click — applySettings() no longer touches
       it at all, so it stays exactly as the user last left it regardless of
       which version is loaded.
+    • Fix: deleting tasks via the batch bar (select rows → Delete) didn't mark
+      the Save button dirty, unlike the per-row × delete button which already
+      did. Same gap found and fixed in the batch field-edit Apply button and
+      the batch group-color Apply button — all three mutate tasks/groupColors
+      directly and were missing the markDirty() call the single-row paths
+      already had.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -6213,6 +6219,7 @@
         var keys = Object.keys(selectedGroups);
         if (!keys.length) return;
         keys.forEach(function(g) { groupColors[g] = color; });
+        markDirty();
         refreshTaskTable();
         renderGantt();
       });
@@ -6549,6 +6556,7 @@
             if (newEnd)   { var e = new Date(newEnd   + 'T00:00:00'); if (!isNaN(e)) t.end   = e; }
             if (batchNotesIn && batchNotesIn.value !== '') t.notes = newNotes;
           });
+          markDirty();
           refreshTaskTable(); renderGantt();
         });
       }
@@ -6556,6 +6564,7 @@
         batchDelete.addEventListener('click', function() {
           tasks = tasks.filter(function(t) { return !selectedTaskIds[t.id]; });
           selectedTaskIds = {}; _lastCheckedTaskId = null;
+          markDirty();
           refreshTaskTable(); renderGantt(); updateBatchBar();
         });
       }
