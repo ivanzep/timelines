@@ -68,6 +68,13 @@
       the batch group-color Apply button — all three mutate tasks/groupColors
       directly and were missing the markDirty() call the single-row paths
       already had.
+    • Backend fix (Code_V1.28.gs): task color/type/style/symbol were silently
+      not saved for any task without a persistent ID yet — every brand-new
+      task, most noticeably ones added to a freshly created version before
+      its first reload. doPost() now assigns IDs before writing task params
+      instead of skipping those tasks, and new-version creation now clones
+      the source's task-ID tab too so IDs don't get renumbered on first Load.
+      Redeploy required.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
