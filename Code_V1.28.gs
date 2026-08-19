@@ -105,6 +105,9 @@
 //    • SETTINGS_KEYS gains flatShowFlags (Flat mode "Flags" visibility
 //      toggle — frontend-only rendering change, no other backend logic
 //      involved). Redeploy required for persistence.
+//    • SETTINGS_KEYS gains flatFlagOffset (Flat mode flag pole/icon offset
+//      above its group's bar, px — frontend-only rendering change, no other
+//      backend logic involved). Redeploy required for persistence.
 //
 //  V1.27  2026-08-10
 //    • saveBackToTaskList() — per-task write isolation: each task's row writes
@@ -1448,7 +1451,7 @@ var SETTINGS_KEYS = [
   'matchHdrToGroupColor', 'showRollupTicks', 'showGroupBars',
   'showDateColumns', 'showDurationColumn',
   'flatTextWrap', 'flatBarHeight',
-  'flatLabelOverflow', 'flatLabelsOutside', 'flatShowFlags', 'useStatusColors',
+  'flatLabelOverflow', 'flatLabelsOutside', 'flatShowFlags', 'flatFlagOffset', 'useStatusColors',
   'todayLineColor', 'metaDetailsCollapsed', 'statusColors',
   'taskSheetName',
   'sortColumn', 'sortDirection', 'currentTab',
@@ -1501,6 +1504,7 @@ var SETTINGS_DESCRIPTIONS = {
   flatLabelOverflow:    'Extra px the outside flat-mode label clip extends beyond bar right edge (0–400, default 0)',
   flatLabelsOutside:    'Force all flat-mode labels outside bars (above/below) even when they would fit inside (true/false)',
   flatShowFlags:        'Show flag markers while Flat mode is on (true/false) — unrelated to the Flags tab filter',
+  flatFlagOffset:       'Px the flag pole/triangle extends above its group bar top in flat mode; pole bottom is pinned to the bar bottom (0–40, default 8)',
   useStatusColors:      'Use STATUS_COLOR_MAP[task.note] for bar/milestone/flag fill instead of assigned color (true/false)',
   todayLineColor:       'Hex color of the Today vertical line on the Gantt chart (default #ef4444)',
   metaDetailsCollapsed: 'Whether the subtitle / date / note block in the project header is collapsed (true/false)',
