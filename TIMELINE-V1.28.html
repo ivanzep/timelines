@@ -52,6 +52,9 @@
       replaces the task list (a full Load, or forceEmptyClear on an empty
       sheet) — i.e. every real version switch/reload, same scope as the
       existing tasks reset.
+    • Version dropdown + delete button moved out of the Google Sheets Sync
+      toolbar box into their own "Version" box directly before it. Delete
+      button now reads "Delete" instead of a 🗑 emoji.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1142,16 +1145,22 @@
           </div>
 
           <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px;">
+            <div class="pill-label">Version</div>
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <select id="version-select" class="secondary" title="Switch between task-list versions/scenarios" style="max-width:160px;">
+                <option value="">Default</option>
+              </select>
+              <button id="version-delete-btn" class="secondary" title="Delete this version and its spreadsheet tabs" style="display:none;">Delete</button>
+            </div>
+          </div>
+
+          <div style="border-left:1px solid var(--border); padding-left:12px; margin-left:4px;">
             <div class="pill-label">Google Sheets Sync</div>
             <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               <span class="sync-indicator" id="sync-indicator">
                 <span class="sync-dot" id="sync-dot"></span>
                 <span id="sync-label">Not connected</span>
               </span>
-              <select id="version-select" class="secondary" title="Switch between task-list versions/scenarios" style="max-width:160px;">
-                <option value="">Default</option>
-              </select>
-              <button id="version-delete-btn" class="secondary" title="Delete this version and its spreadsheet tabs" style="display:none;padding:5px 8px;">🗑</button>
               <button id="sheets-load-btn" class="secondary" title="Load tasks from Google Sheets">⬇ Load</button>
               <button id="sheets-save-btn" class="secondary" title="Save all tasks to Google Sheets (Ctrl+Shift+S)">⬆ Save</button>
               <a id="sheet-name-display" target="_blank" rel="noopener noreferrer" style="display:none; font-size:0.7rem; color:var(--text-muted); font-style:italic; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:none;" title=""></a>
