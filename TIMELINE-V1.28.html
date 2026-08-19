@@ -165,6 +165,9 @@
       the existing _syncDot() busy/settled state — eases toward ~90% while a
       Google Sheets Load/Save/version-switch is in flight and snaps to 100%
       on completion, alongside the existing dim overlay + spinner.
+    • Loading overlay's plain spinner replaced with a circular progress ring
+      (SVG stroke-dashoffset) showing a live percentage readout in its
+      center, driven by the same eased progress value as the top bar.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -756,11 +759,17 @@
       box-shadow: 0 8px 32px rgba(15,23,42,0.28); border: 1px solid var(--border-strong, #cbd5e1);
       font-size: 0.88rem; color: var(--text, #0f172a); font-weight: 600;
     }
-    .loading-spinner {
-      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
-      border: 3px solid var(--border-strong, #cbd5e1);
-      border-top-color: #f59e0b;
-      animation: spin 0.7s linear infinite;
+    .loading-ring-wrap { position: relative; width: 36px; height: 36px; flex-shrink: 0; }
+    .loading-ring { transform: rotate(-90deg); }
+    .loading-ring-track { fill: none; stroke: var(--border-strong, #cbd5e1); stroke-width: 3; }
+    .loading-ring-fill {
+      fill: none; stroke: #f59e0b; stroke-width: 3; stroke-linecap: round;
+      stroke-dasharray: 97.39; stroke-dashoffset: 97.39;
+      transition: stroke-dashoffset 0.2s ease;
+    }
+    .loading-ring-pct {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: var(--text, #0f172a); letter-spacing: -0.02em;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -6878,6 +6887,13 @@
     // Slim top-of-page bar, eased toward ~90% while busy and snapped to 100% on
     // completion — an indeterminate op (fetch to Apps Script) has no real percent,
     // so this is a visual "still working" cue, not a literal progress measurement.
+    var _LOAD_RING_CIRC = 2 * Math.PI * 15.5; // matches the <circle r="15.5"> in loading-dim-inner
+    function _setLoadRing(pct) {
+      var fill = document.getElementById('loading-ring-fill');
+      var pctEl = document.getElementById('loading-ring-pct');
+      if (fill) fill.style.strokeDashoffset = (_LOAD_RING_CIRC * (1 - pct / 100)).toFixed(2);
+      if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+    }
     function _loadProgressBar(show) {
       var bar = document.getElementById('load-progress-bar');
       if (!bar) return;
@@ -6889,15 +6905,18 @@
         bar.style.transition = '';
         bar.classList.add('show');
         var pct = 0;
+        _setLoadRing(0);
         _loadProgressTimer = setInterval(function() {
           pct += (90 - pct) * 0.15;
           bar.style.width = pct + '%';
+          _setLoadRing(pct);
         }, 200);
       } else {
         bar.style.width = '100%';
+        _setLoadRing(100);
         setTimeout(function() {
           bar.classList.remove('show');
-          setTimeout(function() { bar.style.width = '0%'; }, 300);
+          setTimeout(function() { bar.style.width = '0%'; _setLoadRing(0); }, 300);
         }, 200);
       }
     }
@@ -10279,7 +10298,13 @@
 
   <div id="loading-dim">
     <div id="loading-dim-inner">
-      <div class="loading-spinner"></div>
+      <div class="loading-ring-wrap">
+        <svg class="loading-ring" viewBox="0 0 36 36" width="36" height="36">
+          <circle class="loading-ring-track" cx="18" cy="18" r="15.5"></circle>
+          <circle id="loading-ring-fill" class="loading-ring-fill" cx="18" cy="18" r="15.5"></circle>
+        </svg>
+        <span id="loading-ring-pct" class="loading-ring-pct">0%</span>
+      </div>
       <span id="loading-dim-label">Loading…</span>
     </div>
   </div>
