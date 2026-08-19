@@ -55,6 +55,13 @@
     • Version dropdown + delete button moved out of the Google Sheets Sync
       toolbar box into their own "Version" box directly before it. Delete
       button now reads "Delete" instead of a 🗑 emoji.
+    • Fix: the "▼ Settings" toolbar panel's collapsed/expanded state flipped
+      whenever you switched versions, since toolbarCollapsed was applied from
+      each version's own (independently saved) settings tab. It's now a
+      browser-local preference (localStorage, key ganttToolbarCollapsed) set
+      once at init() and on toggle click — applySettings() no longer touches
+      it at all, so it stays exactly as the user last left it regardless of
+      which version is loaded.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -6225,13 +6232,22 @@
       zoomSlider.addEventListener('input', function() { setZoom(parseInt(zoomSlider.value, 10)); });
       zoomFitBtn.addEventListener('click', zoomFit);
 
-      // Toolbar collapse toggle
+      // Toolbar collapse toggle — a browser-local UI preference (localStorage), not
+      // synced per-version via the spreadsheet, so it stays consistent across version
+      // switches instead of flipping to whatever the newly loaded version last saved.
       var toolbarCollapseBtn = document.getElementById('toolbar-collapse-btn');
       var toolbarCollapsible = document.getElementById('toolbar-collapsible');
       if (toolbarCollapseBtn && toolbarCollapsible) {
+        try {
+          if (localStorage.getItem('ganttToolbarCollapsed') === 'true') {
+            toolbarCollapsible.classList.add('hidden');
+            toolbarCollapseBtn.textContent = '▶ Settings';
+          }
+        } catch(e) {}
         toolbarCollapseBtn.addEventListener('click', function() {
           var collapsed = toolbarCollapsible.classList.toggle('hidden');
           toolbarCollapseBtn.textContent = collapsed ? '▶ Settings' : '▼ Settings';
+          try { localStorage.setItem('ganttToolbarCollapsed', collapsed ? 'true' : 'false'); } catch(e) {}
         });
       }
 
@@ -7171,20 +7187,9 @@
         snapSelect.value = s.snapValue;
       }
 
-      // Sync toolbar collapsed state
-      if (s.toolbarCollapsed !== undefined) {
-        var tcEl = document.getElementById('toolbar-collapsible');
-        var tcBtn = document.getElementById('toolbar-collapse-btn');
-        if (tcEl && tcBtn) {
-          if (toBool(s.toolbarCollapsed)) {
-            tcEl.classList.add('hidden');
-            tcBtn.textContent = '▶ Settings';
-          } else {
-            tcEl.classList.remove('hidden');
-            tcBtn.textContent = '▼ Settings';
-          }
-        }
-      }
+      // toolbarCollapsed is intentionally NOT applied here — it's a browser-local
+      // preference (see init(), toolbar-collapse-btn) so it stays consistent across
+      // version switches instead of following whichever version's settings loaded.
 
       // Restore task-table sort state
       if (s.sortColumn !== undefined) {
