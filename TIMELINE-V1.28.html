@@ -98,6 +98,17 @@
       task-label-big/task-label-note CSS classes and theme-aware fill color
       bar labels use, instead of a hardcoded dark color, so flag text looks
       consistent with the rest of the chart in both light and dark mode.
+    • Fixed two flat-mode flag layout bugs: a flag on the chart's very first
+      row could get its icon/label clipped off the top of the visible chart,
+      and a flag's pole/icon could bleed upward into the row above's bar.
+      Root cause: row height in flat mode only reserved space above the bar
+      for wrapped-line bar labels (_flatMaxLabelLines), not for the flag's
+      own pole+icon+offset. New _flatFlagClearance pre-pass computes the
+      clearance a discipline's flags need above the bar; row height and the
+      bar's own Y position now reserve max(label height, flag clearance)
+      above the bar instead of just the label height, so every row grows
+      tall enough to fit its flags without clipping or bleeding into a
+      neighboring row.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1656,6 +1667,7 @@
     var useStatusColors = false;     // when true: bar/milestone/flag fill uses STATUS_COLOR_MAP[task.status]
     var _flatMaxLabelLines = {};     // per-group: disc → max outside lines; pre-computed each render
     var _flatLabelPlacementMap = {}; // task.id → 'above'|'below'|'inside'; set by pre-pass each render
+    var _flatFlagClearance = {};     // per-group: disc → px of clearance a flag needs above the bar; pre-computed each render
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
     var showTodayLine = true;       // whether to draw the Today vertical line
@@ -3456,6 +3468,7 @@
       // above/below placement so adjacent task labels in the same disc row don't overlap.
       _flatMaxLabelLines = {};
       _flatLabelPlacementMap = {};
+      _flatFlagClearance = {};
       if (flatMode && tasks.length) {
         var _ppBW  = ticks.length * unitWidth;
         var _ppTot = (lastTickEnd - firstTick) || 1;
@@ -3519,6 +3532,19 @@
           }
         }
         // Per-group: discs where all tasks fit inside have _flatMaxLabelLines[disc] = undefined → treated as 0
+
+        // Flags render above their group's bar (pole + icon + label) — reserve at
+        // least that much clearance above the bar too, so a flag's icon/text never
+        // gets clipped at the very top row nor bleeds into the row above.
+        if (flatShowFlags) {
+          for (var _pfi = 0; _pfi < tasks.length; _pfi++) {
+            var _pft = tasks[_pfi];
+            if (_pft.type !== 'flag') continue;
+            var _pfDisc = _pft.group || '';
+            var _pfClr = flatFlagOffset + 11 + 2; // offset + fixed flag-icon height + small margin
+            if (_pfClr > (_flatFlagClearance[_pfDisc] || 0)) _flatFlagClearance[_pfDisc] = _pfClr;
+          }
+        }
       }
 
       var topAxisHeight = 60;
@@ -3531,7 +3557,9 @@
         var _rDisc = displayedRows[_ri].discipline || '';
         var _rLines = flatMode ? (_flatMaxLabelLines[_rDisc] || 0) : 0;
         var _rLH = _rLines > 0 ? (_rLines * ganttBarFontSize + 2) : 0;
-        displayedRows[_ri].rowHeight = flatMode ? (flatBarHeight + 2 * _rLH + 2) : getEffectiveRowHeight();
+        var _rFlagClr = flatMode ? (_flatFlagClearance[_rDisc] || 0) : 0;
+        var _rAboveH = Math.max(_rLH, _rFlagClr);
+        displayedRows[_ri].rowHeight = flatMode ? (flatBarHeight + _rAboveH + _rLH + 2) : getEffectiveRowHeight();
         _cumY += displayedRows[_ri].rowHeight + rowGap;
       }
       var bodyWidth = ticks.length * unitWidth;
@@ -4509,8 +4537,10 @@
       var _flatDisc = task.group || '';
       var _flatLines = flatMode ? (_flatMaxLabelLines[_flatDisc] || 0) : 0;
       var _flatLabelH = _flatLines > 0 ? (_flatLines * ganttBarFontSize + 2) : 0;
+      var _flatFlagClr = flatMode ? (_flatFlagClearance[_flatDisc] || 0) : 0;
+      var _flatAboveH = Math.max(_flatLabelH, _flatFlagClr);
       var barH = flatMode ? flatBarHeight : (_tbRowH - 8);
-      var barY = yTop + (flatMode ? _flatLabelH + 2 : 4);
+      var barY = yTop + (flatMode ? _flatAboveH + 2 : 4);
 
       // Store the actual date-derived x positions (not the clamped bar edges) so
       // dependency arrows always originate at the real end-date and terminate at the
@@ -5197,7 +5227,9 @@
         var _flFlatDisc = task.group || '';
         var _flFlatLines = _flatMaxLabelLines[_flFlatDisc] || 0;
         var _flFlatLabelH = _flFlatLines > 0 ? (_flFlatLines * ganttBarFontSize + 2) : 0;
-        var _flBarY = yTop + _flFlatLabelH + 2;
+        var _flFlatFlagClr = _flatFlagClearance[_flFlatDisc] || 0;
+        var _flFlatAboveH = Math.max(_flFlatLabelH, _flFlatFlagClr);
+        var _flBarY = yTop + _flFlatAboveH + 2;
         flagH = 11; // fixed icon height in flat mode (same size the non-flat formula settles on)
         bottomY = _flBarY + flatBarHeight;             // pole bottom = bar's bottom edge
         var _flIconBottom = _flBarY - flatFlagOffset;  // icon sits flatFlagOffset px above the bar top
