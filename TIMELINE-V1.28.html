@@ -126,6 +126,14 @@
       Both interactive (row-height pre-pass, renderTaskBar, renderFlag) and
       print now sum the two instead, stacking the flag's clearance zone
       above the bar's own label zone rather than overlapping it.
+    • Fixed flat-mode print's "Row ht" slider not enlarging bars — the bar
+      height was capped at the interactive Flat Options "Bar H" setting
+      regardless of Row ht, so increasing Row ht just added blank space
+      instead of a bigger bar (while decreasing it still shrank the bar,
+      making the control feel one-directional/broken). Print now fills
+      whatever room Row ht leaves after the above/below reservations, same
+      as non-flat print rows already do, so the bar scales with Row ht in
+      both directions.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -8713,7 +8721,12 @@
           // flag drawing below) when the Flags toggle is off.
           var _pFlagClr = (opts.flatMode && flatShowFlags) ? (_flatFlagClearance[row.disc] || 0) : 0;
           var _pAboveH = _pLabelAreaH + _pFlagClr; // stacked, see interactive row-height pre-pass comment
-          var _fbH = opts.flatMode ? Math.max(4, Math.min(opts.flatBarHeight || 24, rowH - _pAboveH - _pLabelAreaH - 4)) : rowH - 4;
+          // Fill whatever room the print-only "Row ht" slider leaves after the
+          // above/below reservations, same as non-flat print rows (rowH - 4) — a
+          // fixed cap at the interactive Bar H setting made the bar ignore Row ht
+          // entirely once it exceeded that cap, while still shrinking it down to a
+          // near-invisible sliver as Row ht got smaller.
+          var _fbH = opts.flatMode ? Math.max(4, rowH - _pAboveH - _pLabelAreaH - 4) : rowH - 4;
           var _fbY = ry + (opts.flatMode ? _pAboveH + 2 : Math.floor((rowH - _fbH) / 2));
           var _pFov = opts.flatLabelOverflow || 0;
           for (var di = 0; di < row.tasks.length; di++) {
