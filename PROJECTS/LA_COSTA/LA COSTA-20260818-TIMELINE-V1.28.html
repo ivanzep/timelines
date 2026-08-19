@@ -140,12 +140,7 @@
       ri*rowH spacing just spilled into the next row's space instead of
       pushing it down. First attempt grew only the affected row, which then
       looked visually uneven next to disciplines that didn't need the extra
-      room; renderPrintPreview now computes a single effectiveRowH up front
-      (_printDiscRowMinH — the tallest clearance any discipline's flags/
-      outside-labels need, mirroring the exact math the row itself renders
-      with — vs. the raw Row ht) and every row on the print grows together
-      to that value, so the grid stays uniform while still fitting every
-      row's content.
+      room. (Superseded by the uniform above/bar/below band model below.)
     • Fixed the real cause of persisting flat-mode print row-height glitches:
       print's own _flatMaxLabelLines/_flatLabelPlacementMap/_flatFlagClearance
       were never computed for print at all — they read the INTERACTIVE
@@ -165,6 +160,27 @@
       the existing _syncDot() busy/settled state — eases toward ~90% while a
       Google Sheets Load/Save/version-switch is in flight and snaps to 100%
       on completion, alongside the existing dim overlay + spinner.
+    • Loading overlay's plain spinner replaced with a circular progress ring
+      (SVG stroke-dashoffset) showing a live percentage readout in its
+      center, driven by the same eased progress value as the top bar.
+    • Flat-mode print bars now all render at the SAME height. The above/below
+      label bands and the bar height were derived per disc row, so a
+      discipline carrying flags or extra label lines had its own bar squeezed
+      down to the 4px floor while a plainer discipline right below it kept a
+      full-height bar (grey vs. yellow in the reported case). Both bands are
+      now resolved once in renderPrintPreview from the tallest requirement of
+      any discipline (_prAboveH/_prBelowH) and passed through opts, so every
+      disc row shares one bar band. Row ht now sizes that bar band directly —
+      the label/flag bands are added on top of it rather than carved out of
+      it — so the bar is always Row ht − 4 and raising Row ht always makes
+      bars taller instead of the clearance absorbing the increase.
+    • Fixed flat-mode print bar labels vanishing on every disc row after the
+      first: the inside/outside label clipPath ids were keyed only by page
+      number + task-index-within-row, so each row restarting at di=0 produced
+      duplicate SVG ids across rows on the same page. Duplicate ids all
+      resolve to the first definition, clipping later rows' labels to a
+      different row's bar rect (usually hiding them entirely). Ids now
+      include the row index.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -756,11 +772,17 @@
       box-shadow: 0 8px 32px rgba(15,23,42,0.28); border: 1px solid var(--border-strong, #cbd5e1);
       font-size: 0.88rem; color: var(--text, #0f172a); font-weight: 600;
     }
-    .loading-spinner {
-      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
-      border: 3px solid var(--border-strong, #cbd5e1);
-      border-top-color: #f59e0b;
-      animation: spin 0.7s linear infinite;
+    .loading-ring-wrap { position: relative; width: 36px; height: 36px; flex-shrink: 0; }
+    .loading-ring { transform: rotate(-90deg); }
+    .loading-ring-track { fill: none; stroke: var(--border-strong, #cbd5e1); stroke-width: 3; }
+    .loading-ring-fill {
+      fill: none; stroke: #f59e0b; stroke-width: 3; stroke-linecap: round;
+      stroke-dasharray: 97.39; stroke-dashoffset: 97.39;
+      transition: stroke-dashoffset 0.2s ease;
+    }
+    .loading-ring-pct {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: var(--text, #0f172a); letter-spacing: -0.02em;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -6878,6 +6900,13 @@
     // Slim top-of-page bar, eased toward ~90% while busy and snapped to 100% on
     // completion — an indeterminate op (fetch to Apps Script) has no real percent,
     // so this is a visual "still working" cue, not a literal progress measurement.
+    var _LOAD_RING_CIRC = 2 * Math.PI * 15.5; // matches the <circle r="15.5"> in loading-dim-inner
+    function _setLoadRing(pct) {
+      var fill = document.getElementById('loading-ring-fill');
+      var pctEl = document.getElementById('loading-ring-pct');
+      if (fill) fill.style.strokeDashoffset = (_LOAD_RING_CIRC * (1 - pct / 100)).toFixed(2);
+      if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+    }
     function _loadProgressBar(show) {
       var bar = document.getElementById('load-progress-bar');
       if (!bar) return;
@@ -6889,15 +6918,18 @@
         bar.style.transition = '';
         bar.classList.add('show');
         var pct = 0;
+        _setLoadRing(0);
         _loadProgressTimer = setInterval(function() {
           pct += (90 - pct) * 0.15;
           bar.style.width = pct + '%';
+          _setLoadRing(pct);
         }, 200);
       } else {
         bar.style.width = '100%';
+        _setLoadRing(100);
         setTimeout(function() {
           bar.classList.remove('show');
-          setTimeout(function() { bar.style.width = '0%'; }, 300);
+          setTimeout(function() { bar.style.width = '0%'; _setLoadRing(0); }, 300);
         }, 200);
       }
     }
@@ -8397,19 +8429,6 @@
       return { maxLabelLines: maxLabelLines, labelPlacementMap: labelPlacementMap, flagClearance: flagClearance };
     }
 
-    // A flat-mode disc row's minimum height — mirrors the _pAboveH/_fbH/_fbY math in
-    // _buildPrintPageEl exactly, so pagination reserves the same room the row will
-    // actually render at. Non-disc rows (and disc rows with no flags/outside labels)
-    // just return baseRowH unchanged.
-    function _printDiscRowMinH(disc, fs, baseRowH, maxLabelLines, flagClearance) {
-      var pDiscLines = flatMode ? (maxLabelLines[disc] || 0) : 0;
-      var pLabelAreaH = pDiscLines > 0 ? (pDiscLines * fs + 2) : 0;
-      var pFlagClr = (flatMode && flatShowFlags) ? (flagClearance[disc] || 0) : 0;
-      var pAboveH = pLabelAreaH + pFlagClr;
-      var minBarH = 4;
-      return Math.max(baseRowH, pAboveH + minBarH + pLabelAreaH + 4);
-    }
-
     // Render a single print page as a div containing an SVG
     function _buildPrintPageEl(opts) {
       // opts: { pgW, pgH, mT, mB, mL, mR, usableW, usableH, headerH, rulerH, footerH, bodyH,
@@ -8425,9 +8444,9 @@
       var lw    = rawLw + dcW + durW;        // total left panel; timeline starts at mL+lw
       var tw  = opts.timelineW;
       var rH  = opts.rulerH;
-      // Already bumped up (uniformly, for every row) by the caller if any flat-mode
-      // disc row's flags/outside-labels need more room than the raw Row ht slider —
-      // see effectiveRowH in renderPrintPreview.
+      // Row PITCH, not the bar height: in flat mode the caller has already added the
+      // uniform above/below label+flag bands (opts.prAboveH) on top of the Row ht
+      // slider value, which itself becomes the bar band (opts.prBarH).
       var rowH = opts.rowH;
       var fs  = opts.fontSize;
 
@@ -8877,22 +8896,17 @@
               txt(fmtDuration(dMin, dMax), {x:dDiscDurX+durW/2, y:ry+rowH/2+fs*0.38, 'text-anchor':'middle', 'font-size':fs, fill:dcTxtColor});
             }
           }
-          // In flat mode: two label areas (above + below), alternating placement per task
+          // In flat mode: two label areas (above + below), alternating placement per task.
+          // The above-bar reservation and the bar height itself are UNIFORM across every
+          // disc row — computed once in renderPrintPreview from the tallest requirement
+          // of any discipline (see _prAboveH/_prBarH). Deriving them per-row made a
+          // discipline carrying flags or extra label lines squeeze its own bar down to a
+          // 4px sliver while a plainer discipline right below it kept a full-height bar.
           var _lgap = fs;
           var _pDiscLines = opts.flatMode ? ((opts.prMaxLabelLines[row.disc] || 0)) : 0;
           var _pLabelAreaH = _pDiscLines > 0 ? (_pDiscLines * _lgap + 2) : 0;
-          // Flags render above the bar too (pole+icon) — reserve at least as much
-          // clearance above the bar as the interactive chart does, so print doesn't
-          // draw a flag overlapping the bar or the row above. No reservation (and no
-          // flag drawing below) when the Flags toggle is off.
-          var _pFlagClr = (opts.flatMode && flatShowFlags) ? (opts.prFlagClearance[row.disc] || 0) : 0;
-          var _pAboveH = _pLabelAreaH + _pFlagClr; // stacked, see interactive row-height pre-pass comment
-          // Fill whatever room this row's actual height leaves after the above/below
-          // reservations, same as non-flat print rows (rowH - 4) — a fixed cap at the
-          // interactive Bar H setting made the bar ignore Row ht entirely once it
-          // exceeded that cap, while still shrinking it down to a near-invisible
-          // sliver as Row ht got smaller.
-          var _fbH = opts.flatMode ? Math.max(4, rowH - _pAboveH - _pLabelAreaH - 4) : rowH - 4;
+          var _pAboveH = opts.flatMode ? (opts.prAboveH || 0) : 0;
+          var _fbH = opts.flatMode ? (opts.prBarH || Math.max(4, rowH - 4)) : rowH - 4;
           var _fbY = ry + (opts.flatMode ? _pAboveH + 2 : Math.floor((rowH - _fbH) / 2));
           var _pFov = opts.flatLabelOverflow || 0;
           for (var di = 0; di < row.tasks.length; di++) {
@@ -8951,7 +8965,11 @@
                   if (piCur) piLines.push(piCur);
                 }
                 if (!piLines.length && piLbls.length) piLines.push(piLbls[0]);
-                var piCpId = 'pfbi_p' + opts.pageNum + '_' + di;
+                // Row index included: di alone collides across disc rows on the same
+                // page (every row starts at di=0), and duplicate SVG ids all resolve to
+                // the first definition — clipping later rows' labels to another row's
+                // bar rect, which usually hid them completely.
+                var piCpId = 'pfbi_p' + opts.pageNum + '_r' + ri + '_' + di;
                 var piCpEl = document.createElementNS(NS, 'clipPath');
                 piCpEl.setAttribute('id', piCpId);
                 var piCpR = document.createElementNS(NS, 'rect');
@@ -8992,14 +9010,20 @@
                 }
                 if (!lblLines.length && lblLbls.length) lblLines.push(lblLbls[0]);
                 if (lblLines.length) {
-                  var bcpId = 'pfbc_p' + opts.pageNum + '_' + di;
+                  var bcpId = 'pfbc_p' + opts.pageNum + '_r' + ri + '_' + di; // see piCpId note on id collisions
                   var bcpEl = document.createElementNS(NS, 'clipPath');
                   bcpEl.setAttribute('id', bcpId);
                   var bcpR = document.createElementNS(NS, 'rect');
                   bcpR.setAttribute('x', mL + lw + dbC1 + 2);
                   bcpR.setAttribute('y', _pAbove ? ry : _fbY + _fbH + 1);
                   bcpR.setAttribute('width', Math.max(0, dbW - 4 + _pFov));
-                  bcpR.setAttribute('height', _pLabelAreaH);
+                  // Clip to the whole above/below band, not just this disc's own label
+                  // height — the bar now sits at a uniform offset, so the band a label
+                  // occupies is the gap between the row edge and the bar, which can be
+                  // taller than _pLabelAreaH for a discipline needing fewer lines.
+                  bcpR.setAttribute('height', _pAbove
+                    ? Math.max(0, _fbY - ry)
+                    : Math.max(0, (ry + rowH) - (_fbY + _fbH + 1)));
                   bcpEl.appendChild(bcpR);
                   defs.appendChild(bcpEl);
                   var lblY0 = _pAbove
@@ -9357,16 +9381,29 @@
       // _computePrintFlatLayout. Every page renders at the same pixels-per-day
       // scale (daysPerPage vs. timelineW), so this only needs to run once.
       var _prFlat = _computePrintFlatLayout(tasks, timelineW, daysPerPage * 86400000, fontSize);
-      // A flat-mode disc row can need more height than the user's Row ht (a flag or
-      // an outside bar label may not fit in it). Rather than growing just that one
-      // row — which made rows look uneven across the page — every row grows
-      // together to whatever the tallest requirement is, so the print grid stays
-      // uniform the way a printed schedule is expected to look.
-      var effectiveRowH = rowH;
-      printRows.forEach(function(pr) {
-        if (pr.type === 'disc') effectiveRowH = Math.max(effectiveRowH, _printDiscRowMinH(pr.disc, fontSize, rowH, _prFlat.maxLabelLines, _prFlat.flagClearance));
-      });
-      rowH = effectiveRowH;
+      // Above/below label+flag bands and the bar height are resolved ONCE here and
+      // shared by every disc row, so all bars print at the same height whether or not
+      // their own discipline happens to carry flags or extra label lines. Deriving
+      // them per-row is what left a flagged discipline's bar as a 4px sliver next to a
+      // plain discipline's full-height bar.
+      //
+      // Row ht sizes the BAR BAND, and the label/flag bands are added on top of it
+      // (rather than carved out of it), so raising Row ht always makes bars taller
+      // instead of the clearance eating the increase, and every row still gets the
+      // room its content needs.
+      var _prAboveH = 0, _prBelowH = 0;
+      if (flatMode) {
+        printRows.forEach(function(pr) {
+          if (pr.type !== 'disc') return;
+          var _lines   = _prFlat.maxLabelLines[pr.disc] || 0;
+          var _labelH  = _lines > 0 ? (_lines * fontSize + 2) : 0;
+          var _flagClr = flatShowFlags ? (_prFlat.flagClearance[pr.disc] || 0) : 0;
+          if (_labelH + _flagClr > _prAboveH) _prAboveH = _labelH + _flagClr;
+          if (_labelH > _prBelowH) _prBelowH = _labelH;
+        });
+      }
+      var _prBarH = Math.max(4, rowH - 4);
+      if (flatMode) rowH = _prAboveH + rowH + _prBelowH;
       var rowsPerPage = Math.max(1, Math.floor(bodyH / rowH));
       var vPages      = Math.ceil(printRows.length / rowsPerPage);
       var totalPages  = vPages * hPages;
@@ -9392,6 +9429,7 @@
             labelW: labelW, timelineW: timelineW, dateColW: prDateColW, durColW: prDurColW,
             rowH: rowH, fontSize: fontSize,
             prMaxLabelLines: _prFlat.maxLabelLines, prLabelPlacementMap: _prFlat.labelPlacementMap, prFlagClearance: _prFlat.flagClearance,
+            prAboveH: _prAboveH, prBarH: _prBarH,
             titleFont: (function() { var el = document.getElementById('pr-title-font'); return el ? (parseInt(el.value, 10) || 13) : 13; })(),
             rowSlice: rowSlice,
             sliceMin: sliceMin, sliceMax: sliceMax,
@@ -10279,7 +10317,13 @@
 
   <div id="loading-dim">
     <div id="loading-dim-inner">
-      <div class="loading-spinner"></div>
+      <div class="loading-ring-wrap">
+        <svg class="loading-ring" viewBox="0 0 36 36" width="36" height="36">
+          <circle class="loading-ring-track" cx="18" cy="18" r="15.5"></circle>
+          <circle id="loading-ring-fill" class="loading-ring-fill" cx="18" cy="18" r="15.5"></circle>
+        </svg>
+        <span id="loading-ring-pct" class="loading-ring-pct">0%</span>
+      </div>
       <span id="loading-dim-label">Loading…</span>
     </div>
   </div>
