@@ -117,6 +117,15 @@
       clearance logic (flatFlagOffset-based) the interactive chart uses, and
       correctly skips flags — and their clearance — entirely when the Flags
       toggle is off.
+    • Fixed flag labels overlapping a bar's own outside-placed label (name/
+      phase text above a bar too narrow to hold it). The above-bar space
+      reserved for a discipline's flags and the space reserved for its bars'
+      outside labels were combined with Math.max(), so whichever needed less
+      just sat inside the other's band instead of getting its own — a flag's
+      pole/icon/label could land directly on top of a bar's name/phase text.
+      Both interactive (row-height pre-pass, renderTaskBar, renderFlag) and
+      print now sum the two instead, stacking the flag's clearance zone
+      above the bar's own label zone rather than overlapping it.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -3566,7 +3575,11 @@
         var _rLines = flatMode ? (_flatMaxLabelLines[_rDisc] || 0) : 0;
         var _rLH = _rLines > 0 ? (_rLines * ganttBarFontSize + 2) : 0;
         var _rFlagClr = flatMode ? (_flatFlagClearance[_rDisc] || 0) : 0;
-        var _rAboveH = Math.max(_rLH, _rFlagClr);
+        // Stack, don't overlap: the bar's own outside-placed label sits closest to
+        // the bar, and a flag's pole/icon/text needs its own clearance further out
+        // above that — sharing the same band (via Math.max) let a flag's label land
+        // right on top of the bar's own "above" label.
+        var _rAboveH = _rLH + _rFlagClr;
         displayedRows[_ri].rowHeight = flatMode ? (flatBarHeight + _rAboveH + _rLH + 2) : getEffectiveRowHeight();
         _cumY += displayedRows[_ri].rowHeight + rowGap;
       }
@@ -4546,7 +4559,7 @@
       var _flatLines = flatMode ? (_flatMaxLabelLines[_flatDisc] || 0) : 0;
       var _flatLabelH = _flatLines > 0 ? (_flatLines * ganttBarFontSize + 2) : 0;
       var _flatFlagClr = flatMode ? (_flatFlagClearance[_flatDisc] || 0) : 0;
-      var _flatAboveH = Math.max(_flatLabelH, _flatFlagClr);
+      var _flatAboveH = _flatLabelH + _flatFlagClr; // stacked, see row-height pre-pass comment
       var barH = flatMode ? flatBarHeight : (_tbRowH - 8);
       var barY = yTop + (flatMode ? _flatAboveH + 2 : 4);
 
@@ -5236,7 +5249,7 @@
         var _flFlatLines = _flatMaxLabelLines[_flFlatDisc] || 0;
         var _flFlatLabelH = _flFlatLines > 0 ? (_flFlatLines * ganttBarFontSize + 2) : 0;
         var _flFlatFlagClr = _flatFlagClearance[_flFlatDisc] || 0;
-        var _flFlatAboveH = Math.max(_flFlatLabelH, _flFlatFlagClr);
+        var _flFlatAboveH = _flFlatLabelH + _flFlatFlagClr; // stacked, see row-height pre-pass comment
         var _flBarY = yTop + _flFlatAboveH + 2;
         flagH = 11; // fixed icon height in flat mode (same size the non-flat formula settles on)
         bottomY = _flBarY + flatBarHeight;             // pole bottom = bar's bottom edge
@@ -8699,7 +8712,7 @@
           // draw a flag overlapping the bar or the row above. No reservation (and no
           // flag drawing below) when the Flags toggle is off.
           var _pFlagClr = (opts.flatMode && flatShowFlags) ? (_flatFlagClearance[row.disc] || 0) : 0;
-          var _pAboveH = Math.max(_pLabelAreaH, _pFlagClr);
+          var _pAboveH = _pLabelAreaH + _pFlagClr; // stacked, see interactive row-height pre-pass comment
           var _fbH = opts.flatMode ? Math.max(4, Math.min(opts.flatBarHeight || 24, rowH - _pAboveH - _pLabelAreaH - 4)) : rowH - 4;
           var _fbY = ry + (opts.flatMode ? _pAboveH + 2 : Math.floor((rowH - _fbH) / 2));
           var _pFov = opts.flatLabelOverflow || 0;
