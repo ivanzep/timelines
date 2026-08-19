@@ -87,6 +87,17 @@
       New _printMarkerLabel() draws the same name/phase/note lines used for
       bars, positioned to the right of the marker, for both milestone and
       flag rows.
+    • Flat mode flags refined further: new "Flag Offset" slider (Flat Options
+      card, 0–40px, default 8) controls how far above its group's bar the
+      flag icon sits — flatFlagOffset setting. The pole's bottom is now
+      pinned exactly to that flat-mode bar's own bottom edge (previously it
+      was anchored independently to the row's top margin, which could still
+      collide with bar labels above larger bars); its top is derived from
+      the icon's height plus the offset, so the icon+text never dip into the
+      bar even at the minimum offset. Flag name/note text now uses the same
+      task-label-big/task-label-note CSS classes and theme-aware fill color
+      bar labels use, instead of a hardcoded dark color, so flag text looks
+      consistent with the rest of the chart in both light and dark mode.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1227,6 +1238,7 @@
                 <label class="sb-row"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-outside" /> Outside</label>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-show-flags" checked /> Flags</label>
+                <label class="sb-slider-row">Flag Offset <input type="range" id="opt-flat-flag-offset" min="0" max="40" value="8" step="1" class="sb-slider" /> <span class="sb-val" id="opt-flat-flag-offset-val">8</span>px</label>
                 <label class="sb-slider-row">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" class="sb-slider" /> <span class="sb-val" id="opt-flat-barh-val">24</span>px</label>
                 <label class="sb-slider-row">Overflow <input type="range" id="opt-flat-overflow" min="0" max="400" value="0" step="10" class="sb-slider" /> <span class="sb-val" id="opt-flat-overflow-val">0</span>px</label>
               </div>
@@ -1640,6 +1652,7 @@
     var flatLabelOverflow = 0;       // extra px the label clip extends right of bar end
     var flatLabelsOutside = false;   // when true: always place labels outside bar (above/below); default: inside if fits
     var flatShowFlags = true;        // when false: flags are hidden while Flat mode is on
+    var flatFlagOffset = 8;          // px the flag pole/triangle extends above its group's bar top, in Flat mode
     var useStatusColors = false;     // when true: bar/milestone/flag fill uses STATUS_COLOR_MAP[task.status]
     var _flatMaxLabelLines = {};     // per-group: disc → max outside lines; pre-computed each render
     var _flatLabelPlacementMap = {}; // task.id → 'above'|'below'|'inside'; set by pre-pass each render
@@ -5175,26 +5188,36 @@
       if (rowIdx < 0) return;
       var yTop = geom.rowYOffsets[rowIdx] || 0;
       var _fRowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
-      var poleH = Math.min(22, _fRowH - 6);
-      var yMid, topY, bottomY;
+      var poleH, yMid, topY, bottomY, flagH;
       if (flatMode) {
-        // Flat mode stacks every task/milestone/flag of a discipline into one shared
-        // row, which previously left the flag's pole/text sitting at the same mid-row
-        // Y as the bars underneath and colliding with their labels. Anchor the flag to
-        // the row's top margin instead, so it renders above the bar band (and its
-        // text) rather than on top of/behind it.
-        topY = yTop + 2;
-        bottomY = topY + poleH;
+        // Anchor the pole's bottom to the flat-mode bar's own bottom edge (same
+        // barY/barH math renderTaskBar uses). flatFlagOffset is the gap between the
+        // bar's top and the BOTTOM of the flag icon (not just the pole's top), so the
+        // icon+label never dip into the bar regardless of how tall the icon is.
+        var _flFlatDisc = task.group || '';
+        var _flFlatLines = _flatMaxLabelLines[_flFlatDisc] || 0;
+        var _flFlatLabelH = _flFlatLines > 0 ? (_flFlatLines * ganttBarFontSize + 2) : 0;
+        var _flBarY = yTop + _flFlatLabelH + 2;
+        flagH = 11; // fixed icon height in flat mode (same size the non-flat formula settles on)
+        bottomY = _flBarY + flatBarHeight;             // pole bottom = bar's bottom edge
+        var _flIconBottom = _flBarY - flatFlagOffset;  // icon sits flatFlagOffset px above the bar top
+        topY = _flIconBottom - flagH;                  // pole top = icon's top edge
+        poleH = bottomY - topY;
         yMid = topY + poleH / 2;
       } else {
+        poleH = Math.min(22, _fRowH - 6);
         yMid = yTop + _fRowH / 2;
         topY = yMid - poleH / 2;
         bottomY = yMid + poleH / 2;
+        flagH = Math.min(11, poleH * 0.55);
       }
       var x = dateToX(task.start);
       // Register in barPositions so dependency arrows can connect to flags.
       barPositions[task.id] = { x1: x, x2: x, midY: yMid };
-      var flagH = Math.min(11, poleH * 0.55);
+      // Labels align with the flag icon (always at the pole's top), not the pole's
+      // overall midpoint — in flat mode the pole now stretches down to the bar's
+      // bottom, so a mid-pole label would sit on top of the bar instead of by the flag.
+      var flagLabelY = topY + flagH / 2;
 
       var g = document.createElementNS(svgNS, 'g');
       g.dataset.taskId = task.id;
@@ -5257,13 +5280,16 @@
       var labelX = x + 22;
       var fNameFs = ganttBarFontSize;
       var fNoteFs = Math.max(6, ganttBarFontSize - 3);
+      // Match the same theme-aware fill + weight/spacing classes bar labels use,
+      // instead of a hardcoded color, so flag text looks consistent with the chart.
+      var _flLblFill = barTextColor !== null ? barTextColor : (darkMode ? '#e2e8f0' : '#1e293b');
       if (displayOptions.showName) {
         var nameLabel = document.createElementNS(svgNS, 'text');
         nameLabel.setAttribute('x', labelX);
-        nameLabel.setAttribute('y', yMid + fNameFs * 0.35);
+        nameLabel.setAttribute('y', flagLabelY + fNameFs * 0.35);
         nameLabel.setAttribute('font-size', fNameFs);
-        nameLabel.setAttribute('font-weight', '700');
-        nameLabel.setAttribute('fill', '#0f172a');
+        nameLabel.setAttribute('class', 'task-label-big');
+        nameLabel.style.fill = _flLblFill;
         nameLabel.style.pointerEvents = 'none';
         nameLabel.textContent = task.name;
         g.appendChild(nameLabel);
@@ -5271,10 +5297,10 @@
       if (task.note && displayOptions.showNote) {
         var noteLabel = document.createElementNS(svgNS, 'text');
         noteLabel.setAttribute('x', labelX);
-        noteLabel.setAttribute('y', yMid + fNameFs * 0.35 + fNoteFs + 2);
+        noteLabel.setAttribute('y', flagLabelY + fNameFs * 0.35 + fNoteFs + 2);
         noteLabel.setAttribute('font-size', fNoteFs);
-        noteLabel.setAttribute('font-weight', '500');
-        noteLabel.setAttribute('fill', '#64748b');
+        noteLabel.setAttribute('class', 'task-label-note');
+        noteLabel.style.fill = _flLblFill;
         noteLabel.style.pointerEvents = 'none';
         noteLabel.textContent = task.note;
         g.appendChild(noteLabel);
@@ -6082,6 +6108,15 @@
       if (optFlatShowFlags) {
         optFlatShowFlags.addEventListener('change', function() {
           flatShowFlags = this.checked;
+          renderGantt();
+        });
+      }
+      var optFlatFlagOffset = document.getElementById('opt-flat-flag-offset');
+      var optFlatFlagOffsetVal = document.getElementById('opt-flat-flag-offset-val');
+      if (optFlatFlagOffset) {
+        optFlatFlagOffset.addEventListener('input', function() {
+          flatFlagOffset = parseInt(this.value, 10) || 0;
+          if (optFlatFlagOffsetVal) optFlatFlagOffsetVal.textContent = flatFlagOffset;
           renderGantt();
         });
       }
@@ -6953,6 +6988,7 @@
         flatLabelOverflow:   flatLabelOverflow,
         flatLabelsOutside:   flatLabelsOutside ? 'true' : 'false',
         flatShowFlags:       flatShowFlags ? 'true' : 'false',
+        flatFlagOffset:      flatFlagOffset,
         useStatusColors:     useStatusColors ? 'true' : 'false',
         barTextColor:        barTextColor  !== null ? barTextColor : '',
         groupColors:         JSON.stringify(groupColors),
@@ -7076,6 +7112,13 @@
         flatShowFlags = toBool(s.flatShowFlags);
         var _fsfEl = document.getElementById('opt-flat-show-flags');
         if (_fsfEl) _fsfEl.checked = flatShowFlags;
+      }
+      if (s.flatFlagOffset !== undefined) {
+        flatFlagOffset = parseInt(s.flatFlagOffset, 10) || 0;
+        var _ffoEl = document.getElementById('opt-flat-flag-offset');
+        var _ffoVEl = document.getElementById('opt-flat-flag-offset-val');
+        if (_ffoEl)  _ffoEl.value = flatFlagOffset;
+        if (_ffoVEl) _ffoVEl.textContent = flatFlagOffset;
       }
       if (s.useStatusColors !== undefined) {
         useStatusColors = toBool(s.useStatusColors);
