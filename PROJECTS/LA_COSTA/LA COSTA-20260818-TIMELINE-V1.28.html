@@ -68,6 +68,103 @@
       the batch group-color Apply button — all three mutate tasks/groupColors
       directly and were missing the markDirty() call the single-row paths
       already had.
+    • Backend fix (Code_V1.28.gs): task color/type/style/symbol were silently
+      not saved for any task without a persistent ID yet — every brand-new
+      task, most noticeably ones added to a freshly created version before
+      its first reload. doPost() now assigns IDs before writing task params
+      instead of skipping those tasks, and new-version creation now clones
+      the source's task-ID tab too so IDs don't get renumbered on first Load.
+      Redeploy required.
+    • Flat mode: new "Flags" checkbox (Flat Options card) hides flag markers
+      while Flat mode is on — independent of the Flags tab filter. Flags now
+      render anchored to the top of their shared discipline row instead of
+      the same mid-row Y bars use, so a flag's pole/triangle and its name/
+      note text sit above the bar band (and its labels) instead of
+      overlapping it. Persists via a new flatShowFlags setting.
+    • Gantt print/export: milestones and flags previously drew only their
+      marker shape (diamond / pole+triangle) with no name, phase, or status
+      text next to them — the label-drawing block only ran for plain bars.
+      New _printMarkerLabel() draws the same name/phase/note lines used for
+      bars, positioned to the right of the marker, for both milestone and
+      flag rows.
+    • Flat mode flags refined further: new "Flag Offset" slider (Flat Options
+      card, 0–40px, default 8) controls how far above its group's bar the
+      flag icon sits — flatFlagOffset setting. The pole's bottom is now
+      pinned exactly to that flat-mode bar's own bottom edge (previously it
+      was anchored independently to the row's top margin, which could still
+      collide with bar labels above larger bars); its top is derived from
+      the icon's height plus the offset, so the icon+text never dip into the
+      bar even at the minimum offset. Flag name/note text now uses the same
+      task-label-big/task-label-note CSS classes and theme-aware fill color
+      bar labels use, instead of a hardcoded dark color, so flag text looks
+      consistent with the rest of the chart in both light and dark mode.
+    • Fixed two flat-mode flag layout bugs: a flag on the chart's very first
+      row could get its icon/label clipped off the top of the visible chart,
+      and a flag's pole/icon could bleed upward into the row above's bar.
+      Root cause: row height in flat mode only reserved space above the bar
+      for wrapped-line bar labels (_flatMaxLabelLines), not for the flag's
+      own pole+icon+offset. New _flatFlagClearance pre-pass computes the
+      clearance a discipline's flags need above the bar; row height and the
+      bar's own Y position now reserve max(label height, flag clearance)
+      above the bar instead of just the label height, so every row grows
+      tall enough to fit its flags without clipping or bleeding into a
+      neighboring row.
+    • Fixed flat-mode Gantt print/export not showing flags at all — the
+      disc-row print path drew every task (bars and flags alike) as the same
+      generic bar rect, so a flag rendered as a near-invisible 3px sliver
+      instead of a pole+triangle+label. Print now special-cases flag tasks
+      in flat mode with the same pole/icon/label shape and above-bar
+      clearance logic (flatFlagOffset-based) the interactive chart uses, and
+      correctly skips flags — and their clearance — entirely when the Flags
+      toggle is off.
+    • Fixed flag labels overlapping a bar's own outside-placed label (name/
+      phase text above a bar too narrow to hold it). The above-bar space
+      reserved for a discipline's flags and the space reserved for its bars'
+      outside labels were combined with Math.max(), so whichever needed less
+      just sat inside the other's band instead of getting its own — a flag's
+      pole/icon/label could land directly on top of a bar's name/phase text.
+      Both interactive (row-height pre-pass, renderTaskBar, renderFlag) and
+      print now sum the two instead, stacking the flag's clearance zone
+      above the bar's own label zone rather than overlapping it.
+    • Fixed flat-mode print's "Row ht" slider not enlarging bars — the bar
+      height was capped at the interactive Flat Options "Bar H" setting
+      regardless of Row ht, so increasing Row ht just added blank space
+      instead of a bigger bar (while decreasing it still shrank the bar,
+      making the control feel one-directional/broken). Print now fills
+      whatever room Row ht leaves after the above/below reservations, same
+      as non-flat print rows already do, so the bar scales with Row ht in
+      both directions.
+    • Fixed flat-mode print rows overlapping the row below when Row ht was
+      set smaller than a discipline's flag/outside-label clearance needs —
+      a disc row whose content needed more room than the fixed uniform
+      ri*rowH spacing just spilled into the next row's space instead of
+      pushing it down. First attempt grew only the affected row, which then
+      looked visually uneven next to disciplines that didn't need the extra
+      room; renderPrintPreview now computes a single effectiveRowH up front
+      (_printDiscRowMinH — the tallest clearance any discipline's flags/
+      outside-labels need, mirroring the exact math the row itself renders
+      with — vs. the raw Row ht) and every row on the print grows together
+      to that value, so the grid stays uniform while still fitting every
+      row's content.
+    • Fixed the real cause of persisting flat-mode print row-height glitches:
+      print's own _flatMaxLabelLines/_flatLabelPlacementMap/_flatFlagClearance
+      were never computed for print at all — they read the INTERACTIVE
+      chart's globals, populated from whatever date range/zoom/font size the
+      interactive view happened to be showing, which routinely differs from
+      print's own independent From/To range, page width, and font size. A
+      bar whose label fit inside interactively could render far narrower in
+      print and need outside placement there instead, so print's row-height
+      reservation and its actual label wrapping were both silently wrong
+      whenever the two views disagreed. New _computePrintFlatLayout() runs
+      the same wrap/placement algorithm using print's own page width and
+      date-range-per-page scale; renderPrintPreview() computes it once (every
+      page/horizontal-split renders at the same pixels-per-day scale) and
+      passes it through opts instead of _buildPrintPageEl reading the
+      interactive globals.
+    • Added a slim top-of-page loading bar (#load-progress-bar), driven by
+      the existing _syncDot() busy/settled state — eases toward ~90% while a
+      Google Sheets Load/Save/version-switch is in flight and snaps to 100%
+      on completion, alongside the existing dim overlay + spinner.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -989,9 +1086,20 @@
     .tp-page-header { padding: 14px 16px 8px; border-bottom: 2px solid #1e293b; display: flex; justify-content: space-between; align-items: flex-end; }
     .tp-page-header h1 { font-size: 1rem; font-weight: 800; letter-spacing: 0.06em; color: #0f172a; margin: 0; }
     .tp-page-header .tp-meta { font-size: 0.65rem; color: #64748b; text-align: right; }
+
+    /* Slim top-of-page loading bar — shown while fetching from Google Sheets */
+    #load-progress-bar {
+      position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+      background: linear-gradient(90deg, #0284c7, #38bdf8);
+      z-index: 99999; opacity: 0; pointer-events: none;
+      transition: width 0.4s ease, opacity 0.3s ease;
+      box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+    }
+    #load-progress-bar.show { opacity: 1; }
   </style>
 </head>
 <body>
+  <div id="load-progress-bar"></div>
   <div class="app-shell">
 
     <!-- Hamburger menu — top-right corner of app shell -->
@@ -1207,6 +1315,8 @@
                 <div class="sb-label">Flat Options</div>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-outside" /> Outside</label>
+                <label class="sb-row"><input type="checkbox" id="opt-flat-show-flags" checked /> Flags</label>
+                <label class="sb-slider-row">Flag Offset <input type="range" id="opt-flat-flag-offset" min="0" max="40" value="8" step="1" class="sb-slider" /> <span class="sb-val" id="opt-flat-flag-offset-val">8</span>px</label>
                 <label class="sb-slider-row">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" class="sb-slider" /> <span class="sb-val" id="opt-flat-barh-val">24</span>px</label>
                 <label class="sb-slider-row">Overflow <input type="range" id="opt-flat-overflow" min="0" max="400" value="0" step="10" class="sb-slider" /> <span class="sb-val" id="opt-flat-overflow-val">0</span>px</label>
               </div>
@@ -1619,9 +1729,12 @@
     var flatBarHeight = 24;          // bar height (px) in flat mode
     var flatLabelOverflow = 0;       // extra px the label clip extends right of bar end
     var flatLabelsOutside = false;   // when true: always place labels outside bar (above/below); default: inside if fits
+    var flatShowFlags = true;        // when false: flags are hidden while Flat mode is on
+    var flatFlagOffset = 8;          // px the flag pole/triangle extends above its group's bar top, in Flat mode
     var useStatusColors = false;     // when true: bar/milestone/flag fill uses STATUS_COLOR_MAP[task.status]
     var _flatMaxLabelLines = {};     // per-group: disc → max outside lines; pre-computed each render
     var _flatLabelPlacementMap = {}; // task.id → 'above'|'below'|'inside'; set by pre-pass each render
+    var _flatFlagClearance = {};     // per-group: disc → px of clearance a flag needs above the bar; pre-computed each render
     var userLabelWidth = 240;  // user-adjustable label column width
     var ganttBarFontSize = 12; // user-adjustable bar label font size
     var showTodayLine = true;       // whether to draw the Today vertical line
@@ -3422,6 +3535,7 @@
       // above/below placement so adjacent task labels in the same disc row don't overlap.
       _flatMaxLabelLines = {};
       _flatLabelPlacementMap = {};
+      _flatFlagClearance = {};
       if (flatMode && tasks.length) {
         var _ppBW  = ticks.length * unitWidth;
         var _ppTot = (lastTickEnd - firstTick) || 1;
@@ -3485,6 +3599,19 @@
           }
         }
         // Per-group: discs where all tasks fit inside have _flatMaxLabelLines[disc] = undefined → treated as 0
+
+        // Flags render above their group's bar (pole + icon + label) — reserve at
+        // least that much clearance above the bar too, so a flag's icon/text never
+        // gets clipped at the very top row nor bleeds into the row above.
+        if (flatShowFlags) {
+          for (var _pfi = 0; _pfi < tasks.length; _pfi++) {
+            var _pft = tasks[_pfi];
+            if (_pft.type !== 'flag') continue;
+            var _pfDisc = _pft.group || '';
+            var _pfClr = flatFlagOffset + 11 + 2; // offset + fixed flag-icon height + small margin
+            if (_pfClr > (_flatFlagClearance[_pfDisc] || 0)) _flatFlagClearance[_pfDisc] = _pfClr;
+          }
+        }
       }
 
       var topAxisHeight = 60;
@@ -3497,7 +3624,13 @@
         var _rDisc = displayedRows[_ri].discipline || '';
         var _rLines = flatMode ? (_flatMaxLabelLines[_rDisc] || 0) : 0;
         var _rLH = _rLines > 0 ? (_rLines * ganttBarFontSize + 2) : 0;
-        displayedRows[_ri].rowHeight = flatMode ? (flatBarHeight + 2 * _rLH + 2) : getEffectiveRowHeight();
+        var _rFlagClr = flatMode ? (_flatFlagClearance[_rDisc] || 0) : 0;
+        // Stack, don't overlap: the bar's own outside-placed label sits closest to
+        // the bar, and a flag's pole/icon/text needs its own clearance further out
+        // above that — sharing the same band (via Math.max) let a flag's label land
+        // right on top of the bar's own "above" label.
+        var _rAboveH = _rLH + _rFlagClr;
+        displayedRows[_ri].rowHeight = flatMode ? (flatBarHeight + _rAboveH + _rLH + 2) : getEffectiveRowHeight();
         _cumY += displayedRows[_ri].rowHeight + rowGap;
       }
       var bodyWidth = ticks.length * unitWidth;
@@ -4475,8 +4608,10 @@
       var _flatDisc = task.group || '';
       var _flatLines = flatMode ? (_flatMaxLabelLines[_flatDisc] || 0) : 0;
       var _flatLabelH = _flatLines > 0 ? (_flatLines * ganttBarFontSize + 2) : 0;
+      var _flatFlagClr = flatMode ? (_flatFlagClearance[_flatDisc] || 0) : 0;
+      var _flatAboveH = _flatLabelH + _flatFlagClr; // stacked, see row-height pre-pass comment
       var barH = flatMode ? flatBarHeight : (_tbRowH - 8);
-      var barY = yTop + (flatMode ? _flatLabelH + 2 : 4);
+      var barY = yTop + (flatMode ? _flatAboveH + 2 : 4);
 
       // Store the actual date-derived x positions (not the clamped bar edges) so
       // dependency arrows always originate at the real end-date and terminate at the
@@ -5149,18 +5284,43 @@
     }
 
     function renderFlag(svg, task) {
+      if (flatMode && !flatShowFlags) return; // Flat mode "Flags" toggle
       var rowIdx = findRowIdx(task);
       if (rowIdx < 0) return;
       var yTop = geom.rowYOffsets[rowIdx] || 0;
       var _fRowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
-      var yMid = yTop + _fRowH / 2;
+      var poleH, yMid, topY, bottomY, flagH;
+      if (flatMode) {
+        // Anchor the pole's bottom to the flat-mode bar's own bottom edge (same
+        // barY/barH math renderTaskBar uses). flatFlagOffset is the gap between the
+        // bar's top and the BOTTOM of the flag icon (not just the pole's top), so the
+        // icon+label never dip into the bar regardless of how tall the icon is.
+        var _flFlatDisc = task.group || '';
+        var _flFlatLines = _flatMaxLabelLines[_flFlatDisc] || 0;
+        var _flFlatLabelH = _flFlatLines > 0 ? (_flFlatLines * ganttBarFontSize + 2) : 0;
+        var _flFlatFlagClr = _flatFlagClearance[_flFlatDisc] || 0;
+        var _flFlatAboveH = _flFlatLabelH + _flFlatFlagClr; // stacked, see row-height pre-pass comment
+        var _flBarY = yTop + _flFlatAboveH + 2;
+        flagH = 11; // fixed icon height in flat mode (same size the non-flat formula settles on)
+        bottomY = _flBarY + flatBarHeight;             // pole bottom = bar's bottom edge
+        var _flIconBottom = _flBarY - flatFlagOffset;  // icon sits flatFlagOffset px above the bar top
+        topY = _flIconBottom - flagH;                  // pole top = icon's top edge
+        poleH = bottomY - topY;
+        yMid = topY + poleH / 2;
+      } else {
+        poleH = Math.min(22, _fRowH - 6);
+        yMid = yTop + _fRowH / 2;
+        topY = yMid - poleH / 2;
+        bottomY = yMid + poleH / 2;
+        flagH = Math.min(11, poleH * 0.55);
+      }
       var x = dateToX(task.start);
       // Register in barPositions so dependency arrows can connect to flags.
       barPositions[task.id] = { x1: x, x2: x, midY: yMid };
-      var poleH = Math.min(22, _fRowH - 6);
-      var topY = yMid - poleH / 2;
-      var bottomY = yMid + poleH / 2;
-      var flagH = Math.min(11, poleH * 0.55);
+      // Labels align with the flag icon (always at the pole's top), not the pole's
+      // overall midpoint — in flat mode the pole now stretches down to the bar's
+      // bottom, so a mid-pole label would sit on top of the bar instead of by the flag.
+      var flagLabelY = topY + flagH / 2;
 
       var g = document.createElementNS(svgNS, 'g');
       g.dataset.taskId = task.id;
@@ -5223,13 +5383,16 @@
       var labelX = x + 22;
       var fNameFs = ganttBarFontSize;
       var fNoteFs = Math.max(6, ganttBarFontSize - 3);
+      // Match the same theme-aware fill + weight/spacing classes bar labels use,
+      // instead of a hardcoded color, so flag text looks consistent with the chart.
+      var _flLblFill = barTextColor !== null ? barTextColor : (darkMode ? '#e2e8f0' : '#1e293b');
       if (displayOptions.showName) {
         var nameLabel = document.createElementNS(svgNS, 'text');
         nameLabel.setAttribute('x', labelX);
-        nameLabel.setAttribute('y', yMid + fNameFs * 0.35);
+        nameLabel.setAttribute('y', flagLabelY + fNameFs * 0.35);
         nameLabel.setAttribute('font-size', fNameFs);
-        nameLabel.setAttribute('font-weight', '700');
-        nameLabel.setAttribute('fill', '#0f172a');
+        nameLabel.setAttribute('class', 'task-label-big');
+        nameLabel.style.fill = _flLblFill;
         nameLabel.style.pointerEvents = 'none';
         nameLabel.textContent = task.name;
         g.appendChild(nameLabel);
@@ -5237,10 +5400,10 @@
       if (task.note && displayOptions.showNote) {
         var noteLabel = document.createElementNS(svgNS, 'text');
         noteLabel.setAttribute('x', labelX);
-        noteLabel.setAttribute('y', yMid + fNameFs * 0.35 + fNoteFs + 2);
+        noteLabel.setAttribute('y', flagLabelY + fNameFs * 0.35 + fNoteFs + 2);
         noteLabel.setAttribute('font-size', fNoteFs);
-        noteLabel.setAttribute('font-weight', '500');
-        noteLabel.setAttribute('fill', '#64748b');
+        noteLabel.setAttribute('class', 'task-label-note');
+        noteLabel.style.fill = _flLblFill;
         noteLabel.style.pointerEvents = 'none';
         noteLabel.textContent = task.note;
         g.appendChild(noteLabel);
@@ -6044,6 +6207,22 @@
           renderGantt();
         });
       }
+      var optFlatShowFlags = document.getElementById('opt-flat-show-flags');
+      if (optFlatShowFlags) {
+        optFlatShowFlags.addEventListener('change', function() {
+          flatShowFlags = this.checked;
+          renderGantt();
+        });
+      }
+      var optFlatFlagOffset = document.getElementById('opt-flat-flag-offset');
+      var optFlatFlagOffsetVal = document.getElementById('opt-flat-flag-offset-val');
+      if (optFlatFlagOffset) {
+        optFlatFlagOffset.addEventListener('input', function() {
+          flatFlagOffset = parseInt(this.value, 10) || 0;
+          if (optFlatFlagOffsetVal) optFlatFlagOffsetVal.textContent = flatFlagOffset;
+          renderGantt();
+        });
+      }
 
       var optStatusColors = document.getElementById('opt-status-colors');
       if (optStatusColors) {
@@ -6695,6 +6874,34 @@
     var versions = [{ name: 'Default', taskSheetName: DEFAULT_TASK_SHEET_NAME }]; // populated from the backend on Load
     var _switchingVersion = false; // guards against re-entrant switches while a load/save is in flight
 
+    var _loadProgressTimer = null;
+    // Slim top-of-page bar, eased toward ~90% while busy and snapped to 100% on
+    // completion — an indeterminate op (fetch to Apps Script) has no real percent,
+    // so this is a visual "still working" cue, not a literal progress measurement.
+    function _loadProgressBar(show) {
+      var bar = document.getElementById('load-progress-bar');
+      if (!bar) return;
+      clearInterval(_loadProgressTimer);
+      if (show) {
+        bar.style.transition = 'none';
+        bar.style.width = '0%';
+        bar.offsetHeight; // force reflow so the next width change animates
+        bar.style.transition = '';
+        bar.classList.add('show');
+        var pct = 0;
+        _loadProgressTimer = setInterval(function() {
+          pct += (90 - pct) * 0.15;
+          bar.style.width = pct + '%';
+        }, 200);
+      } else {
+        bar.style.width = '100%';
+        setTimeout(function() {
+          bar.classList.remove('show');
+          setTimeout(function() { bar.style.width = '0%'; }, 300);
+        }, 200);
+      }
+    }
+
     function _syncDot(state, label) {
       var dot = document.getElementById('sync-dot');
       var lbl = document.getElementById('sync-label');
@@ -6711,6 +6918,7 @@
           dim.classList.remove('active');
         }
       }
+      _loadProgressBar(state === 'busy');
     }
 
     function _setSheetNameDisplay(name, url) {
@@ -6911,6 +7119,8 @@
         flatBarHeight:       flatBarHeight,
         flatLabelOverflow:   flatLabelOverflow,
         flatLabelsOutside:   flatLabelsOutside ? 'true' : 'false',
+        flatShowFlags:       flatShowFlags ? 'true' : 'false',
+        flatFlagOffset:      flatFlagOffset,
         useStatusColors:     useStatusColors ? 'true' : 'false',
         barTextColor:        barTextColor  !== null ? barTextColor : '',
         groupColors:         JSON.stringify(groupColors),
@@ -7029,6 +7239,18 @@
         flatLabelsOutside = toBool(s.flatLabelsOutside);
         var _floEl = document.getElementById('opt-flat-outside');
         if (_floEl) _floEl.checked = flatLabelsOutside;
+      }
+      if (s.flatShowFlags !== undefined) {
+        flatShowFlags = toBool(s.flatShowFlags);
+        var _fsfEl = document.getElementById('opt-flat-show-flags');
+        if (_fsfEl) _fsfEl.checked = flatShowFlags;
+      }
+      if (s.flatFlagOffset !== undefined) {
+        flatFlagOffset = parseInt(s.flatFlagOffset, 10) || 0;
+        var _ffoEl = document.getElementById('opt-flat-flag-offset');
+        var _ffoVEl = document.getElementById('opt-flat-flag-offset-val');
+        if (_ffoEl)  _ffoEl.value = flatFlagOffset;
+        if (_ffoVEl) _ffoVEl.textContent = flatFlagOffset;
       }
       if (s.useStatusColors !== undefined) {
         useStatusColors = toBool(s.useStatusColors);
@@ -8096,6 +8318,98 @@
       return rows;
     }
 
+    // Print-specific version of the flat-mode label-wrap/placement pre-pass in
+    // renderGantt() (~line 3504). The interactive chart's _flatMaxLabelLines /
+    // _flatLabelPlacementMap / _flatFlagClearance globals are computed from the
+    // INTERACTIVE view's own date range, zoom, and font size — print has its own
+    // independent From/To range, page width, and font size (routinely different
+    // from whatever the interactive chart happens to be showing), so a bar that
+    // fits its label inside interactively can be a completely different pixel
+    // width in print, needing outside placement there instead. Reusing the
+    // interactive globals gave print systematically wrong (usually too-small)
+    // row-height reservations. tw/pageSpanMs describe ONE page's date window —
+    // every page (including each horizontal split) renders at the same pixels-
+    // per-day scale, so this only needs to run once per print, not per page.
+    function _computePrintFlatLayout(srcTasks, tw, pageSpanMs, fs) {
+      var maxLabelLines = {}, labelPlacementMap = {}, flagClearance = {};
+      if (!flatMode || !srcTasks.length) return { maxLabelLines: maxLabelLines, labelPlacementMap: labelPlacementMap, flagClearance: flagClearance };
+      var totMs = pageSpanMs || 1;
+      var cw = fs * 0.6;
+      var discIdx = {};
+      for (var i = 0; i < srcTasks.length; i++) {
+        var t = srcTasks[i];
+        if (t.type !== 'bar' || !t.start || !t.end) continue;
+        var disc = t.group || '';
+        if (discIdx[disc] === undefined) discIdx[disc] = 0;
+        // Only the SPAN (x2-x1) is used below, so an absolute reference point for
+        // x1/x2 individually doesn't matter — epoch time works fine as the origin.
+        var x1 = t.start.getTime() / totMs * tw;
+        var x2 = t.end.getTime()   / totMs * tw;
+        var barW = Math.max(8, Math.abs(x2 - x1));
+        var inW = barW - 10;
+        var lbls = [];
+        if (displayOptions.showName  && t.name)            lbls.push(t.name);
+        if (displayOptions.showPhase && (t.sub || t.group)) lbls.push(t.sub || t.group);
+        if (displayOptions.showNote  && t.note)             lbls.push(t.note);
+        var fitsInside = false;
+        if (!flatLabelsOutside && lbls.length > 0 && inW > 0) {
+          var totL = 0;
+          for (var li = 0; li < lbls.length; li++) {
+            var words = lbls[li].split(' '), cur = '';
+            for (var wi = 0; wi < words.length; wi++) {
+              var test = cur ? cur + ' ' + words[wi] : words[wi];
+              if (test.length * cw <= inW) { cur = test; }
+              else { if (cur) totL++; cur = words[wi]; }
+            }
+            if (cur) totL++;
+          }
+          fitsInside = totL > 0 && totL * fs <= flatBarHeight;
+        }
+        if (fitsInside) {
+          labelPlacementMap[t.id] = 'inside';
+        } else {
+          labelPlacementMap[t.id] = (discIdx[disc] % 2 === 0) ? 'above' : 'below';
+          discIdx[disc]++;
+          var extInW = barW - 10 + flatLabelOverflow;
+          if (extInW <= 0) continue;
+          var lines = 0;
+          for (var li2 = 0; li2 < lbls.length; li2++) {
+            var words2 = lbls[li2].split(' '), cur2 = '';
+            for (var wi2 = 0; wi2 < words2.length; wi2++) {
+              var test2 = cur2 ? cur2 + ' ' + words2[wi2] : words2[wi2];
+              if (test2.length * cw <= extInW) { cur2 = test2; }
+              else { if (cur2) lines++; cur2 = words2[wi2]; }
+            }
+            if (cur2) lines++;
+          }
+          if (lines > (maxLabelLines[disc] || 0)) maxLabelLines[disc] = Math.min(lines, 5);
+        }
+      }
+      if (flatShowFlags) {
+        for (var fi = 0; fi < srcTasks.length; fi++) {
+          var ft = srcTasks[fi];
+          if (ft.type !== 'flag') continue;
+          var fdisc = ft.group || '';
+          var clr = flatFlagOffset + 11 + 2;
+          if (clr > (flagClearance[fdisc] || 0)) flagClearance[fdisc] = clr;
+        }
+      }
+      return { maxLabelLines: maxLabelLines, labelPlacementMap: labelPlacementMap, flagClearance: flagClearance };
+    }
+
+    // A flat-mode disc row's minimum height — mirrors the _pAboveH/_fbH/_fbY math in
+    // _buildPrintPageEl exactly, so pagination reserves the same room the row will
+    // actually render at. Non-disc rows (and disc rows with no flags/outside labels)
+    // just return baseRowH unchanged.
+    function _printDiscRowMinH(disc, fs, baseRowH, maxLabelLines, flagClearance) {
+      var pDiscLines = flatMode ? (maxLabelLines[disc] || 0) : 0;
+      var pLabelAreaH = pDiscLines > 0 ? (pDiscLines * fs + 2) : 0;
+      var pFlagClr = (flatMode && flatShowFlags) ? (flagClearance[disc] || 0) : 0;
+      var pAboveH = pLabelAreaH + pFlagClr;
+      var minBarH = 4;
+      return Math.max(baseRowH, pAboveH + minBarH + pLabelAreaH + 4);
+    }
+
     // Render a single print page as a div containing an SVG
     function _buildPrintPageEl(opts) {
       // opts: { pgW, pgH, mT, mB, mL, mR, usableW, usableH, headerH, rulerH, footerH, bodyH,
@@ -8111,6 +8425,9 @@
       var lw    = rawLw + dcW + durW;        // total left panel; timeline starts at mL+lw
       var tw  = opts.timelineW;
       var rH  = opts.rulerH;
+      // Already bumped up (uniformly, for every row) by the caller if any flat-mode
+      // disc row's flags/outside-labels need more room than the raw Row ht slider —
+      // see effectiveRowH in renderPrintPreview.
       var rowH = opts.rowH;
       var fs  = opts.fontSize;
 
@@ -8163,6 +8480,29 @@
       function rect(x,y,w,h,fill,attrs) {
         var el = mk('rect', Object.assign({x:x,y:y,width:w,height:h,fill:fill}, attrs||{}));
         return el;
+      }
+      // Milestone/flag name+phase+note label, drawn to the right of the marker —
+      // mirrors the bar-label block below but for point markers, which previously
+      // had no label at all in print (milestones showed just a diamond, flags just
+      // the pole+triangle with no name/notes text next to them).
+      function _printMarkerLabel(t, labelX, cy, fs) {
+        if (!(opts.showName || opts.showPhase || opts.showNote)) return;
+        var lines = [];
+        if (opts.showName)  lines.push({ text: t.name, big: true });
+        if (opts.showPhase && (t.sub || t.group)) lines.push({ text: t.sub || t.group, big: false });
+        if (opts.showNote  && t.note) lines.push({ text: t.note, big: false });
+        if (!lines.length) return;
+        var lineGap = fs + 2;
+        var startY = cy - ((lines.length - 1) * lineGap) / 2 + fs * 0.35;
+        for (var li = 0; li < lines.length; li++) {
+          var lbl = lines[li];
+          var lfs = lbl.big ? fs : Math.max(5, fs - 2);
+          txt(lbl.text, {
+            x: labelX, y: startY + li * lineGap, 'font-size': lfs,
+            fill: lbl.big ? '#0f172a' : '#64748b', 'font-weight': lbl.big ? '700' : '500',
+            'clip-path': 'url(#' + clipId + ')'
+          });
+        }
       }
 
       // ── Page white background ──────────────────────────────────
@@ -8539,14 +8879,42 @@
           }
           // In flat mode: two label areas (above + below), alternating placement per task
           var _lgap = fs;
-          var _pDiscLines = opts.flatMode ? ((_flatMaxLabelLines[row.disc] || 0)) : 0;
+          var _pDiscLines = opts.flatMode ? ((opts.prMaxLabelLines[row.disc] || 0)) : 0;
           var _pLabelAreaH = _pDiscLines > 0 ? (_pDiscLines * _lgap + 2) : 0;
-          var _fbH = opts.flatMode ? Math.max(4, Math.min(opts.flatBarHeight || 24, rowH - 2 * _pLabelAreaH - 4)) : rowH - 4;
-          var _fbY = ry + (opts.flatMode ? _pLabelAreaH + 2 : Math.floor((rowH - _fbH) / 2));
+          // Flags render above the bar too (pole+icon) — reserve at least as much
+          // clearance above the bar as the interactive chart does, so print doesn't
+          // draw a flag overlapping the bar or the row above. No reservation (and no
+          // flag drawing below) when the Flags toggle is off.
+          var _pFlagClr = (opts.flatMode && flatShowFlags) ? (opts.prFlagClearance[row.disc] || 0) : 0;
+          var _pAboveH = _pLabelAreaH + _pFlagClr; // stacked, see interactive row-height pre-pass comment
+          // Fill whatever room this row's actual height leaves after the above/below
+          // reservations, same as non-flat print rows (rowH - 4) — a fixed cap at the
+          // interactive Bar H setting made the bar ignore Row ht entirely once it
+          // exceeded that cap, while still shrinking it down to a near-invisible
+          // sliver as Row ht got smaller.
+          var _fbH = opts.flatMode ? Math.max(4, rowH - _pAboveH - _pLabelAreaH - 4) : rowH - 4;
+          var _fbY = ry + (opts.flatMode ? _pAboveH + 2 : Math.floor((rowH - _fbH) / 2));
           var _pFov = opts.flatLabelOverflow || 0;
           for (var di = 0; di < row.tasks.length; di++) {
             var dt = row.tasks[di];
             if (!dt.start || !dt.end || dt.end <= opts.sliceMin || dt.start >= opts.sliceMax) continue;
+            if (dt.type === 'flag') {
+              // Flat-mode flags previously fell through to the generic bar-rect
+              // drawing below, rendering as a near-invisible 3px sliver instead of
+              // the pole+triangle+label shape the interactive chart uses.
+              if (!flatShowFlags) continue;
+              var dfx = mL + lw + _pDateToX(dt.start, opts.sliceMin, opts.sliceMax, tw);
+              var dfFlagH = 11;
+              var dfBottom = _fbY + _fbH;                    // pole bottom = bar's bottom edge
+              var dfTop = _fbY - flatFlagOffset - dfFlagH;   // icon sits flatFlagOffset px above the bar top
+              var dfColor = _effectiveBarColor(dt);
+              mk('line', {x1:dfx, y1:dfTop, x2:dfx, y2:dfBottom, stroke:'#374151', 'stroke-width':1.5, 'clip-path':'url(#'+clipId+')'});
+              mk('polygon', {
+                points: dfx+','+dfTop+' '+(dfx+14)+','+(dfTop+dfFlagH/2)+' '+dfx+','+(dfTop+dfFlagH),
+                fill: dfColor, 'clip-path':'url(#'+clipId+')'});
+              _printMarkerLabel(dt, dfx + 18, dfTop + dfFlagH/2, fs);
+              continue;
+            }
             var dbx1 = _pDateToX(dt.start, opts.sliceMin, opts.sliceMax, tw);
             var dbx2 = _pDateToX(dt.end,   opts.sliceMin, opts.sliceMax, tw);
             var dbC1 = Math.max(0, dbx1), dbC2 = Math.min(tw, dbx2);
@@ -8561,7 +8929,7 @@
             }
             // Bar labels
             if (opts.flatMode && dbW >= 16 && (opts.showName || opts.showPhase || opts.showNote)) {
-              var _pPlacement = _flatLabelPlacementMap[dt.id] || 'above';
+              var _pPlacement = opts.prLabelPlacementMap[dt.id] || 'above';
               var pLblFill = (opts.barTextColor !== null && opts.barTextColor)
                 ? opts.barTextColor
                 : (darkMode ? '#e2e8f0' : '#1e293b');
@@ -8702,6 +9070,7 @@
               dia.setAttribute('fill', barColor);
               dia.setAttribute('clip-path', 'url(#' + clipId + ')');
               svg.appendChild(dia);
+              _printMarkerLabel(t, cx + hs + 5, cy, fs);
             } else if (t.type === 'flag') {
               var fx = mL + lw + bx1, fCy = ry + rowH/2;
               var fPH = Math.min(rowH - 4, 18), fFH = Math.min(fPH * 0.5, 8);
@@ -8711,6 +9080,7 @@
               mk('polygon', {
                 points: fx+','+fTop+' '+(fx+11)+','+(fTop+fFH/2)+' '+fx+','+(fTop+fFH),
                 fill: barColor, 'clip-path':'url(#'+clipId+')'});
+              _printMarkerLabel(t, fx + 15, fCy, fs);
             } else {
               var barEl = mk('rect', {
                 x:mL+lw+bC1, y:bY, width:bW, height:bH, rx:2,
@@ -8981,8 +9351,23 @@
       var daysPerPage = splitH ? monthsPP * 30.4375 : totalDays;
       var hPages = splitH ? Math.ceil(totalDays / daysPerPage) : 1;
 
+      var printRows = _buildPrintRows();
+      // Flat-mode label wrap/placement/flag-clearance, computed for PRINT's own
+      // page width and font size (not the interactive chart's) — see
+      // _computePrintFlatLayout. Every page renders at the same pixels-per-day
+      // scale (daysPerPage vs. timelineW), so this only needs to run once.
+      var _prFlat = _computePrintFlatLayout(tasks, timelineW, daysPerPage * 86400000, fontSize);
+      // A flat-mode disc row can need more height than the user's Row ht (a flag or
+      // an outside bar label may not fit in it). Rather than growing just that one
+      // row — which made rows look uneven across the page — every row grows
+      // together to whatever the tallest requirement is, so the print grid stays
+      // uniform the way a printed schedule is expected to look.
+      var effectiveRowH = rowH;
+      printRows.forEach(function(pr) {
+        if (pr.type === 'disc') effectiveRowH = Math.max(effectiveRowH, _printDiscRowMinH(pr.disc, fontSize, rowH, _prFlat.maxLabelLines, _prFlat.flagClearance));
+      });
+      rowH = effectiveRowH;
       var rowsPerPage = Math.max(1, Math.floor(bodyH / rowH));
-      var printRows   = _buildPrintRows();
       var vPages      = Math.ceil(printRows.length / rowsPerPage);
       var totalPages  = vPages * hPages;
 
@@ -9006,6 +9391,7 @@
             headerH: headerH, rulerH: rulerH, footerH: footerH, bodyH: bodyH,
             labelW: labelW, timelineW: timelineW, dateColW: prDateColW, durColW: prDurColW,
             rowH: rowH, fontSize: fontSize,
+            prMaxLabelLines: _prFlat.maxLabelLines, prLabelPlacementMap: _prFlat.labelPlacementMap, prFlagClearance: _prFlat.flagClearance,
             titleFont: (function() { var el = document.getElementById('pr-title-font'); return el ? (parseInt(el.value, 10) || 13) : 13; })(),
             rowSlice: rowSlice,
             sliceMin: sliceMin, sliceMax: sliceMax,
