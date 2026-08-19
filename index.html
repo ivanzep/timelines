@@ -146,6 +146,25 @@
       with — vs. the raw Row ht) and every row on the print grows together
       to that value, so the grid stays uniform while still fitting every
       row's content.
+    • Fixed the real cause of persisting flat-mode print row-height glitches:
+      print's own _flatMaxLabelLines/_flatLabelPlacementMap/_flatFlagClearance
+      were never computed for print at all — they read the INTERACTIVE
+      chart's globals, populated from whatever date range/zoom/font size the
+      interactive view happened to be showing, which routinely differs from
+      print's own independent From/To range, page width, and font size. A
+      bar whose label fit inside interactively could render far narrower in
+      print and need outside placement there instead, so print's row-height
+      reservation and its actual label wrapping were both silently wrong
+      whenever the two views disagreed. New _computePrintFlatLayout() runs
+      the same wrap/placement algorithm using print's own page width and
+      date-range-per-page scale; renderPrintPreview() computes it once (every
+      page/horizontal-split renders at the same pixels-per-day scale) and
+      passes it through opts instead of _buildPrintPageEl reading the
+      interactive globals.
+    • Added a slim top-of-page loading bar (#load-progress-bar), driven by
+      the existing _syncDot() busy/settled state — eases toward ~90% while a
+      Google Sheets Load/Save/version-switch is in flight and snaps to 100%
+      on completion, alongside the existing dim overlay + spinner.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1067,9 +1086,20 @@
     .tp-page-header { padding: 14px 16px 8px; border-bottom: 2px solid #1e293b; display: flex; justify-content: space-between; align-items: flex-end; }
     .tp-page-header h1 { font-size: 1rem; font-weight: 800; letter-spacing: 0.06em; color: #0f172a; margin: 0; }
     .tp-page-header .tp-meta { font-size: 0.65rem; color: #64748b; text-align: right; }
+
+    /* Slim top-of-page loading bar — shown while fetching from Google Sheets */
+    #load-progress-bar {
+      position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+      background: linear-gradient(90deg, #0284c7, #38bdf8);
+      z-index: 99999; opacity: 0; pointer-events: none;
+      transition: width 0.4s ease, opacity 0.3s ease;
+      box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+    }
+    #load-progress-bar.show { opacity: 1; }
   </style>
 </head>
 <body>
+  <div id="load-progress-bar"></div>
   <div class="app-shell">
 
     <!-- Hamburger menu — top-right corner of app shell -->
@@ -6844,6 +6874,34 @@
     var versions = [{ name: 'Default', taskSheetName: DEFAULT_TASK_SHEET_NAME }]; // populated from the backend on Load
     var _switchingVersion = false; // guards against re-entrant switches while a load/save is in flight
 
+    var _loadProgressTimer = null;
+    // Slim top-of-page bar, eased toward ~90% while busy and snapped to 100% on
+    // completion — an indeterminate op (fetch to Apps Script) has no real percent,
+    // so this is a visual "still working" cue, not a literal progress measurement.
+    function _loadProgressBar(show) {
+      var bar = document.getElementById('load-progress-bar');
+      if (!bar) return;
+      clearInterval(_loadProgressTimer);
+      if (show) {
+        bar.style.transition = 'none';
+        bar.style.width = '0%';
+        bar.offsetHeight; // force reflow so the next width change animates
+        bar.style.transition = '';
+        bar.classList.add('show');
+        var pct = 0;
+        _loadProgressTimer = setInterval(function() {
+          pct += (90 - pct) * 0.15;
+          bar.style.width = pct + '%';
+        }, 200);
+      } else {
+        bar.style.width = '100%';
+        setTimeout(function() {
+          bar.classList.remove('show');
+          setTimeout(function() { bar.style.width = '0%'; }, 300);
+        }, 200);
+      }
+    }
+
     function _syncDot(state, label) {
       var dot = document.getElementById('sync-dot');
       var lbl = document.getElementById('sync-label');
@@ -6860,6 +6918,7 @@
           dim.classList.remove('active');
         }
       }
+      _loadProgressBar(state === 'busy');
     }
 
     function _setSheetNameDisplay(name, url) {
@@ -8259,14 +8318,93 @@
       return rows;
     }
 
+    // Print-specific version of the flat-mode label-wrap/placement pre-pass in
+    // renderGantt() (~line 3504). The interactive chart's _flatMaxLabelLines /
+    // _flatLabelPlacementMap / _flatFlagClearance globals are computed from the
+    // INTERACTIVE view's own date range, zoom, and font size — print has its own
+    // independent From/To range, page width, and font size (routinely different
+    // from whatever the interactive chart happens to be showing), so a bar that
+    // fits its label inside interactively can be a completely different pixel
+    // width in print, needing outside placement there instead. Reusing the
+    // interactive globals gave print systematically wrong (usually too-small)
+    // row-height reservations. tw/pageSpanMs describe ONE page's date window —
+    // every page (including each horizontal split) renders at the same pixels-
+    // per-day scale, so this only needs to run once per print, not per page.
+    function _computePrintFlatLayout(srcTasks, tw, pageSpanMs, fs) {
+      var maxLabelLines = {}, labelPlacementMap = {}, flagClearance = {};
+      if (!flatMode || !srcTasks.length) return { maxLabelLines: maxLabelLines, labelPlacementMap: labelPlacementMap, flagClearance: flagClearance };
+      var totMs = pageSpanMs || 1;
+      var cw = fs * 0.6;
+      var discIdx = {};
+      for (var i = 0; i < srcTasks.length; i++) {
+        var t = srcTasks[i];
+        if (t.type !== 'bar' || !t.start || !t.end) continue;
+        var disc = t.group || '';
+        if (discIdx[disc] === undefined) discIdx[disc] = 0;
+        // Only the SPAN (x2-x1) is used below, so an absolute reference point for
+        // x1/x2 individually doesn't matter — epoch time works fine as the origin.
+        var x1 = t.start.getTime() / totMs * tw;
+        var x2 = t.end.getTime()   / totMs * tw;
+        var barW = Math.max(8, Math.abs(x2 - x1));
+        var inW = barW - 10;
+        var lbls = [];
+        if (displayOptions.showName  && t.name)            lbls.push(t.name);
+        if (displayOptions.showPhase && (t.sub || t.group)) lbls.push(t.sub || t.group);
+        if (displayOptions.showNote  && t.note)             lbls.push(t.note);
+        var fitsInside = false;
+        if (!flatLabelsOutside && lbls.length > 0 && inW > 0) {
+          var totL = 0;
+          for (var li = 0; li < lbls.length; li++) {
+            var words = lbls[li].split(' '), cur = '';
+            for (var wi = 0; wi < words.length; wi++) {
+              var test = cur ? cur + ' ' + words[wi] : words[wi];
+              if (test.length * cw <= inW) { cur = test; }
+              else { if (cur) totL++; cur = words[wi]; }
+            }
+            if (cur) totL++;
+          }
+          fitsInside = totL > 0 && totL * fs <= flatBarHeight;
+        }
+        if (fitsInside) {
+          labelPlacementMap[t.id] = 'inside';
+        } else {
+          labelPlacementMap[t.id] = (discIdx[disc] % 2 === 0) ? 'above' : 'below';
+          discIdx[disc]++;
+          var extInW = barW - 10 + flatLabelOverflow;
+          if (extInW <= 0) continue;
+          var lines = 0;
+          for (var li2 = 0; li2 < lbls.length; li2++) {
+            var words2 = lbls[li2].split(' '), cur2 = '';
+            for (var wi2 = 0; wi2 < words2.length; wi2++) {
+              var test2 = cur2 ? cur2 + ' ' + words2[wi2] : words2[wi2];
+              if (test2.length * cw <= extInW) { cur2 = test2; }
+              else { if (cur2) lines++; cur2 = words2[wi2]; }
+            }
+            if (cur2) lines++;
+          }
+          if (lines > (maxLabelLines[disc] || 0)) maxLabelLines[disc] = Math.min(lines, 5);
+        }
+      }
+      if (flatShowFlags) {
+        for (var fi = 0; fi < srcTasks.length; fi++) {
+          var ft = srcTasks[fi];
+          if (ft.type !== 'flag') continue;
+          var fdisc = ft.group || '';
+          var clr = flatFlagOffset + 11 + 2;
+          if (clr > (flagClearance[fdisc] || 0)) flagClearance[fdisc] = clr;
+        }
+      }
+      return { maxLabelLines: maxLabelLines, labelPlacementMap: labelPlacementMap, flagClearance: flagClearance };
+    }
+
     // A flat-mode disc row's minimum height — mirrors the _pAboveH/_fbH/_fbY math in
     // _buildPrintPageEl exactly, so pagination reserves the same room the row will
     // actually render at. Non-disc rows (and disc rows with no flags/outside labels)
     // just return baseRowH unchanged.
-    function _printDiscRowMinH(disc, fs, baseRowH) {
-      var pDiscLines = flatMode ? (_flatMaxLabelLines[disc] || 0) : 0;
+    function _printDiscRowMinH(disc, fs, baseRowH, maxLabelLines, flagClearance) {
+      var pDiscLines = flatMode ? (maxLabelLines[disc] || 0) : 0;
       var pLabelAreaH = pDiscLines > 0 ? (pDiscLines * fs + 2) : 0;
-      var pFlagClr = (flatMode && flatShowFlags) ? (_flatFlagClearance[disc] || 0) : 0;
+      var pFlagClr = (flatMode && flatShowFlags) ? (flagClearance[disc] || 0) : 0;
       var pAboveH = pLabelAreaH + pFlagClr;
       var minBarH = 4;
       return Math.max(baseRowH, pAboveH + minBarH + pLabelAreaH + 4);
@@ -8741,13 +8879,13 @@
           }
           // In flat mode: two label areas (above + below), alternating placement per task
           var _lgap = fs;
-          var _pDiscLines = opts.flatMode ? ((_flatMaxLabelLines[row.disc] || 0)) : 0;
+          var _pDiscLines = opts.flatMode ? ((opts.prMaxLabelLines[row.disc] || 0)) : 0;
           var _pLabelAreaH = _pDiscLines > 0 ? (_pDiscLines * _lgap + 2) : 0;
           // Flags render above the bar too (pole+icon) — reserve at least as much
           // clearance above the bar as the interactive chart does, so print doesn't
           // draw a flag overlapping the bar or the row above. No reservation (and no
           // flag drawing below) when the Flags toggle is off.
-          var _pFlagClr = (opts.flatMode && flatShowFlags) ? (_flatFlagClearance[row.disc] || 0) : 0;
+          var _pFlagClr = (opts.flatMode && flatShowFlags) ? (opts.prFlagClearance[row.disc] || 0) : 0;
           var _pAboveH = _pLabelAreaH + _pFlagClr; // stacked, see interactive row-height pre-pass comment
           // Fill whatever room this row's actual height leaves after the above/below
           // reservations, same as non-flat print rows (rowH - 4) — a fixed cap at the
@@ -8791,7 +8929,7 @@
             }
             // Bar labels
             if (opts.flatMode && dbW >= 16 && (opts.showName || opts.showPhase || opts.showNote)) {
-              var _pPlacement = _flatLabelPlacementMap[dt.id] || 'above';
+              var _pPlacement = opts.prLabelPlacementMap[dt.id] || 'above';
               var pLblFill = (opts.barTextColor !== null && opts.barTextColor)
                 ? opts.barTextColor
                 : (darkMode ? '#e2e8f0' : '#1e293b');
@@ -9214,6 +9352,11 @@
       var hPages = splitH ? Math.ceil(totalDays / daysPerPage) : 1;
 
       var printRows = _buildPrintRows();
+      // Flat-mode label wrap/placement/flag-clearance, computed for PRINT's own
+      // page width and font size (not the interactive chart's) — see
+      // _computePrintFlatLayout. Every page renders at the same pixels-per-day
+      // scale (daysPerPage vs. timelineW), so this only needs to run once.
+      var _prFlat = _computePrintFlatLayout(tasks, timelineW, daysPerPage * 86400000, fontSize);
       // A flat-mode disc row can need more height than the user's Row ht (a flag or
       // an outside bar label may not fit in it). Rather than growing just that one
       // row — which made rows look uneven across the page — every row grows
@@ -9221,7 +9364,7 @@
       // uniform the way a printed schedule is expected to look.
       var effectiveRowH = rowH;
       printRows.forEach(function(pr) {
-        if (pr.type === 'disc') effectiveRowH = Math.max(effectiveRowH, _printDiscRowMinH(pr.disc, fontSize, rowH));
+        if (pr.type === 'disc') effectiveRowH = Math.max(effectiveRowH, _printDiscRowMinH(pr.disc, fontSize, rowH, _prFlat.maxLabelLines, _prFlat.flagClearance));
       });
       rowH = effectiveRowH;
       var rowsPerPage = Math.max(1, Math.floor(bodyH / rowH));
@@ -9248,6 +9391,7 @@
             headerH: headerH, rulerH: rulerH, footerH: footerH, bodyH: bodyH,
             labelW: labelW, timelineW: timelineW, dateColW: prDateColW, durColW: prDurColW,
             rowH: rowH, fontSize: fontSize,
+            prMaxLabelLines: _prFlat.maxLabelLines, prLabelPlacementMap: _prFlat.labelPlacementMap, prFlagClearance: _prFlat.flagClearance,
             titleFont: (function() { var el = document.getElementById('pr-title-font'); return el ? (parseInt(el.value, 10) || 13) : 13; })(),
             rowSlice: rowSlice,
             sliceMin: sliceMin, sliceMax: sliceMax,
