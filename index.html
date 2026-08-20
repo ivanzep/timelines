@@ -238,6 +238,31 @@
       of them touch taskSheetName/tasks. Distinct from the existing _isDirty
       check (unsaved local edits not yet even attempted to save) — this
       guards the save request itself while it's actually in transit.
+    • Fixed print dependency arrows never appearing in Flat mode. The print
+      arrow-routing pass built its bar-position lookup only from individual
+      task rows (non-flat), explicitly skipping disc-type rows ('continue')
+      — flat mode produces ONLY disc rows, so the lookup was always empty
+      and every arrow silently had no source/target position to route
+      between. It now also walks each disc row's tasks, computing bar
+      x1/x2/midY from the same uniform bar-band math the row itself renders
+      with (opts.prAboveH/prBarH), and flag pole-midpoint for flag tasks —
+      mirroring the interactive chart's barPositions exactly.
+    • Moved the "Notes" bar-label toggle from the Flat Options card into the
+      Bar Labels section (alongside Name/Group/Status) and made it work in
+      normal (non-Flat) mode too — previously gated behind flatMode both in
+      the interactive renderTaskBar and in print's marker-label/bar-label
+      builders, so a project not using Flat mode had no way to show the
+      NOTES column at all. Setting name (flatShowNotes) and DOM id
+      (opt-flat-show-notes) are unchanged so it keeps round-tripping through
+      already-saved settings; only where it renders and its home in the
+      settings UI changed.
+    • Task Properties: added a group-reorder <select> + ▲/▼ buttons next to
+      the existing By Date/A-Z/Custom sort buttons, as a click-based
+      alternative to dragging a group row (which can be awkward to grab
+      precisely, especially on touch devices). Picking a group and clicking
+      ▲/▼ swaps it with its neighbor in taskListOrder, switches sort mode to
+      Custom, and refreshes; the buttons disable themselves at the top/
+      bottom of the list.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1378,6 +1403,7 @@
                 <label class="sb-row"><input type="checkbox" id="opt-name" checked /> Name</label>
                 <label class="sb-row"><input type="checkbox" id="opt-phase" /> Group</label>
                 <label class="sb-row"><input type="checkbox" id="opt-note" checked /> Status</label>
+                <label class="sb-row"><input type="checkbox" id="opt-flat-show-notes" /> Notes</label>
               </div>
 
               <!-- Display -->
@@ -1395,7 +1421,6 @@
                 <label class="sb-row"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-outside" /> Outside</label>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-show-flags" checked /> Flags</label>
-                <label class="sb-row"><input type="checkbox" id="opt-flat-show-notes" /> Notes</label>
                 <label class="sb-slider-row">Flag Offset <input type="range" id="opt-flat-flag-offset" min="0" max="40" value="8" step="1" class="sb-slider" /> <span class="sb-val" id="opt-flat-flag-offset-val">8</span>px</label>
                 <label class="sb-slider-row">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" class="sb-slider" /> <span class="sb-val" id="opt-flat-barh-val">24</span>px</label>
                 <label class="sb-slider-row">Overflow <input type="range" id="opt-flat-overflow" min="0" max="400" value="0" step="10" class="sb-slider" /> <span class="sb-val" id="opt-flat-overflow-val">0</span>px</label>
@@ -1543,6 +1568,9 @@
         <button id="tl-sort-date-btn"   class="secondary" title="Sort groups by earliest task start date">📅 By Date</button>
         <button id="tl-sort-alpha-btn"  class="secondary" title="Sort groups A → Z">🔤 A–Z</button>
         <button id="tl-sort-custom-btn" class="secondary active" title="Manual drag order">↕ Custom</button>
+        <select id="tl-reorder-select" class="secondary" style="max-width:170px;" title="Pick a group to move up/down"></select>
+        <button id="tl-reorder-up-btn"   class="secondary" title="Move selected group up">▲</button>
+        <button id="tl-reorder-down-btn" class="secondary" title="Move selected group down">▼</button>
       </div>
       <div class="task-search-row">
         <input type="text" id="task-search-input" placeholder="🔍  Search tasks…" />
@@ -1810,7 +1838,7 @@
     var flatLabelOverflow = 0;       // extra px the label clip extends right of bar end
     var flatLabelsOutside = false;   // when true: always place labels outside bar (above/below); default: inside if fits
     var flatShowFlags = true;        // when false: flags are hidden while Flat mode is on
-    var flatShowNotes = false;       // when true: each task's NOTES column text is drawn as an extra bar label (Flat mode only)
+    var flatShowNotes = false;       // when true: each task's NOTES column text is drawn as an extra bar label (Bar Labels section; works in both Flat and normal mode)
     var flatFlagOffset = 8;          // px the flag pole/triangle extends above its group's bar top, in Flat mode
     var useStatusColors = false;     // when true: bar/milestone/flag fill uses STATUS_COLOR_MAP[task.status]
     var _flatMaxLabelLines = {};     // per-group: disc → max outside lines; pre-computed each render
@@ -2307,6 +2335,45 @@
         var btn = document.getElementById(modes[m]);
         if (btn) btn.classList.toggle('active', m === taskListGroupSortMode);
       });
+    }
+
+    // Populate the group-reorder <select> with the current Task List group order,
+    // keeping the previously selected group selected across refreshes (when it
+    // still exists) so repeated ▲/▼ clicks keep targeting the same group.
+    function _populateGroupReorderSelect(groupOrder) {
+      var sel = document.getElementById('tl-reorder-select');
+      if (!sel) return;
+      var prev = sel.value;
+      sel.innerHTML = '';
+      (groupOrder || []).forEach(function(g) {
+        var opt = document.createElement('option');
+        opt.value = g; opt.textContent = g;
+        sel.appendChild(opt);
+      });
+      if (groupOrder && groupOrder.indexOf(prev) !== -1) sel.value = prev;
+      var idx = groupOrder ? groupOrder.indexOf(sel.value) : -1;
+      var upBtn = document.getElementById('tl-reorder-up-btn');
+      var downBtn = document.getElementById('tl-reorder-down-btn');
+      if (upBtn)   upBtn.disabled   = idx <= 0;
+      if (downBtn) downBtn.disabled = idx === -1 || !groupOrder || idx >= groupOrder.length - 1;
+    }
+
+    // Move the group selected in #tl-reorder-select up (-1) or down (+1) within
+    // taskListOrder — a click-based alternative to drag-and-drop for reordering
+    // groups, useful when dragging a group row precisely is awkward (e.g. touch).
+    function _moveGroupInOrder(direction) {
+      var sel = document.getElementById('tl-reorder-select');
+      if (!sel || !sel.value) return;
+      var name = sel.value;
+      var idx = taskListOrder.indexOf(name);
+      if (idx === -1) return;
+      var target = idx + direction;
+      if (target < 0 || target >= taskListOrder.length) return;
+      taskListOrder.splice(idx, 1);
+      taskListOrder.splice(target, 0, name);
+      taskListGroupSortMode = 'custom';
+      updateTaskListGroupSortButtons();
+      refreshTaskTable();
     }
 
     function loadDefaults() {
@@ -3063,6 +3130,7 @@
         })(groupOrder[gi2], groupMap[groupOrder[gi2]] || []);
       }
       updateSortIndicators();
+      _populateGroupReorderSelect(groupOrder);
     }
 
     // Build all <td> cells for a task row (shared by grouped + flat modes)
@@ -4769,9 +4837,10 @@
       var phaseText = task.sub || task.group || '';
       if (displayOptions.showPhase && phaseText) labelsToShow.push({ kind: 'sub', text: phaseText });
       if (displayOptions.showNote && task.note) labelsToShow.push({ kind: 'note', text: task.note });
-      // Flat mode "Notes" toggle — the sheet's NOTES column (task.notes), distinct from
-      // task.note (the STATUS text the "Status" bar-label checkbox controls).
-      if (flatMode && flatShowNotes && task.notes) labelsToShow.push({ kind: 'note', text: task.notes });
+      // "Notes" bar-label toggle — the sheet's NOTES column (task.notes), distinct from
+      // task.note (the STATUS text the "Status" bar-label checkbox controls). Works in
+      // both Flat and normal mode.
+      if (flatShowNotes && task.notes) labelsToShow.push({ kind: 'note', text: task.notes });
 
       var fontSizes = { name: ganttBarFontSize, sub: Math.max(6, ganttBarFontSize - 3), note: Math.max(6, ganttBarFontSize - 4) };
       var startY = barY + (labelsToShow.length === 1 ? barH/2 + 4 : 12);
@@ -6516,6 +6585,17 @@
       document.getElementById('tl-sort-date-btn').addEventListener('click',   function() { sortTaskListGroups('date'); });
       document.getElementById('tl-sort-alpha-btn').addEventListener('click',  function() { sortTaskListGroups('alpha'); });
       document.getElementById('tl-sort-custom-btn').addEventListener('click', function() { sortTaskListGroups('custom'); });
+
+      // Reorder-by-dropdown — an alternative to drag-and-drop for moving a
+      // discipline's group up/down in the Task List (handy on touch devices,
+      // where dragging a group row can be finicky).
+      document.getElementById('tl-reorder-up-btn').addEventListener('click', function() { _moveGroupInOrder(-1); });
+      document.getElementById('tl-reorder-down-btn').addEventListener('click', function() { _moveGroupInOrder(1); });
+      document.getElementById('tl-reorder-select').addEventListener('change', function() {
+        var idx = taskListOrder.indexOf(this.value);
+        document.getElementById('tl-reorder-up-btn').disabled   = idx <= 0;
+        document.getElementById('tl-reorder-down-btn').disabled = idx === -1 || idx >= taskListOrder.length - 1;
+      });
 
       // Batch group color — Apply
       document.getElementById('batch-color-apply-btn').addEventListener('click', function() {
@@ -8632,11 +8712,12 @@
       // had no label at all in print (milestones showed just a diamond, flags just
       // the pole+triangle with no name/notes text next to them).
       function _printMarkerLabel(t, labelX, cy, fs) {
-        if (!(opts.showName || opts.showPhase || opts.showNote)) return;
+        if (!(opts.showName || opts.showPhase || opts.showNote || flatShowNotes)) return;
         var lines = [];
         if (opts.showName)  lines.push({ text: t.name, big: true });
         if (opts.showPhase && (t.sub || t.group)) lines.push({ text: t.sub || t.group, big: false });
         if (opts.showNote  && t.note) lines.push({ text: t.note, big: false });
+        if (flatShowNotes  && t.notes) lines.push({ text: t.notes, big: false });
         if (!lines.length) return;
         var lineGap = fs + 2;
         var startY = cy - ((lines.length - 1) * lineGap) / 2 + fs * 0.35;
@@ -9247,11 +9328,12 @@
               }
 
               // Bar labels — respect displayOptions
-              if (opts.showName || opts.showPhase || opts.showNote) {
+              if (opts.showName || opts.showPhase || opts.showNote || flatShowNotes) {
                 var lines = [];
                 if (opts.showName)  lines.push({ text: t.name,  big: true });
                 if (opts.showPhase && (t.sub || t.group)) lines.push({ text: t.sub || t.group, big: false });
                 if (opts.showNote  && t.note) lines.push({ text: t.note, big: false });
+                if (flatShowNotes  && t.notes) lines.push({ text: t.notes, big: false });
 
                 var lineGap = bH > (lines.length * (fs + 2)) ? fs + 2 : bH / (lines.length + 0.5);
                 var startLblY = bY + bH/2 - ((lines.length - 1) * lineGap) / 2 + fs * 0.35;
@@ -9303,11 +9385,38 @@
 
       // ── Dependency arrows (print) ──────────────────────────────
       if (opts.showDeps) {
-        // Build print-space bar positions for all visible individual task rows
+        // Build print-space bar positions for every visible row — individual task
+        // rows (non-flat) and flat-mode disc rows alike. Disc rows were previously
+        // skipped entirely (continue), so tasks.forEach below always found psrc/
+        // ptgt undefined in flat mode and no dependency arrow ever got drawn there.
         var pPos = {};
         for (var dri = 0; dri < opts.rowSlice.length; dri++) {
           var drow = opts.rowSlice[dri];
-          if (drow.type === 'gh' || drow.type === 'disc') continue;
+          if (drow.type === 'gh') continue;
+          if (drow.type === 'disc') {
+            // Mirrors the bar-band math the disc row itself renders with (see the
+            // 'disc' branch above): all bars in a flat-mode row share one uniform
+            // band, and flags sit above it via the same flatFlagOffset pole math.
+            var _dRy = bodyY + dri * rowH;
+            var _dAboveH = opts.flatMode ? (opts.prAboveH || 0) : 0;
+            var _dBarH = opts.flatMode ? (opts.prBarH || Math.max(4, rowH - 4)) : rowH - 4;
+            var _dBarY = _dRy + (opts.flatMode ? _dAboveH + 2 : Math.floor((rowH - _dBarH) / 2));
+            var _dBarMidY = _dBarY + _dBarH / 2;
+            (drow.tasks || []).forEach(function(dt3) {
+              if (!dt3.start) return;
+              if (dt3.type === 'flag') {
+                var _dfx = mL + lw + _pDateToX(dt3.start, opts.sliceMin, opts.sliceMax, tw);
+                var _dfFlagH = 11;
+                var _dfTop = _dBarY - flatFlagOffset - _dfFlagH;
+                pPos[dt3.id] = { x1: _dfx, x2: _dfx, midY: _dfTop + _dfFlagH / 2 };
+              } else if (dt3.end) {
+                var _dbx1 = mL + lw + _pDateToX(dt3.start, opts.sliceMin, opts.sliceMax, tw);
+                var _dbx2 = dt3.type === 'milestone' ? _dbx1 : mL + lw + _pDateToX(dt3.end, opts.sliceMin, opts.sliceMax, tw);
+                pPos[dt3.id] = { x1: _dbx1, x2: _dbx2, midY: _dBarMidY };
+              }
+            });
+            continue;
+          }
           var dt2 = drow.task;
           if (!dt2 || !dt2.start) continue;
           var pRy2  = bodyY + dri * rowH;
