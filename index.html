@@ -203,6 +203,15 @@
       attribute regardless of per-task value — selection highlighting
       (blue/amber) is preserved by checking selection state before falling
       back to the task's color.
+    • Fixed "Dashed" task bars in the Gantt view only being clickable/
+      draggable on their outline, not their whole body like every other bar
+      style. Root cause: .task-bar.dashed uses fill:none, and an SVG shape's
+      default pointer-events value (visiblePainted) only hit-tests the
+      painted stroke when there's no fill — the interior never received
+      mousedown at all, so drag-to-reschedule only worked if the pointer
+      happened to land exactly on the dashed line. renderTaskBar now sets
+      pointer-events:all on the rect for dashed tasks so the full bounding
+      box is selectable/draggable, matching solid and Dashed Outline bars.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -4691,6 +4700,11 @@
         // the task's own color.
         rect.style.stroke = _barSelClass === ' selected' ? '#0284c7'
           : _barSelClass === ' multi-selected' ? '#f59e0b' : barColor;
+        // .task-bar.dashed has fill:none — an unfilled SVG shape's default
+        // pointer-events (visiblePainted) only hit-tests the painted stroke, so
+        // clicking/dragging anywhere inside the outline missed the bar entirely.
+        // Force the whole rect (fill included) to register pointer events.
+        rect.style.pointerEvents = 'all';
         rect.setAttribute('class', 'task-bar dashed' + _barSelClass);
       } else if (task.dashedOutline) {
         rect.setAttribute('fill', barColor);
