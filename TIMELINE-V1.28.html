@@ -263,6 +263,35 @@
       ▲/▼ swaps it with its neighbor in taskListOrder, switches sort mode to
       Custom, and refreshes; the buttons disable themselves at the top/
       bottom of the list.
+    • Print dependency arrows made visually bolder: a 1px, 0.8-opacity
+      light-gray line (the same color as the grid lines) was structurally
+      present and correctly positioned but easy to mistake for "not
+      showing" at typical print zoom, especially against a busy chart.
+      Non-violated arrows now draw at 2px in a darker slate (#475569,
+      matching neither the grid nor the violated-red case) with a larger
+      arrowhead; violated (backward) dependencies keep their red/dashed
+      styling unchanged.
+    • Versions: added a Rename button next to the Version dropdown's
+      Delete button (hidden for the Default version, whose name the
+      backend never persists — writeVersions() always skips the default
+      row since it's implicit). The Default entry's dropdown label now
+      shows the actual task-list tab name it references
+      (DEFAULT_TASK_SHEET_NAME) instead of the literal word "Default",
+      which couldn't be renamed anyway and gave no indication of which
+      tab was actually in use.
+    • Added "Copy to Version…" to the Task Properties batch bar — copies
+      the checked tasks into another version's task list with every
+      property intact (color, colorOverride, note, notes, symbol, dashed/
+      dashedOutline, dependencies within the copied batch). Each task's
+      discipline is kept as-is; saveBackToTaskList()'s existing DISCIPLINE|
+      TASKNAME matching already appends to a matching group or creates a
+      new one, so "create the group if missing" needed no new backend
+      logic. Fetches the target version's own current tasks + full
+      settings first and merges the copies in locally — sending only a
+      patched taskSheetName in payload.settings would otherwise wipe every
+      other setting on the target's GANTT SETTINGS tab (writeSettings()
+      does a full clearContents() + rewrite treating anything absent as
+      blank). The currently loaded version is never touched.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -908,6 +937,12 @@
     .nv-radio-row input[type="radio"] { width:14px; height:14px; cursor:pointer; flex-shrink:0; accent-color:var(--accent); }
     #new-version-modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
 
+    /* ── Copy Tasks Modal (reuses .at-field / #new-version-modal-footer) ─ */
+    #copy-tasks-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
+    #copy-tasks-overlay.open { display:flex; }
+    #copy-tasks-modal { background:var(--panel); border-radius:18px; padding:26px 26px 20px; width:400px; max-width:93vw; box-shadow:0 24px 64px rgba(15,23,42,0.28); border:1px solid var(--border-strong); }
+    #copy-tasks-modal h3 { margin:0 0 18px; font-size:1.02rem; font-weight:800; display:flex; align-items:center; gap:8px; }
+
     /* ── Status Colors Modal ───────────────────────────────────── */
     #status-colors-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:9999; align-items:center; justify-content:center; }
     #status-colors-overlay.open { display:flex; }
@@ -1306,6 +1341,28 @@
       </div>
     </div>
 
+    <div id="copy-tasks-overlay">
+      <div id="copy-tasks-modal">
+        <h3>Copy Tasks to Another Version</h3>
+        <div class="at-field">
+          <span id="copy-tasks-count" style="font-size:0.85rem;color:var(--text-muted);">0 tasks selected</span>
+        </div>
+        <div class="at-field">
+          <label for="copy-target-select">Copy to</label>
+          <select id="copy-target-select"></select>
+        </div>
+        <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.4;">
+          Each task's discipline is kept as-is — if that group already exists in the
+          target version its tasks are appended to it, otherwise the group is created.
+          All task properties (color, style, symbol, notes, etc.) are copied.
+        </div>
+        <div id="new-version-modal-footer">
+          <button class="secondary" id="copy-tasks-cancel-btn">Cancel</button>
+          <button class="primary" id="copy-tasks-confirm-btn">Copy</button>
+        </div>
+      </div>
+    </div>
+
     <div class="topbar">
       <div class="topbar-top-row">
         <div class="project-meta" style="flex:1; min-width:0;">
@@ -1375,6 +1432,7 @@
               <select id="version-select" class="secondary" title="Switch between task-list versions/scenarios" style="max-width:160px;">
                 <option value="">Default</option>
               </select>
+              <button id="version-rename-btn" class="secondary" title="Rename this version" style="display:none;">Rename</button>
               <button id="version-delete-btn" class="secondary" title="Delete this version and its spreadsheet tabs" style="display:none;">Delete</button>
             </div>
           </div>
@@ -1621,6 +1679,7 @@
             Notes <input type="text" id="batch-notes-inp" placeholder="notes…" style="width:110px;padding:2px 5px;font-size:0.74rem;border-radius:5px;border:1px solid var(--border-strong);background:var(--bg-alt);color:var(--text);" title="Set notes for selected tasks" />
           </label>
           <button id="batch-apply-btn"  class="primary"    style="font-size:0.74rem;padding:3px 10px;">Apply</button>
+          <button id="batch-copy-version-btn" class="secondary" style="font-size:0.74rem;padding:3px 9px;">Copy to Version…</button>
           <button id="batch-delete-btn" class="danger"     style="font-size:0.74rem;padding:3px 9px;">Delete</button>
           <button id="batch-clear-sel-btn" class="secondary" style="font-size:0.74rem;padding:3px 9px;">Clear</button>
         </div>
@@ -6958,6 +7017,12 @@
           refreshTaskTable(); updateBatchBar();
         });
       }
+      var batchCopyVersionBtn = document.getElementById('batch-copy-version-btn');
+      if (batchCopyVersionBtn) batchCopyVersionBtn.addEventListener('click', openCopyTasksModal);
+      var copyTasksCancelBtn = document.getElementById('copy-tasks-cancel-btn');
+      if (copyTasksCancelBtn) copyTasksCancelBtn.addEventListener('click', closeCopyTasksModal);
+      var copyTasksConfirmBtn = document.getElementById('copy-tasks-confirm-btn');
+      if (copyTasksConfirmBtn) copyTasksConfirmBtn.addEventListener('click', confirmCopyTasks);
 
       // Project meta — listen on both 'input' and 'change' (date fields only fire 'change')
       [metaName, metaSubtitle, metaNote].forEach(function(el) {
@@ -7927,7 +7992,13 @@
         var opt = document.createElement('option');
         var isDefault = !v.taskSheetName || v.taskSheetName === DEFAULT_TASK_SHEET_NAME;
         opt.value = isDefault ? '' : v.taskSheetName;
-        opt.textContent = v.name || v.taskSheetName || 'Default';
+        // The backend seeds the default entry's name as the literal string
+        // "Default" and never persists a rename for it (writeVersions() always
+        // skips the default row — it's implicit) — showing that fixed label
+        // rather than the actual tab name it resolves to. Show the tab name
+        // instead for the default slot; non-default versions still prefer a
+        // custom name over their raw tab name.
+        opt.textContent = isDefault ? DEFAULT_TASK_SHEET_NAME : (v.name || v.taskSheetName);
         sel.appendChild(opt);
       });
       var newOpt = document.createElement('option');
@@ -7937,13 +8008,18 @@
       sel.value = prevValue;
       if (sel.value !== prevValue) sel.selectedIndex = 0; // prevValue no longer exists — fall back
 
-      // The default version's tabs are never deletable.
+      // The default version's tabs are never deletable, and its name can't be
+      // renamed (the backend never persists a rename for it — see above).
+      var isRealVersion = sel.value && sel.value !== '__new_version__';
       var delBtn = document.getElementById('version-delete-btn');
-      if (delBtn) delBtn.style.display = (sel.value && sel.value !== '__new_version__') ? '' : 'none';
+      if (delBtn) delBtn.style.display = isRealVersion ? '' : 'none';
+      var renBtn = document.getElementById('version-rename-btn');
+      if (renBtn) renBtn.style.display = isRealVersion ? '' : 'none';
     }
 
     function _versionDisplayName(taskSheetNameToFind) {
       var norm = (taskSheetNameToFind || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase();
+      if (norm === DEFAULT_TASK_SHEET_NAME.trim().toUpperCase()) return DEFAULT_TASK_SHEET_NAME; // see populateVersionDropdown
       for (var i = 0; i < versions.length; i++) {
         var vtsn = (versions[i].taskSheetName || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase();
         if (vtsn === norm) return versions[i].name || versions[i].taskSheetName;
@@ -8107,6 +8183,232 @@
       if (statusText) statusText.textContent = '☁ Deleted version "' + name + '". Switched to Default.';
     }
 
+    // Renames the currently active version's display name (its taskSheetName/tabs are
+    // untouched — this only changes the label shown in the dropdown). The default
+    // version can't be renamed: the backend never persists a name for it (writeVersions()
+    // always skips the default row, since it's implicit), so any rename there would be
+    // silently lost on the next Load.
+    async function renameCurrentVersion() {
+      if (!taskSheetName) { alert('The default version can\'t be renamed — its label always shows the task sheet tab name it references.'); return; }
+      if (_saveInFlight) {
+        alert('A save to Google Sheets is still in progress.\nPlease wait for it to finish before renaming a version.');
+        return;
+      }
+      if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
+
+      var current = null;
+      for (var i = 0; i < versions.length; i++) {
+        if ((versions[i].taskSheetName || DEFAULT_TASK_SHEET_NAME) === taskSheetName) { current = versions[i]; break; }
+      }
+      var oldName = current ? (current.name || current.taskSheetName) : _versionDisplayName(taskSheetName);
+      var newName = prompt('Rename version "' + oldName + '" to:', oldName);
+      if (newName === null) return; // cancelled
+      newName = newName.trim();
+      if (!newName) { alert('Please enter a name.'); return; }
+      if (newName === oldName || !current) return;
+
+      current.name = newName;
+      populateVersionDropdown();
+
+      _syncDot('busy', 'Renaming version…');
+      try {
+        var resp = await fetch(sheetsURL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body:    JSON.stringify({ versions: versions.slice() })
+        });
+        var result = await resp.json();
+        if (!result.success) throw new Error(result.error || 'Rename failed');
+        if (result.versionsError) throw new Error(result.versionsError);
+        _syncDot('ok', 'Renamed to "' + newName + '"');
+        if (statusText) statusText.textContent = '☁ Renamed version "' + oldName + '" to "' + newName + '".';
+      } catch (err) {
+        _syncDot('err', 'Rename failed');
+        alert('Could not rename version:\n' + err.message);
+      }
+    }
+
+    // Opens the "Copy Tasks to Another Version" modal for the current Task
+    // Properties selection (selectedTaskIds). Populates the target dropdown with
+    // every OTHER version (Default included), skipping the currently active one.
+    function openCopyTasksModal() {
+      var ids = Object.keys(selectedTaskIds);
+      if (!ids.length) { alert('Select at least one task first (checkbox in the Task Properties table).'); return; }
+      if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
+
+      var sel = document.getElementById('copy-target-select');
+      sel.innerHTML = '';
+      var currentTsn = taskSheetName || '';
+      versions.forEach(function(v) {
+        var tsn = v.taskSheetName || DEFAULT_TASK_SHEET_NAME;
+        var isDefault = tsn === DEFAULT_TASK_SHEET_NAME;
+        var value = isDefault ? '' : tsn;
+        if (value === currentTsn) return; // can't copy a version into itself
+        var opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = isDefault ? DEFAULT_TASK_SHEET_NAME : (v.name || tsn);
+        sel.appendChild(opt);
+      });
+      if (!sel.options.length) {
+        alert('No other versions exist yet to copy into.\nCreate one first via the Version dropdown\'s "+ New Version…".');
+        return;
+      }
+
+      document.getElementById('copy-tasks-count').textContent =
+        ids.length + ' task' + (ids.length === 1 ? '' : 's') + ' selected';
+      document.getElementById('copy-tasks-overlay').classList.add('open');
+    }
+
+    function closeCopyTasksModal() {
+      document.getElementById('copy-tasks-overlay').classList.remove('open');
+    }
+
+    // Copies the current Task Properties selection into another version's task
+    // list, preserving every task property. Each task's discipline is kept as-is:
+    // saveBackToTaskList() on the backend already appends unmatched
+    // DISCIPLINE|TASKNAME rows to their existing group or creates a new group at
+    // the bottom, so "create the group if missing / integrate into an existing
+    // one" falls out of the existing save logic for free — nothing copy-specific
+    // is needed there.
+    //
+    // The currently loaded version (tasks/taskSheetName) is never touched — this
+    // fetches the TARGET version's own current tasks+settings fresh, merges the
+    // copies in locally, and saves that merged list back to the target's tabs.
+    async function confirmCopyTasks() {
+      var ids = Object.keys(selectedTaskIds).map(function(s) { return parseInt(s, 10); });
+      var targetSel = document.getElementById('copy-target-select');
+      var targetTsn = targetSel.value; // '' = Default
+      var targetLabel = targetSel.selectedOptions[0] ? targetSel.selectedOptions[0].textContent : targetTsn;
+      closeCopyTasksModal();
+      if (!ids.length) return;
+
+      var toCopy = tasks.filter(function(t) { return ids.indexOf(t.id) !== -1; });
+      if (!toCopy.length) return;
+
+      _syncDot('busy', 'Copying to "' + targetLabel + '"…');
+      try {
+        // 1. Fetch the target version's CURRENT tasks + settings fresh — the copy
+        // must not clobber whatever else already lives there.
+        var bustURL = sheetsURL + (sheetsURL.includes('?') ? '&' : '?') + '_t=' + Date.now();
+        if (targetTsn) bustURL += '&taskSheetName=' + encodeURIComponent(targetTsn);
+        var getResp = await fetch(bustURL, { method: 'GET', cache: 'no-store' });
+        if (!getResp.ok) throw new Error('HTTP ' + getResp.status);
+        var getData = await getResp.json();
+        if (!getData.success && getData.error) throw new Error(getData.error);
+
+        var targetExisting = (getData.tasks || []).map(function(t, idx) {
+          var s = parseDate(t.start), e = parseDate(t.end);
+          return {
+            id: idx + 1, taskId: t.taskId || null,
+            name: t.name || '', group: t.group || 'UTIL', sub: t.sub || '',
+            type: t.type || 'bar', start: s || new Date(), end: e || s || new Date(),
+            color: t.color || '#0284c7', colorOverride: t.colorOverride || '',
+            note: t.note || '', notes: t.notes || '',
+            dashed: t.dashed === 'true' || t.dashed === true,
+            dashedOutline: t.dashedOutline === 'true' || t.dashedOutline === true,
+            symbol: t.symbol || '', _rawDeps: t.dependencies || '', dependencies: []
+          };
+        });
+        // Resolve the target's own existing GROUP|NAME dependency strings the same
+        // way loadFromSheets() does, so re-serializing them below round-trips
+        // correctly (see the tilde-string format note there).
+        var _keyToId = {};
+        targetExisting.forEach(function(lt) {
+          _keyToId[((lt.group || '') + '|' + (lt.name || '')).toUpperCase()] = lt.id;
+        });
+        targetExisting.forEach(function(lt) {
+          if (!lt._rawDeps) { delete lt._rawDeps; return; }
+          lt.dependencies = lt._rawDeps.split('~').filter(Boolean).map(function(piece) {
+            piece = piece.trim();
+            var to = 'S', key = piece;
+            if (piece.endsWith(':S')) { to = 'S'; key = piece.slice(0, -2); }
+            else if (piece.endsWith(':E')) { to = 'E'; key = piece.slice(0, -2); }
+            var rid = _keyToId[key.toUpperCase()];
+            return rid != null ? { id: rid, to: to } : null;
+          }).filter(Boolean);
+          delete lt._rawDeps;
+        });
+
+        // 2. Append copies of the selected tasks with fresh local ids continuing
+        // after the target's existing max id. taskId is reset to null so the
+        // backend assigns each copy its own persistent id on save (copies are new
+        // rows in the target, not the same physical task as the source).
+        // Dependencies are remapped only when BOTH ends of a dependency were
+        // copied in this same batch — a dependency on a task that stayed behind
+        // in the source version has nothing to point to in the target and is
+        // dropped rather than left dangling.
+        var nextId = targetExisting.reduce(function(m, t) { return Math.max(m, t.id); }, 0) + 1;
+        var idRemap = {};
+        var appended = toCopy.map(function(t) {
+          var copy = {
+            id: nextId++, taskId: null,
+            name: t.name || '', group: t.group || 'UTIL', sub: t.sub || '',
+            type: t.type || 'bar',
+            start: new Date(t.start.getTime()), end: new Date(t.end.getTime()),
+            color: t.color || '#0284c7', colorOverride: t.colorOverride || '',
+            note: t.note || '', notes: t.notes || '',
+            dashed: !!t.dashed, dashedOutline: !!t.dashedOutline,
+            symbol: t.symbol || '', dependencies: []
+          };
+          idRemap[t.id] = copy.id;
+          return copy;
+        });
+        appended.forEach(function(copy, i) {
+          (toCopy[i].dependencies || []).forEach(function(dep) {
+            var depId = typeof dep === 'object' ? parseInt(dep.id, 10) : parseInt(dep, 10);
+            var toEnd = (typeof dep === 'object' && dep.to) ? dep.to : 'S';
+            if (idRemap[depId] !== undefined) copy.dependencies.push({ id: idRemap[depId], to: toEnd });
+          });
+        });
+
+        var mergedTasks = targetExisting.concat(appended);
+
+        // 3. Save the merged list back to the TARGET version's own tabs. settings
+        // is the target's own settings object fetched above with only
+        // taskSheetName patched — sending a partial settings object here would
+        // wipe every other setting on the target's GANTT SETTINGS tab
+        // (writeSettings() does a full clearContents() + rewrite from
+        // SETTINGS_KEYS, treating anything missing as blank).
+        var targetSettings = getData.settings || {};
+        targetSettings.taskSheetName = targetTsn;
+        var payload = {
+          tasks: mergedTasks.map(function(t) {
+            return {
+              id: t.id, taskId: t.taskId, name: t.name, group: t.group, sub: t.sub,
+              type: t.type, start: formatDate(t.start), end: formatDate(t.end),
+              color: t.color, colorOverride: t.colorOverride, note: t.note, notes: t.notes,
+              dashed: t.dashed ? 'true' : 'false', dashedOutline: t.dashedOutline ? 'true' : 'false',
+              symbol: t.symbol,
+              dependencies: (t.dependencies || []).map(function(dep) {
+                var depTask = mergedTasks.find(function(dt) { return dt.id === dep.id; });
+                if (!depTask) return null;
+                var key = ((depTask.group || '') + '|' + (depTask.name || '')).toUpperCase().replace(/\s+/g, ' ').trim();
+                return key + ':' + (dep.to || 'S');
+              }).filter(Boolean).join('~')
+            };
+          }),
+          settings: targetSettings,
+          groups: [], deletedGroups: [],
+          versions: versions.slice()
+        };
+
+        var resp = await fetch(sheetsURL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(payload)
+        });
+        var result = await resp.json();
+        if (!result.success) throw new Error(result.error || 'Copy failed');
+        if (result.taskError) console.warn('[GANTT] copy taskError:', result.taskError);
+
+        _syncDot('ok', 'Copied ' + toCopy.length + ' task(s) to "' + targetLabel + '"');
+        if (statusText) statusText.textContent = '☁ Copied ' + toCopy.length + ' task(s) to "' + targetLabel + '".';
+      } catch (err) {
+        _syncDot('err', 'Copy failed');
+        alert('Could not copy tasks:\n' + err.message);
+      }
+    }
+
     // Save tasks TO Google Sheets ← timeline
     // opts.newVersionSourceSheet: set when this save is creating a brand-new version's
     // task-list tab — the backend clones that tab as the new version's starting point,
@@ -8225,6 +8527,8 @@
       }
       var versionDeleteBtn = document.getElementById('version-delete-btn');
       if (versionDeleteBtn) versionDeleteBtn.addEventListener('click', deleteCurrentVersion);
+      var versionRenameBtn = document.getElementById('version-rename-btn');
+      if (versionRenameBtn) versionRenameBtn.addEventListener('click', renameCurrentVersion);
 
       // New Version modal wiring
       (function() {
@@ -9466,21 +9770,27 @@
             var ppath = document.createElementNS(NS, 'path');
             ppath.setAttribute('d', pd);
             ppath.setAttribute('fill', 'none');
-            ppath.setAttribute('stroke', pColor);
-            ppath.setAttribute('stroke-width', '1');
+            // A 1px, 0.8-opacity light-gray (#94a3b8) line — same color the grid
+            // lines use — was structurally present but visually indistinguishable
+            // from the background at typical print zoom, reading as "not showing"
+            // even though it was. Print needs bolder ink than screen: thicker
+            // stroke, full opacity, a darker non-violated color, and a bigger
+            // arrowhead (interactive uses 1.5px/6px; print now goes further since
+            // it's usually viewed shrunk further, at physical page scale).
+            ppath.setAttribute('stroke', pViolated ? pColor : '#475569');
+            ppath.setAttribute('stroke-width', '2');
             ppath.setAttribute('stroke-linejoin', 'round');
             ppath.setAttribute('stroke-linecap', 'round');
             if (pViolated) ppath.setAttribute('stroke-dasharray', '4,3');
-            ppath.setAttribute('opacity', '0.8');
             svg.appendChild(ppath);
             // → arrowhead (all cases arrive at ax2 traveling rightward)
-            var phs = 4;
+            var phs = 7;
             var parr = document.createElementNS(NS, 'polygon');
             parr.setAttribute('points',
               (ax2-phs)+','+(ay2-phs*0.6)+' '+
               ax2+','+ay2+' '+
               (ax2-phs)+','+(ay2+phs*0.6));
-            parr.setAttribute('fill', pColor);
+            parr.setAttribute('fill', pViolated ? pColor : '#475569');
             svg.appendChild(parr);
           });
         });
