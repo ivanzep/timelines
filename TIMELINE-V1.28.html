@@ -221,6 +221,23 @@
       unfiltered full list shows) and restores the original text on blur if
       nothing was picked or typed; a real pick or edit leaves the field
       non-empty and persists via the existing change handler as before.
+    • Print: date columns (START/END) no longer overlap adjacent text at
+      larger Body font sizes. Column width was a fixed 60px per column
+      regardless of the font-size slider, so a 12pt "YYYY/MM/DD" (~69px)
+      overran the column boundary into the next date/timeline area. Width is
+      now derived from the chosen font size (~0.62em per character, floored
+      at the old 60px/50px so small sizes render identically to before) for
+      both the date columns and the duration column.
+    • New guard: switching versions, creating a new version, or deleting a
+      version while a Save to Google Sheets is still in flight now shows an
+      alert ("please wait for it to finish") and refuses to proceed, instead
+      of racing a second concurrent write against the in-progress one. New
+      _saveInFlight flag, set for the duration of saveToSheets()'s network
+      call (try/finally, so it clears even on failure) and checked by
+      switchToVersion/confirmCreateVersion/deleteCurrentVersion before any
+      of them touch taskSheetName/tasks. Distinct from the existing _isDirty
+      check (unsaved local edits not yet even attempted to save) — this
+      guards the save request itself while it's actually in transit.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1867,6 +1884,7 @@
     var selectedTaskIds = {};
     var _lastCheckedTaskId = null; // anchor for shift+click range-select in task list
     var _isDirty = false; // true when there are unsaved changes
+    var _saveInFlight = false; // true from the moment saveToSheets() starts its network request until it settles
 
     function markDirty() {
       if (_isDirty) return;
@@ -7862,6 +7880,12 @@
       var current = taskSheetName || '';
       if (target === current) return;
 
+      if (_saveInFlight) {
+        alert('A save to Google Sheets is still in progress.\nPlease wait for it to finish before switching versions.');
+        populateVersionDropdown(); // snap the dropdown back to the still-active version
+        return;
+      }
+
       if (_isDirty) {
         var ok = confirm('You have unsaved changes in the current version.\nSave before switching?');
         if (ok) await saveToSheets();
@@ -7911,6 +7935,10 @@
     // that tab — either as a snapshot copy of the chosen source version (tasks + settings,
     // loading the source first if it isn't the one currently in memory) or fully blank.
     async function confirmCreateVersion() {
+      if (_saveInFlight) {
+        alert('A save to Google Sheets is still in progress.\nPlease wait for it to finish before creating a new version.');
+        return;
+      }
       var nameInp = document.getElementById('nv-name-input');
       var name = nameInp.value.trim();
       if (!name) { alert('Please enter a version name.'); nameInp.focus(); return; }
@@ -7964,6 +7992,10 @@
     // be deleted (guarded both here and in the backend).
     async function deleteCurrentVersion() {
       if (!taskSheetName) { alert('The default version cannot be deleted.'); return; }
+      if (_saveInFlight) {
+        alert('A save to Google Sheets is still in progress.\nPlease wait for it to finish before deleting a version.');
+        return;
+      }
       if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
 
       var name = _versionDisplayName(taskSheetName);
@@ -8006,6 +8038,7 @@
       if (!opts.newVersionSourceSheet && !tasks.length && !emptyGroups.length && !deletedGroups.length) { alert('No tasks or groups to save.'); return; }
       captureMetaFromInputs();
       _syncDot('busy', 'Saving…');
+      _saveInFlight = true;
 
       var payload = {
         tasks: tasks.map(function(t) {
@@ -8095,6 +8128,8 @@
           _syncDot('err', 'Save failed');
           alert('Could not save to Google Sheets:\n' + corsErr.message + '\n\nMake sure the Apps Script is deployed with "Anyone" access.');
         }
+      } finally {
+        _saveInFlight = false;
       }
     }
 
@@ -9440,8 +9475,15 @@
       var bodyH    = usableH - headerH - rulerH - footerH;
       var prShowDateCols = (function() { var el = document.getElementById('pr-date-cols'); return el ? el.checked : false; })();
       var prShowDurCol   = (function() { var el = document.getElementById('pr-dur-col');   return el ? el.checked : false; })();
-      var prDateColW = prShowDateCols ? 120 : 0; // 60px START + 60px END in print
-      var prDurColW  = prShowDurCol   ? 50  : 0; // 50px for duration in print
+      // Fixed 60px/50px column widths didn't scale with the Body font size slider,
+      // so a larger print font (e.g. 12pt) squeezed "YYYY/MM/DD" past the column
+      // edge into the next column's text. Size from fontSize instead: ~0.62em per
+      // character (typical sans-serif digit/slash width) plus padding, floored at
+      // the old fixed widths so small font sizes render identically to before.
+      var _prDateColEachW = Math.max(60, Math.round(10 * fontSize * 0.62) + 12); // "YYYY/MM/DD" = 10 chars
+      var _prDurColEachW  = Math.max(50, Math.round(6  * fontSize * 0.62) + 12); // e.g. "12.3w"
+      var prDateColW = prShowDateCols ? _prDateColEachW * 2 : 0; // START + END
+      var prDurColW  = prShowDurCol   ? _prDurColEachW      : 0;
       var timelineW = Math.max(60, usableW - labelW - prDateColW - prDurColW);
 
       // Date bounds from tasks
