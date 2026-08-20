@@ -212,6 +212,15 @@
       happened to land exactly on the dashed line. renderTaskBar now sets
       pointer-events:all on the rect for dashed tasks so the full bounding
       box is selectable/draggable, matching solid and Dashed Outline bars.
+    • Fixed the Task Properties Discipline field's dropdown only showing the
+      one discipline already typed into it, instead of every discipline in
+      the project. It's a native <input list="..."> + <datalist>, and
+      browsers filter a datalist's suggestions to whatever text is already
+      in the field — with an existing value pre-filled, that left only the
+      current discipline as a match. The field now clears on focus (so the
+      unfiltered full list shows) and restores the original text on blur if
+      nothing was picked or typed; a real pick or edit leaves the field
+      non-empty and persists via the existing change handler as before.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -3135,6 +3144,22 @@
         markDirty();
         refreshTaskTable();
         renderGantt();
+      });
+      // Browsers filter a <datalist> to options that match whatever text is
+      // already in the field, so opening the dropdown on an existing discipline
+      // only ever showed that one partial match. Clearing the value on focus
+      // makes every discipline show; blur restores the original text if the
+      // user backed out without picking anything (a real pick or typed value
+      // leaves the field non-empty, so it's left alone and 'change' persists it
+      // as usual).
+      groupInp.addEventListener('focus', function() {
+        groupInp.dataset.prevValue = groupInp.value;
+        groupInp.value = '';
+      });
+      groupInp.addEventListener('blur', function() {
+        if (!groupInp.value.trim() && groupInp.dataset.prevValue) {
+          groupInp.value = groupInp.dataset.prevValue;
+        }
       });
       tdGroup.appendChild(dl); tdGroup.appendChild(groupInp);
       tr.appendChild(tdGroup);
