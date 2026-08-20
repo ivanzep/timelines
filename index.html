@@ -292,6 +292,30 @@
       other setting on the target's GANTT SETTINGS tab (writeSettings()
       does a full clearContents() + rewrite treating anything absent as
       blank). The currently loaded version is never touched.
+    • Fixed print dependency arrows in flat mode occasionally routing as a
+      long vertical stroke stretching across several unrelated rows instead
+      of a short jog outside the source/target bar. The "same-date/tight/
+      backward" 5-segment staircase fallback used rowH/2 as its "clear the
+      bar" offset — fine when rowH was just a bar's own height, but flat-
+      mode print rows are now a full uniform PITCH (bar band + above/below
+      label/flag bands, see opts.prAboveH/prBarH from the row-height work),
+      which can be 3-4x a single bar's height. Both the interactive
+      (renderDependencyArrows) and print staircase fallback now scale that
+      offset from the actual bar thickness (flatBarHeight / opts.prBarH in
+      flat mode) instead of the padded row pitch. Verified: a same-date dep
+      into a flag now routes as a ~75px jog confined to its own row instead
+      of stretching the height of the whole chart.
+    • Added a dependency-arrow color picker (next to the "Deps" checkbox,
+      Display section) — new depsArrowColor setting, default #94a3b8,
+      applied in both the interactive chart and print. Violated dependencies
+      still always render red (#ef4444) as a fixed warning cue, unaffected
+      by this setting. Also fixed print silently ignoring any non-violated
+      arrow color entirely: a leftover `pViolated ? pColor : '#475569'`
+      override on both the path stroke and arrowhead fill meant print's
+      non-violated arrows were hardcoded to a fixed slate color no matter
+      what pColor (built from the same depsArrowColor) resolved to — now
+      both just use pColor directly. New SETTINGS_KEYS entry in
+      Code_V1.28.gs (redeploy required for persistence).
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1470,7 +1494,7 @@
                 <label class="sb-row"><input type="checkbox" id="opt-flat-mode" /> Flat</label>
                 <label class="sb-row"><input type="checkbox" id="opt-status-colors" /> Status Colors</label>
                 <div class="sb-row" style="gap:6px;"><label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="opt-today" checked /> Today</label><input type="color" id="opt-today-color" value="#ef4444" title="Today line color" style="width:22px;height:18px;padding:0;border:1px solid var(--border-strong);border-radius:3px;cursor:pointer;background:none;" /></div>
-                <label class="sb-row"><input type="checkbox" id="opt-deps" checked /> Deps</label>
+                <div class="sb-row" style="gap:6px;"><label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="opt-deps" checked /> Deps</label><input type="color" id="opt-deps-color" value="#94a3b8" title="Dependency arrow color" style="width:22px;height:18px;padding:0;border:1px solid var(--border-strong);border-radius:3px;cursor:pointer;background:none;" /></div>
               </div>
 
               <!-- Flat Options (shown when Flat is on) -->
@@ -1907,6 +1931,7 @@
     var ganttBarFontSize = 12; // user-adjustable bar label font size
     var showTodayLine = true;       // whether to draw the Today vertical line
     var todayLineColor = '#ef4444'; // Today line color (default: red)
+    var depsArrowColor = '#94a3b8'; // Dependency arrow color (non-violated only — violated stays red as a fixed warning cue)
     var barTextColor  = null;  // null = auto (contrast), hex string = manual override
     var groupColors    = {};   // { disciplineKey: '#rrggbb' } — rollup bar / separator / left-border accent ONLY (does NOT affect individual task bar fills)
     var selectedGroups = {};   // { disciplineKey: true } — groups checked for batch color edit
@@ -5171,7 +5196,7 @@
 
           // Violation: target connection point is to the left of source's end
           var violated = x2 < x1;
-          var color = violated ? '#ef4444' : (darkMode ? '#64748b' : '#94a3b8');
+          var color = violated ? '#ef4444' : depsArrowColor;
           var gap = 12; // px — horizontal jog used for exit / approach segments
           var d;
 
@@ -5194,7 +5219,12 @@
             //   4. V y2       — short entry segment into the bar midY
             //   5. H x2       — jog RIGHT to bar start → → arrowhead
             var bump = Math.max(x1 + gap, x2 + gap);
-            var halfRow = geom.rowHeight / 2;
+            // In flat mode geom.rowHeight is padded by the MAX outside-label lines
+            // across every discipline (not just this bar's own), so it can be far
+            // taller than any single bar — using it here sent the routing's "just
+            // outside the bar" jog way past neighboring rows. flatBarHeight (the
+            // actual, fixed bar thickness) is the right scale for that clearance.
+            var halfRow = (flatMode ? flatBarHeight : geom.rowHeight) / 2;
             // Place the horizontal sweep in the gap between the two bars:
             //   downward (y2 > y1): just above target bar top  → y2 - halfRow - 3
             //   upward   (y2 < y1): just below target bar bottom → y2 + halfRow + 3
@@ -6812,6 +6842,11 @@
           showDependencies = this.checked;
           renderGantt();
         });
+        var optDepsColorEl = document.getElementById('opt-deps-color');
+        if (optDepsColorEl) optDepsColorEl.addEventListener('input', function() {
+          depsArrowColor = this.value;
+          renderGantt();
+        });
 
       // Bar text color control
       var ganttTextColorEl    = document.getElementById('gantt-text-color');
@@ -7393,6 +7428,7 @@
         metaDetailsCollapsed: metaDetailsCollapsed ? 'true' : 'false',
         showTodayLine:       showTodayLine ? 'true' : 'false',
         todayLineColor:      todayLineColor,
+        depsArrowColor:      depsArrowColor,
         darkMode:            darkMode      ? 'true' : 'false',
         flatMode:            flatMode      ? 'true' : 'false',
         flatTextWrap:        flatTextWrap  ? 'true' : 'false',
@@ -7493,6 +7529,11 @@
         todayLineColor = s.todayLineColor;
         var _tlcEl = document.getElementById('opt-today-color');
         if (_tlcEl) _tlcEl.value = todayLineColor;
+      }
+      if (s.depsArrowColor    !== undefined && s.depsArrowColor) {
+        depsArrowColor = s.depsArrowColor;
+        var _dacEl = document.getElementById('opt-deps-color');
+        if (_dacEl) _dacEl.value = depsArrowColor;
       }
       if (s.flatMode          !== undefined) { flatMode          = toBool(s.flatMode); }
       if (s.flatTextWrap      !== undefined) {
@@ -9743,7 +9784,7 @@
             var ax2 = ptoEnd === 'E' ? ptgt.x2 : ptgt.x1, ay2 = ptgt.midY;
             // Violation: target connection point is left of source end
             var pViolated = ax2 < ax1;
-            var pColor = pViolated ? '#ef4444' : '#94a3b8';
+            var pColor = pViolated ? '#ef4444' : depsArrowColor;
             var gap = 6, pd;
             if (ax2 >= ax1 + gap * 2) {
               // ── Normal forward: simple L-shape ────────────────────────────────
@@ -9756,7 +9797,12 @@
               //   downward (ay2 > ay1): just above target bar top
               //   upward   (ay2 < ay1): just below target bar bottom
               var pbump    = Math.max(ax1 + gap, ax2 + gap);
-              var halfRow  = rowH / 2;
+              // rowH is the full row PITCH here (bar band + above/below label/flag
+              // bands, uniform across every disc row — see opts.prAboveH/prBarH),
+              // not a single bar's height, so halving it sent this "just outside the
+              // bar" jog stretching across several neighboring rows in flat mode.
+              // The actual bar band height is the right scale for that clearance.
+              var halfRow  = (opts.flatMode ? (opts.prBarH || Math.max(4, rowH - 4)) : rowH) / 2;
               var midLineY = (ay2 >= ay1)
                 ? ay2 - halfRow - 2   // just above target bar top
                 : ay2 + halfRow + 2;  // just below target bar bottom
@@ -9770,14 +9816,12 @@
             var ppath = document.createElementNS(NS, 'path');
             ppath.setAttribute('d', pd);
             ppath.setAttribute('fill', 'none');
-            // A 1px, 0.8-opacity light-gray (#94a3b8) line — same color the grid
-            // lines use — was structurally present but visually indistinguishable
-            // from the background at typical print zoom, reading as "not showing"
-            // even though it was. Print needs bolder ink than screen: thicker
-            // stroke, full opacity, a darker non-violated color, and a bigger
-            // arrowhead (interactive uses 1.5px/6px; print now goes further since
-            // it's usually viewed shrunk further, at physical page scale).
-            ppath.setAttribute('stroke', pViolated ? pColor : '#475569');
+            // pColor follows depsArrowColor (the "Deps" color picker) so print and
+            // the interactive chart always show the same color the user picked; a
+            // thin 1px line at that color read as "not showing" at typical print
+            // zoom, so print still uses a bolder stroke/arrowhead than the
+            // interactive chart's 1.5px/6px, just not a different hardcoded color.
+            ppath.setAttribute('stroke', pColor);
             ppath.setAttribute('stroke-width', '2');
             ppath.setAttribute('stroke-linejoin', 'round');
             ppath.setAttribute('stroke-linecap', 'round');
@@ -9790,7 +9834,7 @@
               (ax2-phs)+','+(ay2-phs*0.6)+' '+
               ax2+','+ay2+' '+
               (ax2-phs)+','+(ay2+phs*0.6));
-            parr.setAttribute('fill', pViolated ? pColor : '#475569');
+            parr.setAttribute('fill', pColor);
             svg.appendChild(parr);
           });
         });
