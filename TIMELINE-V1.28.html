@@ -181,6 +181,16 @@
       resolve to the first definition, clipping later rows' labels to a
       different row's bar rect (usually hiding them entirely). Ids now
       include the row index.
+    • Flat mode: new "Notes" checkbox (Flat Options card) draws each task's
+      NOTES column text as an extra bar label — note that this is task.notes
+      (the sheet's NOTES column), distinct from task.note, which holds the
+      STATUS text the existing "Status" bar-label checkbox controls. The
+      label feeds the same wrap/inside-vs-outside placement pre-pass as the
+      other bar labels, so rows grow to fit it, and print preview renders it
+      identically (both the interactive and print label pre-passes plus both
+      print label lists take it into account). Persists via a new
+      flatShowNotes setting — Code_V1.28.gs gains the SETTINGS_KEYS entry
+      (redeploy required for it to round-trip through the sheet).
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -1338,6 +1348,7 @@
                 <label class="sb-row"><input type="checkbox" id="opt-flat-wrap" /> Wrap</label>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-outside" /> Outside</label>
                 <label class="sb-row"><input type="checkbox" id="opt-flat-show-flags" checked /> Flags</label>
+                <label class="sb-row"><input type="checkbox" id="opt-flat-show-notes" /> Notes</label>
                 <label class="sb-slider-row">Flag Offset <input type="range" id="opt-flat-flag-offset" min="0" max="40" value="8" step="1" class="sb-slider" /> <span class="sb-val" id="opt-flat-flag-offset-val">8</span>px</label>
                 <label class="sb-slider-row">Bar H <input type="range" id="opt-flat-barh" min="12" max="72" value="24" step="2" class="sb-slider" /> <span class="sb-val" id="opt-flat-barh-val">24</span>px</label>
                 <label class="sb-slider-row">Overflow <input type="range" id="opt-flat-overflow" min="0" max="400" value="0" step="10" class="sb-slider" /> <span class="sb-val" id="opt-flat-overflow-val">0</span>px</label>
@@ -1752,6 +1763,7 @@
     var flatLabelOverflow = 0;       // extra px the label clip extends right of bar end
     var flatLabelsOutside = false;   // when true: always place labels outside bar (above/below); default: inside if fits
     var flatShowFlags = true;        // when false: flags are hidden while Flat mode is on
+    var flatShowNotes = false;       // when true: each task's NOTES column text is drawn as an extra bar label (Flat mode only)
     var flatFlagOffset = 8;          // px the flag pole/triangle extends above its group's bar top, in Flat mode
     var useStatusColors = false;     // when true: bar/milestone/flag fill uses STATUS_COLOR_MAP[task.status]
     var _flatMaxLabelLines = {};     // per-group: disc → max outside lines; pre-computed each render
@@ -3578,6 +3590,7 @@
           if (displayOptions.showName  && _ppt.name)                _ppLblsA.push(_ppt.name);
           if (displayOptions.showPhase && (_ppt.sub || _ppt.group)) _ppLblsA.push(_ppt.sub || _ppt.group);
           if (displayOptions.showNote  && _ppt.note)                _ppLblsA.push(_ppt.note);
+          if (flatShowNotes            && _ppt.notes)               _ppLblsA.push(_ppt.notes);
           var _ppFitsInside = false;
           if (!flatLabelsOutside && _ppLblsA.length > 0 && _ppInW > 0) {
             var _ppTotL = 0;
@@ -3606,6 +3619,7 @@
             if (displayOptions.showName  && _ppt.name)                _ppLbls.push(_ppt.name);
             if (displayOptions.showPhase && (_ppt.sub || _ppt.group)) _ppLbls.push(_ppt.sub || _ppt.group);
             if (displayOptions.showNote  && _ppt.note)                _ppLbls.push(_ppt.note);
+            if (flatShowNotes            && _ppt.notes)               _ppLbls.push(_ppt.notes);
             var _ppLines = 0;
             for (var _ppli = 0; _ppli < _ppLbls.length; _ppli++) {
               var _ppWds = _ppLbls[_ppli].split(' ');
@@ -4676,6 +4690,9 @@
       var phaseText = task.sub || task.group || '';
       if (displayOptions.showPhase && phaseText) labelsToShow.push({ kind: 'sub', text: phaseText });
       if (displayOptions.showNote && task.note) labelsToShow.push({ kind: 'note', text: task.note });
+      // Flat mode "Notes" toggle — the sheet's NOTES column (task.notes), distinct from
+      // task.note (the STATUS text the "Status" bar-label checkbox controls).
+      if (flatMode && flatShowNotes && task.notes) labelsToShow.push({ kind: 'note', text: task.notes });
 
       var fontSizes = { name: ganttBarFontSize, sub: Math.max(6, ganttBarFontSize - 3), note: Math.max(6, ganttBarFontSize - 4) };
       var startY = barY + (labelsToShow.length === 1 ? barH/2 + 4 : 12);
@@ -6236,6 +6253,13 @@
           renderGantt();
         });
       }
+      var optFlatShowNotes = document.getElementById('opt-flat-show-notes');
+      if (optFlatShowNotes) {
+        optFlatShowNotes.addEventListener('change', function() {
+          flatShowNotes = this.checked;
+          renderGantt();
+        });
+      }
       var optFlatFlagOffset = document.getElementById('opt-flat-flag-offset');
       var optFlatFlagOffsetVal = document.getElementById('opt-flat-flag-offset-val');
       if (optFlatFlagOffset) {
@@ -7152,6 +7176,7 @@
         flatLabelOverflow:   flatLabelOverflow,
         flatLabelsOutside:   flatLabelsOutside ? 'true' : 'false',
         flatShowFlags:       flatShowFlags ? 'true' : 'false',
+        flatShowNotes:       flatShowNotes ? 'true' : 'false',
         flatFlagOffset:      flatFlagOffset,
         useStatusColors:     useStatusColors ? 'true' : 'false',
         barTextColor:        barTextColor  !== null ? barTextColor : '',
@@ -7276,6 +7301,11 @@
         flatShowFlags = toBool(s.flatShowFlags);
         var _fsfEl = document.getElementById('opt-flat-show-flags');
         if (_fsfEl) _fsfEl.checked = flatShowFlags;
+      }
+      if (s.flatShowNotes !== undefined) {
+        flatShowNotes = toBool(s.flatShowNotes);
+        var _fsnEl = document.getElementById('opt-flat-show-notes');
+        if (_fsnEl) _fsnEl.checked = flatShowNotes;
       }
       if (s.flatFlagOffset !== undefined) {
         flatFlagOffset = parseInt(s.flatFlagOffset, 10) || 0;
@@ -8383,6 +8413,7 @@
         if (displayOptions.showName  && t.name)            lbls.push(t.name);
         if (displayOptions.showPhase && (t.sub || t.group)) lbls.push(t.sub || t.group);
         if (displayOptions.showNote  && t.note)             lbls.push(t.note);
+        if (flatShowNotes            && t.notes)            lbls.push(t.notes);
         var fitsInside = false;
         if (!flatLabelsOutside && lbls.length > 0 && inW > 0) {
           var totL = 0;
@@ -8955,6 +8986,7 @@
                 if (opts.showName  && dt.name)              piLbls.push(dt.name);
                 if (opts.showPhase && (dt.sub || dt.group)) piLbls.push(dt.sub || dt.group);
                 if (opts.showNote  && dt.note)              piLbls.push(dt.note);
+                if (opts.flatMode && flatShowNotes && dt.notes) piLbls.push(dt.notes);
                 for (var pili = 0; pili < piLbls.length; pili++) {
                   var piWds = piLbls[pili].split(' '), piCur = '';
                   for (var piwi = 0; piwi < piWds.length; piwi++) {
@@ -8998,6 +9030,7 @@
                 if (opts.showName  && dt.name)              lblLbls.push(dt.name);
                 if (opts.showPhase && (dt.sub || dt.group)) lblLbls.push(dt.sub || dt.group);
                 if (opts.showNote  && dt.note)              lblLbls.push(dt.note);
+                if (opts.flatMode && flatShowNotes && dt.notes) lblLbls.push(dt.notes);
                 var lblLines = [];
                 for (var lbx = 0; lbx < lblLbls.length; lbx++) {
                   var lbWds = lblLbls[lbx].split(' '), lbCur = '';
