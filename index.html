@@ -191,6 +191,18 @@
       print label lists take it into account). Persists via a new
       flatShowNotes setting — Code_V1.28.gs gains the SETTINGS_KEYS entry
       (redeploy required for it to round-trip through the sheet).
+    • Fixed the "Dashed" task Style always rendering a fixed red outline,
+      ignoring the task's own assigned color and the Status Colors toggle —
+      every other bar style (solid, Dashed Outline) already used
+      _effectiveBarColor(task), only plain "Dashed" hardcoded #dc2626. Fixed
+      in every render path: interactive renderTaskBar (bar stroke + its
+      label-text fallback color), flat-mode print, non-flat print, and the
+      SVG-export embedded stylesheet. The interactive fix needed .style
+      (inline), not setAttribute: the base .task-bar CSS rule declares its
+      own stroke color, which otherwise wins over a plain presentation
+      attribute regardless of per-task value — selection highlighting
+      (blue/amber) is preserved by checking selection state before falling
+      back to the task's color.
 
   V1.27  2026-08-10
     • Fix task status not saving to spreadsheet. saveToSheets() now checks
@@ -644,7 +656,7 @@
     .task-bar { stroke: rgba(15,23,42,0.25); stroke-width: 0.5; cursor: grab; }
     .task-bar.selected { stroke: #0284c7; stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(2,132,199,0.4)); }
     .task-bar.multi-selected { stroke: #f59e0b; stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(245,158,11,0.5)); }
-    .task-bar.dashed { fill: none; stroke-dasharray: 4 3; stroke: #dc2626; stroke-width: 1.5; cursor: grab; }
+    .task-bar.dashed { fill: none; stroke-dasharray: 4 3; stroke-width: 1.5; cursor: grab; }
     .task-bar.dashed-outline { stroke-dasharray: 5 3; stroke-width: 2; cursor: grab; }
     .resize-handle { fill: rgba(0,0,0,0.0); stroke: rgba(0,0,0,0.0); cursor: ew-resize; }
     .resize-handle:hover, .resize-handle.active { fill: rgba(2,132,199,0.25); stroke: rgba(2,132,199,0.8); stroke-width: 1; }
@@ -4669,10 +4681,20 @@
       var barColor = _effectiveBarColor(task);
       var _barSelClass = task.id === selectedTaskId ? ' selected' : (ganttMultiSelected[task.id] ? ' multi-selected' : '');
       if (task.dashed) {
+        // Dashed outline uses the task's own assigned/status color (via barColor,
+        // already computed from _effectiveBarColor) instead of a fixed color, so it
+        // stays consistent with every other bar style and with the Status Colors
+        // toggle. Set via .style, not setAttribute: the base .task-bar CSS rule
+        // declares its own stroke color, which otherwise wins over a plain
+        // presentation attribute regardless of per-task value. Selection still
+        // takes priority so the blue/amber selection highlight isn't masked by
+        // the task's own color.
+        rect.style.stroke = _barSelClass === ' selected' ? '#0284c7'
+          : _barSelClass === ' multi-selected' ? '#f59e0b' : barColor;
         rect.setAttribute('class', 'task-bar dashed' + _barSelClass);
       } else if (task.dashedOutline) {
         rect.setAttribute('fill', barColor);
-        rect.setAttribute('stroke', 'rgba(15,23,42,0.7)');
+        rect.setAttribute('stroke', 'rgba(15,23,42,0.7)'); // unchanged from before — out of scope here
         rect.setAttribute('class', 'task-bar dashed-outline' + _barSelClass);
       } else {
         rect.setAttribute('fill', barColor);
@@ -4714,7 +4736,7 @@
       // Helper: resolve fill colour for a label slot
       function _barLblFill(lbl) {
         if (barTextColor !== null) return barTextColor;
-        if (task.dashed) return '#dc2626';
+        if (task.dashed) return barColor;
         if (darkText) {
           if (lbl.kind === 'name') return '#1c1917';
           if (lbl.kind === 'sub')  return 'rgba(28,25,23,0.9)';
@@ -6031,7 +6053,7 @@
         '.axis-label { font-size:11px; fill:#334155; font-weight:600; letter-spacing:0.05em; }',
         '.axis-label-major { font-size:12px; fill:#0f172a; font-weight:700; letter-spacing:0.06em; }',
         '.task-bar { stroke:rgba(15,23,42,0.25); stroke-width:0.5; }',
-        '.task-bar.dashed { fill:none; stroke-dasharray:4 3; stroke:#dc2626; stroke-width:1.5; }',
+        '.task-bar.dashed { fill:none; stroke-dasharray:4 3; stroke-width:1.5; }',
         '.milestone-label { font-size:11px; font-weight:700; fill:#0f172a; }',
         '.milestone-note { font-size:9px; font-weight:500; fill:#64748b; }',
         '.vertical-text { font-size:15px; font-weight:800; fill:#ffffff; letter-spacing:0.06em; }'
@@ -8968,7 +8990,7 @@
             var dbBarEl = mk('rect', {x:mL+lw+dbC1, y:_fbY, width:dbW, height:_fbH, rx:2,
                         fill: dt.dashed ? 'none' : dbColor, opacity:'0.85', 'clip-path':'url(#'+clipId+')'});
             if (dt.dashed) {
-              dbBarEl.setAttribute('stroke', '#dc2626');
+              dbBarEl.setAttribute('stroke', dbColor);
               dbBarEl.setAttribute('stroke-width', '1.5');
               dbBarEl.setAttribute('stroke-dasharray', '4,3');
             }
@@ -9145,7 +9167,7 @@
                 'clip-path':'url(#'+clipId+')'
               });
               if (t.dashed) {
-                barEl.setAttribute('stroke', '#dc2626');
+                barEl.setAttribute('stroke', barColor);
                 barEl.setAttribute('stroke-width', '1.5');
                 barEl.setAttribute('stroke-dasharray', '4,3');
               }
