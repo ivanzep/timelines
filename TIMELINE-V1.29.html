@@ -5,6 +5,13 @@
 
   VERSION HISTORY
   ───────────────
+  V1.29  2026-08-25 (cont'd, 3)
+    • Kanban panel header decluttered: the standalone "Kanban" title was
+      dropped and the board-settings row (Group by / Columns / Subtitle /
+      Sort / Show / Text / Filter / Blocked only) moved up onto the same row
+      as the board selector and its buttons, freeing a full row of vertical
+      space for the board itself.
+
   V1.29  2026-08-25 (cont'd, 2)
     • Kanban text size control: a new "Text" select (Small/Medium/Large) in the
       Kanban controls bar scales card/column-header/subtitle text so more fits
@@ -982,7 +989,7 @@
     #kanban-panel { --kanban-fs: 1; }
     #kanban-panel[data-textsize="sm"] { --kanban-fs: 0.82; }
     #kanban-panel[data-textsize="lg"] { --kanban-fs: 1.15; }
-    .kanban-controls { display:flex; gap:14px; align-items:center; flex-wrap:wrap; padding:8px 4px 12px; font-size:0.74rem; color:var(--text-muted); font-weight:600; }
+    .kanban-controls { display:flex; gap:14px; align-items:center; flex-wrap:wrap; flex:1 1 auto; min-width:0; padding:2px 0; font-size:0.74rem; color:var(--text-muted); font-weight:600; }
     .kanban-controls label { display:flex; align-items:center; gap:5px; }
     .kanban-controls select, .kanban-controls input[type=number] { font-size:0.74rem; padding:3px 6px; width:auto; max-width:150px; flex:0 0 auto; }
     .kanban-board { display:flex; gap:12px; align-items:flex-start; overflow-x:auto; padding-bottom:14px; }
@@ -1781,16 +1788,7 @@
 
     <div class="panel" id="kanban-panel" style="display:none;">
       <div class="panel-header">
-        <div class="panel-title">Kanban</div>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <select id="kanban-board-select" class="secondary" style="max-width:220px;" title="Active board"></select>
-          <button id="kanban-add-board-btn"    class="primary"   title="Create a new board">+ Board</button>
-          <button id="kanban-rename-board-btn" class="secondary" title="Rename the active board">Rename</button>
-          <button id="kanban-delete-board-btn" class="secondary" title="Delete the active board">Delete</button>
-          <button id="kanban-print-btn"        class="secondary" title="Open Kanban print preview">Print</button>
-        </div>
-      </div>
-      <div class="kanban-controls" id="kanban-controls">
+        <div class="kanban-controls" id="kanban-controls">
         <label>Group by
           <select id="kanban-groupby">
             <option value="status">Status</option>
@@ -1840,6 +1838,14 @@
         <label style="display:flex;align-items:center;gap:5px;">
           <input type="checkbox" id="kanban-blocked-only" /> Blocked only
         </label>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select id="kanban-board-select" class="secondary" style="max-width:220px;" title="Active board"></select>
+          <button id="kanban-add-board-btn"    class="primary"   title="Create a new board">+ Board</button>
+          <button id="kanban-rename-board-btn" class="secondary" title="Rename the active board">Rename</button>
+          <button id="kanban-delete-board-btn" class="secondary" title="Delete the active board">Delete</button>
+          <button id="kanban-print-btn"        class="secondary" title="Open Kanban print preview">Print</button>
+        </div>
       </div>
       <div class="kanban-board" id="kanban-board"></div>
     </div>
