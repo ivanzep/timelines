@@ -32,6 +32,24 @@
       "Manual (drag)" sort option and seeds the order from what is currently on
       screen, so nothing visibly jumps. Order persists per board via
       manualOrder; tasks not yet dragged sort after the ordered ones by name.
+    • Fixed the Kanban filter silently doing nothing after a Load. The checkbox
+      handlers captured the board object when the panel was built, but
+      applySettings() replaces every entry in kanbanBoards — so a Load with the
+      panel open left the handlers writing to detached objects while the active
+      board's filters stayed empty. Handlers now resolve _kanbanActiveBoard()
+      at click time (and normalize it) instead of closing over it.
+    • Kanban columns whose own value is filtered out are now hidden entirely
+      rather than left behind empty, which read as "the filter did nothing".
+    • Kanban filter popover switched to position:fixed with JS placement — as an
+      absolutely-positioned element it was clipped by the panel bounds whenever
+      the interface was short. It now flips above the button when there isn't
+      room below, clamps its height to the viewport, and repositions on
+      resize/scroll.
+    • Google Sheets Load / Save added to the hamburger menu, mirroring the
+      toolbar buttons for when that toolbar is collapsed or scrolled away. The
+      menu's Save picks up the same unsaved-changes highlight.
+    • Kanban cards show a ⋮⋮ drag grip while a board is in Manual (drag) sort —
+      hidden in auto-sorted boards, where a dragged position can't be kept.
     • Kanban cards surface dependency state: a "blocked by N" badge when an
       upstream task isn't COMPLETED/APPROVED, and a "feeds N" badge for
       downstream work. Note the stored dependency direction is
@@ -925,6 +943,9 @@
     .kanban-card { background:var(--panel, #fff); border:1px solid var(--border-strong, #cbd5e1); border-left-width:4px; border-radius:8px; padding:8px 10px; cursor:grab; font-size:0.78rem; }
     .kanban-card:hover { border-color:var(--accent, #0284c7); }
     .kanban-card.dragging { opacity:0.45; }
+    .kanban-card-head { display:flex; align-items:flex-start; gap:7px; }
+    .kanban-grip { flex:0 0 auto; color:var(--text-muted); font-size:0.8rem; line-height:1.15; letter-spacing:1px; cursor:grab; user-select:none; margin-top:-1px; }
+    .kanban-grip:active { cursor:grabbing; }
     .kanban-card-name { font-weight:700; color:var(--text, #0f172a); line-height:1.3; }
     .kanban-card-person { margin-top:4px; font-size:0.72rem; color:var(--text-muted); }
     .kanban-card-badges { margin-top:6px; display:flex; gap:5px; flex-wrap:wrap; }
@@ -934,7 +955,9 @@
     .kanban-more { border:1px dashed var(--border-strong, #cbd5e1); border-radius:8px; padding:6px; font-size:0.72rem; font-weight:700; color:var(--text-muted); background:none; width:100%; cursor:pointer; }
     .kanban-filter-wrap { position:relative; display:inline-flex; }
     .kanban-filter-btn-active { background:var(--accent, #0284c7) !important; color:#fff !important; border-color:var(--accent, #0284c7) !important; }
-    .kanban-filter-panel { display:none; position:absolute; top:calc(100% + 6px); left:0; z-index:60; min-width:230px; max-height:340px; overflow-y:auto;
+    /* position:fixed + JS placement so the popover escapes the panel's bounds —
+       absolutely-positioned it got clipped whenever the Kanban panel was short. */
+    .kanban-filter-panel { display:none; position:fixed; z-index:900; min-width:230px; overflow-y:auto;
       background:var(--panel, #fff); border:1px solid var(--border-strong, #cbd5e1); border-radius:10px; box-shadow:0 10px 30px rgba(15,23,42,0.18); padding:10px 12px; }
     .kanban-filter-panel.open { display:block; }
     .kanban-filter-sec + .kanban-filter-sec { margin-top:12px; padding-top:10px; border-top:1px solid var(--border, #e2e8f0); }
@@ -1335,6 +1358,11 @@
     <div class="overflow-menu-wrapper">
       <button id="overflow-menu-btn" class="secondary" title="Menu">☰</button>
       <div class="overflow-menu" id="overflow-menu">
+        <div class="overflow-section">
+          <div class="overflow-section-label">Google Sheets</div>
+          <button id="menu-sheets-load-btn">⬇ Load</button>
+          <button id="menu-sheets-save-btn">⬆ Save</button>
+        </div>
         <div class="overflow-section">
           <div class="overflow-section-label">File</div>
           <button id="save-md-btn">💾 Save MD</button>
@@ -2121,6 +2149,8 @@
       if (saveBtn) saveBtn.classList.add('save-dirty');
       var menuBtn = document.getElementById('overflow-menu-btn');
       if (menuBtn) menuBtn.classList.add('save-dirty');
+      var mSave = document.getElementById('menu-sheets-save-btn');
+      if (mSave) mSave.classList.add('save-dirty');
     }
     function clearDirty() {
       _isDirty = false;
@@ -2128,6 +2158,8 @@
       if (saveBtn) saveBtn.classList.remove('save-dirty');
       var menuBtn = document.getElementById('overflow-menu-btn');
       if (menuBtn) menuBtn.classList.remove('save-dirty');
+      var mSave = document.getElementById('menu-sheets-save-btn');
+      if (mSave) mSave.classList.remove('save-dirty');
     }
     var ganttMultiSelected = {}; // taskId → true — set of Gantt bars in multi-selection (shift+click)
     var emptyGroups   = []; // group names created via Add Group that have no tasks yet
@@ -2717,8 +2749,14 @@
       if (!board) { boardEl.innerHTML = '<div class="kanban-empty">No boards yet — click "+ Board" to create one.</div>'; return; }
       if (!tasks.length) { boardEl.innerHTML = '<div class="kanban-empty">No tasks loaded.</div>'; return; }
 
+      _kanbanNormalizeBoard(board);
       var depIdx = _kanbanDepIndex();
-      var cols = _kanbanColumns(board);
+      // Hide columns whose own value is filtered out — an empty column left
+      // behind for a status you just unchecked reads as "the filter did
+      // nothing".
+      var _gDim = board.groupBy === 'person' ? 'person' : 'status';
+      var _gExcluded = (board.filters[_gDim] || []);
+      var cols = _kanbanColumns(board).filter(function(c) { return _gExcluded.indexOf(c) === -1; });
 
       // Bucket tasks into columns (a task can land in several on person boards)
       var buckets = {};
@@ -2815,10 +2853,23 @@
       card.dataset.taskId = task.id;
       card.style.borderLeftColor = _effectiveBarColor(task);
 
+      var head = document.createElement('div');
+      head.className = 'kanban-card-head';
+      // Grip only appears in Manual sort — in an auto-sorted board a drag can't
+      // hold a position, so advertising a reorder handle would be misleading.
+      var board = _kanbanActiveBoard();
+      if (board && board.sortField === 'manual') {
+        var grip = document.createElement('span');
+        grip.className = 'kanban-grip';
+        grip.textContent = '⋮⋮';
+        grip.title = 'Drag to reorder';
+        head.appendChild(grip);
+      }
       var nm = document.createElement('div');
       nm.className = 'kanban-card-name';
       nm.textContent = task.name || '(untitled)';
-      card.appendChild(nm);
+      head.appendChild(nm);
+      card.appendChild(head);
 
       var who = document.createElement('div');
       who.className = 'kanban-card-person';
@@ -2962,7 +3013,14 @@
         allBtn.title = allBtn.textContent === 'All' ? 'Show all ' + label.toLowerCase() + ' values' : 'Hide all ' + label.toLowerCase() + ' values';
         allBtn.addEventListener('click', function(e) {
           e.stopPropagation();
-          board.filters[dim] = (board.filters[dim] || []).length ? [] : vals.slice();
+          // Resolve the board at click time. Capturing it when the panel was
+          // built goes stale the moment applySettings() replaces kanbanBoards
+          // (e.g. a Load while the panel is open), and writes would then land
+          // on a detached object — the filter silently doing nothing.
+          var bd = _kanbanActiveBoard();
+          if (!bd) return;
+          _kanbanNormalizeBoard(bd);
+          bd.filters[dim] = (bd.filters[dim] || []).length ? [] : vals.slice();
           markDirty();
           _kanbanBuildFilterPanel();
           _kanbanSyncControls();
@@ -2978,10 +3036,13 @@
           cb.type = 'checkbox';
           cb.checked = (board.filters[dim] || []).indexOf(v) === -1;
           cb.addEventListener('change', function() {
-            var ex = board.filters[dim] || [];
+            var bd = _kanbanActiveBoard();   // fresh — see note on the All/None handler
+            if (!bd) return;
+            _kanbanNormalizeBoard(bd);
+            var ex = bd.filters[dim] || [];
             if (cb.checked) ex = ex.filter(function(x) { return x !== v; });
             else if (ex.indexOf(v) === -1) ex = ex.concat([v]);
-            board.filters[dim] = ex;
+            bd.filters[dim] = ex;
             markDirty();
             _kanbanSyncControls();
             renderKanban();
@@ -3006,6 +3067,27 @@
         btn.textContent = n ? 'Filter (' + n + ' hidden) ▾' : 'Filter ▾';
         btn.classList.toggle('kanban-filter-btn-active', n > 0);
       }
+      if (panel.classList.contains('open')) _kanbanPositionFilterPanel();
+    }
+
+    // Place the (fixed-position) filter popover under its button, flipping above
+    // it and clamping its height when the viewport is too short below.
+    function _kanbanPositionFilterPanel() {
+      var btn = document.getElementById('kanban-filter-btn');
+      var panel = document.getElementById('kanban-filter-panel');
+      if (!btn || !panel) return;
+      var r = btn.getBoundingClientRect();
+      var margin = 8;
+      var below = window.innerHeight - r.bottom - margin;
+      var above = r.top - margin;
+      var flip = below < 200 && above > below;   // not enough room below, more above
+      var avail = Math.max(140, flip ? above : below);
+      panel.style.maxHeight = Math.min(340, avail) + 'px';
+      var h = Math.min(panel.scrollHeight + 2, Math.min(340, avail));
+      panel.style.top  = (flip ? Math.max(margin, r.top - h - 6) : r.bottom + 6) + 'px';
+      // Keep it on screen horizontally too
+      var w = panel.offsetWidth || 230;
+      panel.style.left = Math.max(margin, Math.min(r.left, window.innerWidth - w - margin)) + 'px';
     }
 
     function _kanbanSyncControls() {
@@ -3050,7 +3132,14 @@
           var opening = !fPanel.classList.contains('open');
           if (opening) _kanbanBuildFilterPanel();
           fPanel.classList.toggle('open', opening);
+          if (opening) _kanbanPositionFilterPanel();
         });
+        window.addEventListener('resize', function() {
+          if (fPanel.classList.contains('open')) _kanbanPositionFilterPanel();
+        });
+        window.addEventListener('scroll', function() {
+          if (fPanel.classList.contains('open')) _kanbanPositionFilterPanel();
+        }, true);
         fPanel.addEventListener('click', function(e) { e.stopPropagation(); });
         document.addEventListener('click', function() { fPanel.classList.remove('open'); });
       }
@@ -9406,6 +9495,12 @@
       });
       document.getElementById('sheets-load-btn').addEventListener('click', function() { loadFromSheets(false); });
       document.getElementById('sheets-save-btn').addEventListener('click', function() { saveToSheets(); });
+      // Same two actions mirrored in the hamburger menu, for when the Google
+      // Sheets toolbar is collapsed or off-screen.
+      var _mLoad = document.getElementById('menu-sheets-load-btn');
+      if (_mLoad) _mLoad.addEventListener('click', function() { loadFromSheets(false); });
+      var _mSave = document.getElementById('menu-sheets-save-btn');
+      if (_mSave) _mSave.addEventListener('click', function() { saveToSheets(); });
 
       // Overflow menu toggle
       (function() {
