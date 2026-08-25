@@ -5,6 +5,26 @@
 
   VERSION HISTORY
   ───────────────
+  V1.29  2026-08-25 (cont'd, 2)
+    • Kanban text size control: a new "Text" select (Small/Medium/Large) in the
+      Kanban controls bar scales card/column-header/subtitle text so more fits
+      on screen at once. Implemented as a single --kanban-fs CSS custom
+      property set on #kanban-panel via a data-textsize attribute, so every
+      affected rule is a one-line calc() rather than a duplicated per-size
+      override block. Persisted per-version as kanbanTextSize (backend
+      redeploy required for it to actually save — see SETTINGS_KEYS).
+    • Kanban print mode: a new "Print" button on the Kanban panel opens a
+      full-screen print preview overlay, matching the Gantt and Task List
+      print modes (page size/orientation, zoom, Export PDF, window.print()).
+      Renders the active board's columns as a wrapping grid of cards rather
+      than a table, reusing the exact same column/filter/sort/subtitle logic
+      as the live board (factored out into _kanbanBuildBoardData()) so print
+      never drifts from what's on screen — except the "N per column" cap is
+      lifted, since a print/export is expected to be the full board. Print-
+      only settings (page size, fonts, margins, logo height, show
+      person/badges) persist in localStorage like the other two print modes,
+      independent of the live view's own Text control.
+
   V1.29  2026-08-25 (cont'd)
     • Kanban columns can now be reordered independently of sort/groupBy via a
       new "⇅ Columns" popover with per-column ▲/▼ buttons (drag was avoided
@@ -956,32 +976,38 @@
     /* ---- App view tabs ---- */
     .app-tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 2px solid var(--border-strong); }
     /* ---- Kanban ---- */
+    /* --kanban-fs scales card/column text only (not the controls bar itself) —
+       set via the Text control, kept as a CSS var so every affected rule stays
+       a one-line calc() instead of a duplicated override block per size. */
+    #kanban-panel { --kanban-fs: 1; }
+    #kanban-panel[data-textsize="sm"] { --kanban-fs: 0.82; }
+    #kanban-panel[data-textsize="lg"] { --kanban-fs: 1.15; }
     .kanban-controls { display:flex; gap:14px; align-items:center; flex-wrap:wrap; padding:8px 4px 12px; font-size:0.74rem; color:var(--text-muted); font-weight:600; }
     .kanban-controls label { display:flex; align-items:center; gap:5px; }
     .kanban-controls select, .kanban-controls input[type=number] { font-size:0.74rem; padding:3px 6px; width:auto; max-width:150px; flex:0 0 auto; }
     .kanban-board { display:flex; gap:12px; align-items:flex-start; overflow-x:auto; padding-bottom:14px; }
     .kanban-col { flex:0 0 250px; background:var(--panel-soft, #f8fafc); border:1px solid var(--border-strong, #cbd5e1); border-radius:10px; display:flex; flex-direction:column; max-height:70vh; }
     .kanban-col.drop-target { border-color:var(--accent, #0284c7); box-shadow:0 0 0 2px rgba(2,132,199,0.25); }
-    .kanban-col-head { padding:9px 11px; border-bottom:1px solid var(--border-strong, #cbd5e1); display:flex; align-items:center; gap:7px; font-size:0.74rem; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; color:var(--text, #0f172a); position:sticky; top:0; background:inherit; border-radius:10px 10px 0 0; }
+    .kanban-col-head { padding:9px 11px; border-bottom:1px solid var(--border-strong, #cbd5e1); display:flex; align-items:center; gap:7px; font-size:calc(0.74rem * var(--kanban-fs, 1)); font-weight:800; letter-spacing:0.05em; text-transform:uppercase; color:var(--text, #0f172a); position:sticky; top:0; background:inherit; border-radius:10px 10px 0 0; }
     .kanban-col-swatch { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
-    .kanban-col-count { margin-left:auto; font-weight:700; color:var(--text-muted); font-size:0.7rem; }
+    .kanban-col-count { margin-left:auto; font-weight:700; color:var(--text-muted); font-size:calc(0.7rem * var(--kanban-fs, 1)); }
     .kanban-cards { padding:9px; display:flex; flex-direction:column; gap:8px; overflow-y:auto; }
-    .kanban-subtitle { display:flex; align-items:center; gap:6px; font-size:0.66rem; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-muted); padding:4px 2px 2px; }
+    .kanban-subtitle { display:flex; align-items:center; gap:6px; font-size:calc(0.66rem * var(--kanban-fs, 1)); font-weight:800; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-muted); padding:4px 2px 2px; }
     .kanban-subtitle:first-child { padding-top:0; }
     .kanban-subtitle-count { margin-left:auto; font-weight:700; }
-    .kanban-card { background:var(--panel, #fff); border:1px solid var(--border-strong, #cbd5e1); border-left-width:4px; border-radius:8px; padding:8px 10px; cursor:grab; font-size:0.78rem; }
+    .kanban-card { background:var(--panel, #fff); border:1px solid var(--border-strong, #cbd5e1); border-left-width:4px; border-radius:8px; padding:8px 10px; cursor:grab; font-size:calc(0.78rem * var(--kanban-fs, 1)); }
     .kanban-card:hover { border-color:var(--accent, #0284c7); }
     .kanban-card.dragging { opacity:0.45; }
     .kanban-card-head { display:flex; align-items:flex-start; gap:7px; }
     .kanban-grip { flex:0 0 auto; color:var(--text-muted); font-size:0.8rem; line-height:1.15; letter-spacing:1px; cursor:grab; user-select:none; margin-top:-1px; }
     .kanban-grip:active { cursor:grabbing; }
     .kanban-card-name { font-weight:700; color:var(--text, #0f172a); line-height:1.3; }
-    .kanban-card-person { margin-top:4px; font-size:0.72rem; color:var(--text-muted); }
+    .kanban-card-person { margin-top:4px; font-size:calc(0.72rem * var(--kanban-fs, 1)); color:var(--text-muted); }
     .kanban-card-badges { margin-top:6px; display:flex; gap:5px; flex-wrap:wrap; }
-    .kanban-badge { font-size:0.64rem; font-weight:700; padding:2px 6px; border-radius:999px; letter-spacing:0.03em; cursor:help; }
+    .kanban-badge { font-size:calc(0.64rem * var(--kanban-fs, 1)); font-weight:700; padding:2px 6px; border-radius:999px; letter-spacing:0.03em; cursor:help; }
     .kanban-badge.blocked { background:#fee2e2; color:#b91c1c; }
     .kanban-badge.feeds   { background:#e0f2fe; color:#0369a1; }
-    .kanban-more { border:1px dashed var(--border-strong, #cbd5e1); border-radius:8px; padding:6px; font-size:0.72rem; font-weight:700; color:var(--text-muted); background:none; width:100%; cursor:pointer; }
+    .kanban-more { border:1px dashed var(--border-strong, #cbd5e1); border-radius:8px; padding:6px; font-size:calc(0.72rem * var(--kanban-fs, 1)); font-weight:700; color:var(--text-muted); background:none; width:100%; cursor:pointer; }
     .kanban-filter-wrap { position:relative; display:inline-flex; }
     .kanban-filter-btn-active { background:var(--accent, #0284c7) !important; color:#fff !important; border-color:var(--accent, #0284c7) !important; }
     /* position:fixed + JS placement so the popover escapes the panel's bounds —
@@ -1297,6 +1323,26 @@
         border-radius: 0 !important;
       }
       .tp-page:last-child { page-break-after: auto; break-after: auto; }
+      #kanban-print-overlay {
+        display: flex !important;
+        position: static !important;
+        width: 100% !important;
+        height: auto !important;
+        background: white !important;
+        overflow: visible !important;
+      }
+      #kanban-print-ctrl-bar { display: none !important; }
+      #kanban-print-preview-area {
+        padding: 0 !important;
+        overflow: visible !important;
+      }
+      .kp-page {
+        page-break-after: always;
+        break-after: page;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+      }
+      .kp-page:last-child { page-break-after: auto; break-after: auto; }
     }
 
     /* ── Task Print Overlay ─────────────────────────────────────── */
@@ -1370,6 +1416,40 @@
     .tp-page-header { padding: 14px 16px 8px; border-bottom: 2px solid #1e293b; display: flex; justify-content: space-between; align-items: flex-end; }
     .tp-page-header h1 { font-size: 1rem; font-weight: 800; letter-spacing: 0.06em; color: #0f172a; margin: 0; }
     .tp-page-header .tp-meta { font-size: 0.65rem; color: #64748b; text-align: right; }
+
+    /* ── Kanban Print Overlay ───────────────────────────────────── */
+    #kanban-print-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #kanban-print-preview-area {
+      flex: 1; overflow-y: auto; padding: 24px; display: flex;
+      flex-direction: column; align-items: center; gap: 24px;
+      background: #e2e8f0;
+    }
+    .kp-page {
+      background: white; box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+      border-radius: 4px; overflow: hidden; flex-shrink: 0;
+    }
+    .kp-page-header { padding: 14px 16px 8px; border-bottom: 2px solid #1e293b; display: flex; justify-content: space-between; align-items: flex-end; }
+    .kp-board { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+    .kp-col { display: flex; flex-direction: column; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; flex-shrink: 0; }
+    .kp-col-head { display: flex; align-items: center; gap: 6px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #0f172a; border-bottom: 1px solid #cbd5e1; }
+    .kp-col-swatch { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+    .kp-col-count { margin-left: auto; font-weight: 700; color: #64748b; }
+    .kp-subtitle { display: flex; align-items: center; gap: 6px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
+    .kp-subtitle-count { margin-left: auto; font-weight: 700; }
+    .kp-card { background: #fff; border: 1px solid #cbd5e1; border-left-width: 4px; border-radius: 6px; box-sizing: border-box; }
+    .kp-card-name { font-weight: 700; color: #0f172a; line-height: 1.3; }
+    .kp-card-person { color: #64748b; margin-top: 3px; }
+    .kp-card-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+    .kp-badge { font-size: 0.85em; font-weight: 700; padding: 2px 6px; border-radius: 999px; letter-spacing: 0.03em; display: inline-block; }
+    .kp-badge.blocked { background: #fee2e2; color: #b91c1c; }
+    .kp-badge.feeds   { background: #e0f2fe; color: #0369a1; }
 
     /* Slim top-of-page loading bar — shown while fetching from Google Sheets */
     #load-progress-bar {
@@ -1707,6 +1787,7 @@
           <button id="kanban-add-board-btn"    class="primary"   title="Create a new board">+ Board</button>
           <button id="kanban-rename-board-btn" class="secondary" title="Rename the active board">Rename</button>
           <button id="kanban-delete-board-btn" class="secondary" title="Delete the active board">Delete</button>
+          <button id="kanban-print-btn"        class="secondary" title="Open Kanban print preview">Print</button>
         </div>
       </div>
       <div class="kanban-controls" id="kanban-controls">
@@ -1743,6 +1824,13 @@
         </select>
         <label>Show
           <input type="number" id="kanban-limit" min="1" max="200" value="6" style="width:62px;" title="Cards shown per column before collapsing" /> per column
+        </label>
+        <label>Text
+          <select id="kanban-textsize" title="Card/column text size">
+            <option value="sm">Small</option>
+            <option value="md" selected>Medium</option>
+            <option value="lg">Large</option>
+          </select>
         </label>
         <span class="kanban-filter-wrap">
           <button id="kanban-filter-btn" class="secondary" title="Show/hide cards by status, discipline or person">Filter ▾</button>
@@ -2141,6 +2229,9 @@
     var prZoom             = 100;      // print preview zoom %
     var prLogoH            = 42;       // logo height in Gantt print header (px)
     var tpLogoH            = 42;       // logo height in task-list print header (px)
+    var kpZoom              = 100;     // kanban print preview zoom %
+    var kpLogoH             = 42;      // logo height in kanban print header (px)
+    var _lastKpPgW          = 1056;    // page width of last kanban print render (px), used for Fit zoom
     var _lastPrintPgW      = 1056;    // page width of last print render (px), used for Fit zoom
     var currentTab   = 'gantt'; // 'gantt' | 'tasks' | 'milestones' | 'flags'
     var taskTypeFilter = null;  // null = all | 'milestone' | 'flag'
@@ -2622,6 +2713,7 @@
     //   { id, name, groupBy:'status'|'person', limit, sortField, sortDir, blockedOnly }
     var kanbanBoards   = [];
     var kanbanActiveId = null;
+    var kanbanTextSize = 'md';   // 'sm' | 'md' | 'lg' — scales card/column text in the live Kanban view
     var _kanbanExpanded = {};   // boardId+'|'+columnKey -> true when "+N more" was clicked
     var KANBAN_UNASSIGNED = '(unassigned)';
     // A dependency is satisfied once its upstream task reaches one of these.
@@ -2843,15 +2935,11 @@
       return el;
     }
 
-    function renderKanban() {
-      var boardEl = document.getElementById('kanban-board');
-      if (!boardEl) return;
-      boardEl.innerHTML = '';
-      var board = _kanbanActiveBoard();
-      if (!board) { boardEl.innerHTML = '<div class="kanban-empty">No boards yet — click "+ Board" to create one.</div>'; return; }
-      if (!tasks.length) { boardEl.innerHTML = '<div class="kanban-empty">No tasks loaded.</div>'; return; }
-
-      _kanbanNormalizeBoard(board);
+    // Shared by the live board and the print preview: resolves the board's
+    // visible columns (in the user's chosen order) and buckets every task
+    // that passes its filters into them. Kept as one function so print never
+    // drifts from what the live board is actually showing.
+    function _kanbanBuildBoardData(board) {
       var depIdx = _kanbanDepIndex();
       // Hide columns whose own value is filtered out — an empty column left
       // behind for a status you just unchecked reads as "the filter did
@@ -2872,6 +2960,22 @@
           buckets[c].push(t);
         });
       });
+      return { cols: cols, buckets: buckets, depIdx: depIdx };
+    }
+
+    function renderKanban() {
+      var boardEl = document.getElementById('kanban-board');
+      if (!boardEl) return;
+      boardEl.innerHTML = '';
+      var board = _kanbanActiveBoard();
+      if (!board) { boardEl.innerHTML = '<div class="kanban-empty">No boards yet — click "+ Board" to create one.</div>'; return; }
+      if (!tasks.length) { boardEl.innerHTML = '<div class="kanban-empty">No tasks loaded.</div>'; return; }
+
+      _kanbanNormalizeBoard(board);
+      var _data  = _kanbanBuildBoardData(board);
+      var cols   = _data.cols;
+      var buckets = _data.buckets;
+      var depIdx = _data.depIdx;
 
       cols.forEach(function(colKey) {
         var colTasks = _kanbanSortCards(buckets[colKey] || [], board);
@@ -3271,6 +3375,16 @@
       renderKanban();
     }
 
+    // Applies kanbanTextSize to the DOM (data attribute the CSS keys off) and
+    // syncs the select — called on init, on change, and after applySettings()
+    // restores a saved value from the sheet.
+    function _kanbanApplyTextSize() {
+      var panel = document.getElementById('kanban-panel');
+      if (panel) panel.dataset.textsize = kanbanTextSize || 'md';
+      var sel = document.getElementById('kanban-textsize');
+      if (sel) sel.value = kanbanTextSize || 'md';
+    }
+
     function _kanbanSyncControls() {
       var board = _kanbanActiveBoard();
       var sel = document.getElementById('kanban-board-select');
@@ -3387,6 +3501,16 @@
       var bo = document.getElementById('kanban-blocked-only');
       if (bo) bo.addEventListener('change', function() { var v = this.checked; edit(function(b) { b.blockedOnly = v; }); });
 
+      var ts = document.getElementById('kanban-textsize');
+      if (ts) ts.addEventListener('change', function() {
+        kanbanTextSize = this.value;
+        _kanbanApplyTextSize();
+        markDirty();
+      });
+
+      var printBtn = document.getElementById('kanban-print-btn');
+      if (printBtn) printBtn.addEventListener('click', openKanbanPrintPreview);
+
       var addBtn = document.getElementById('kanban-add-board-btn');
       if (addBtn) addBtn.addEventListener('click', function() {
         var name = prompt('Board name:', 'Board ' + (kanbanBoards.length + 1));
@@ -3422,6 +3546,7 @@
         renderKanban();
       });
 
+      _kanbanApplyTextSize();
       _kanbanSyncControls();
     }
 
@@ -8569,6 +8694,7 @@
         sortDirection:         sortState.direction,
         currentTab:            currentTab              || 'gantt',
         kanbanBoards:          JSON.stringify(kanbanBoards || []),
+        kanbanTextSize:        kanbanTextSize || 'md',
         taskListGroupSortMode: taskListGroupSortMode   || 'custom',
         taskTableColWidths:    JSON.stringify(taskTableColWidths),
         taskTableColVisible:   JSON.stringify(taskTableColVisible),
@@ -8865,6 +8991,10 @@
             if (typeof _kanbanSyncControls === 'function') _kanbanSyncControls();
           }
         } catch(e) {}
+      }
+      if (s.kanbanTextSize !== undefined) {
+        kanbanTextSize = s.kanbanTextSize || 'md';
+        if (typeof _kanbanApplyTextSize === 'function') _kanbanApplyTextSize();
       }
 
       if (s.currentTab !== undefined) {
@@ -11198,6 +11328,7 @@
     // ── Print settings persistence (localStorage) ─────────────────
     var PR_STORAGE_KEY = 'gantt_print_settings_v1';
     var TP_STORAGE_KEY = 'gantt_tp_settings_v1';
+    var KP_STORAGE_KEY = 'gantt_kp_settings_v1';
 
     function _collectPrintSettings() {
       function _g(id)  { var e = document.getElementById(id); return e ? e.value   : null; }
@@ -11293,6 +11424,48 @@
           var hcEl = document.getElementById('tp-header-color');
           if (hcEl) hcEl.value = taskPrintHeaderColor;
         }
+      } catch(e) {}
+    }
+
+    function _collectKpSettings() {
+      function _g(id)  { var e = document.getElementById(id); return e ? e.value   : null; }
+      function _gc(id) { var e = document.getElementById(id); return e ? e.checked : null; }
+      return {
+        size: _g('kp-size'), orient: _g('kp-orient'),
+        colw: _g('kp-colw'), titleFont: _g('kp-title-font'),
+        headFont: _g('kp-head-font'), cardFont: _g('kp-card-font'),
+        showPerson: _gc('kp-show-person'), showBadges: _gc('kp-show-badges'),
+        mt: _g('kp-mt'), mb: _g('kp-mb'), ml: _g('kp-ml'), mr: _g('kp-mr'),
+        logoH: _g('kp-logo-h'), zoom: kpZoom
+      };
+    }
+    function _saveKpSettings() {
+      try { localStorage.setItem(KP_STORAGE_KEY, JSON.stringify(_collectKpSettings())); } catch(e) {}
+    }
+    function _loadKpSettings() {
+      try {
+        var raw = localStorage.getItem(KP_STORAGE_KEY);
+        if (!raw) return;
+        var s = JSON.parse(raw);
+        function _s(id, v)  { if (v == null) return; var e = document.getElementById(id); if (e) e.value = v; }
+        function _sv(id, v) {
+          if (v == null) return;
+          var e = document.getElementById(id); if (!e) return; e.value = v;
+          var ve = document.getElementById(id + '-val'); if (ve) ve.textContent = v;
+        }
+        function _sc(id, v) { if (v == null) return; var e = document.getElementById(id); if (e) e.checked = !!v; }
+        _s('kp-size', s.size); _s('kp-orient', s.orient);
+        _sv('kp-colw', s.colw); _sv('kp-title-font', s.titleFont);
+        _sv('kp-head-font', s.headFont); _sv('kp-card-font', s.cardFont);
+        _sc('kp-show-person', s.showPerson); _sc('kp-show-badges', s.showBadges);
+        _s('kp-mt', s.mt); _s('kp-mb', s.mb); _s('kp-ml', s.ml); _s('kp-mr', s.mr);
+        if (s.logoH != null) {
+          var lhEl = document.getElementById('kp-logo-h');
+          var lhVEl = document.getElementById('kp-logo-h-val');
+          if (lhEl) { lhEl.value = s.logoH; if (lhVEl) lhVEl.textContent = s.logoH; }
+          kpLogoH = parseInt(s.logoH, 10) || 42;
+        }
+        if (s.zoom != null) kpZoom = s.zoom;
       } catch(e) {}
     }
 
@@ -11881,6 +12054,314 @@
       initTaskPrintMode();
     }
 
+    // =========================================================
+    //  KANBAN PRINT MODE
+    // =========================================================
+    // Prints exactly what the active board is showing — same columns
+    // (filters/sort/order/subgroups all read live off the board), just with
+    // the "N per column" cap lifted, since a print/export is expected to be
+    // the full board rather than the UI's default-collapsed view.
+    function _kpGetOpts() {
+      var sz   = document.getElementById('kp-size').value;
+      var land = document.getElementById('kp-orient').value === 'landscape';
+      var dims = PRINT_PAGE_SIZES[sz] || PRINT_PAGE_SIZES.tabloid;
+      var pw   = land ? Math.max(dims.w, dims.h) : Math.min(dims.w, dims.h);
+      var ph   = land ? Math.min(dims.w, dims.h) : Math.max(dims.w, dims.h);
+      var mT = parseInt(document.getElementById('kp-mt').value, 10) || 0;
+      var mB = parseInt(document.getElementById('kp-mb').value, 10) || 0;
+      var mL = parseInt(document.getElementById('kp-ml').value, 10) || 0;
+      var mR = parseInt(document.getElementById('kp-mr').value, 10) || 0;
+      return {
+        pw: pw, ph: ph, sz: sz, land: land,
+        mT: mT, mB: mB, mL: mL, mR: mR,
+        colW:       parseInt(document.getElementById('kp-colw').value, 10) || 190,
+        titleFont:  parseInt(document.getElementById('kp-title-font').value, 10) || 14,
+        headFont:   parseInt(document.getElementById('kp-head-font').value, 10) || 8,
+        cardFont:   parseInt(document.getElementById('kp-card-font').value, 10) || 8,
+        showPerson: document.getElementById('kp-show-person').checked,
+        showBadges: document.getElementById('kp-show-badges').checked
+      };
+    }
+
+    function _kpBuildCard(task, depIdx, opts) {
+      var card = document.createElement('div');
+      card.className = 'kp-card';
+      card.style.cssText = 'padding:7px 9px;font-size:' + opts.cardFont + 'px;border-left-color:' + _kanbanStatusColor(task) + ';';
+
+      var nm = document.createElement('div');
+      nm.className = 'kp-card-name';
+      nm.textContent = task.name || '(untitled)';
+      card.appendChild(nm);
+
+      if (opts.showPerson) {
+        var who = document.createElement('div');
+        who.className = 'kp-card-person';
+        who.textContent = task.person ? task.person : '—';
+        card.appendChild(who);
+      }
+
+      if (opts.showBadges) {
+        var blockers = _kanbanBlockers(task, depIdx);
+        var feeds = depIdx.feeds[task.id] || [];
+        if (blockers.length || feeds.length) {
+          var badges = document.createElement('div');
+          badges.className = 'kp-card-badges';
+          if (blockers.length) {
+            var b = document.createElement('span');
+            b.className = 'kp-badge blocked';
+            b.textContent = '⛔ blocked by ' + blockers.length;
+            badges.appendChild(b);
+          }
+          if (feeds.length) {
+            var f = document.createElement('span');
+            f.className = 'kp-badge feeds';
+            f.textContent = '→ feeds ' + feeds.length;
+            badges.appendChild(f);
+          }
+          card.appendChild(badges);
+        }
+      }
+      return card;
+    }
+
+    function applyKpZoom() {
+      var scale = kpZoom / 100;
+      document.querySelectorAll('#kp-pages-wrapper .kp-page').forEach(function(p) {
+        var nW = parseInt(p.getAttribute('data-pw')) || 1056;
+        var nH = parseInt(p.getAttribute('data-ph')) || 1632;
+        p.style.transform = 'scale(' + scale + ')';
+        p.style.transformOrigin = 'top left';
+        var slot = p.parentElement;
+        if (slot && slot.classList.contains('kp-page-slot')) {
+          slot.style.width  = Math.round(nW * scale) + 'px';
+          slot.style.height = Math.round(nH * scale) + 'px';
+        }
+      });
+      var zd = document.getElementById('kp-zoom-display');
+      if (zd) zd.value = kpZoom;
+    }
+
+    function renderKanbanPrintPreview() {
+      var opts = _kpGetOpts();
+      var area = document.getElementById('kanban-print-preview-area');
+      area.innerHTML = '';
+
+      var styleId = 'kp-page-css';
+      var existing = document.getElementById(styleId);
+      if (existing) existing.remove();
+      var st = document.createElement('style');
+      st.id = styleId;
+      var wIn = (opts.pw / 96).toFixed(3);
+      var hIn = (opts.ph / 96).toFixed(3);
+      st.textContent = '@media print { @page { size: ' + wIn + 'in ' + hIn + 'in; margin: 0; } }';
+      document.head.appendChild(st);
+
+      var wrapper = document.createElement('div');
+      wrapper.id = 'kp-pages-wrapper';
+      wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:20px;padding-bottom:24px;';
+      area.appendChild(wrapper);
+
+      var board = _kanbanActiveBoard();
+      if (!board) {
+        wrapper.innerHTML = '<div style="color:#94a3b8;padding:40px;">No board to print.</div>';
+        return;
+      }
+
+      _lastKpPgW = opts.pw;
+      var mT = opts.mT, mB = opts.mB, mL = opts.mL, mR = opts.mR;
+
+      var kpSlot = document.createElement('div');
+      kpSlot.className = 'kp-page-slot';
+      kpSlot.style.cssText = 'flex-shrink:0;overflow:hidden;';
+      wrapper.appendChild(kpSlot);
+
+      var pageDiv = document.createElement('div');
+      pageDiv.className = 'kp-page';
+      pageDiv.setAttribute('data-pw', opts.pw);
+      pageDiv.setAttribute('data-ph', opts.ph);
+      pageDiv.style.cssText = 'width:' + opts.pw + 'px;min-height:' + opts.ph + 'px;padding:' + mT + 'px ' + mR + 'px ' + mB + 'px ' + mL + 'px;box-sizing:border-box;font-family:system-ui,sans-serif;position:relative;';
+
+      var projName = (document.getElementById('meta-name') || {}).value || 'LA COSTA HOTEL';
+      var projSub  = (document.getElementById('meta-subtitle') || {}).value || 'PROJECT SCHEDULE';
+      var logoHtml = projectLogo
+        ? '<img src="' + projectLogo + '" style="max-height:' + kpLogoH + 'px;max-width:' + Math.round(kpLogoH * 3.5) + 'px;object-fit:contain;display:block;" />'
+        : '';
+      var subFont = Math.max(7, Math.round(opts.titleFont * 0.7));
+      var hdrDiv = document.createElement('div');
+      hdrDiv.className = 'kp-page-header';
+      hdrDiv.innerHTML =
+        '<div><div style="font-size:' + opts.titleFont + 'px;font-weight:800;letter-spacing:.06em;color:#0f172a;">' + projName + ' — ' + (board.name || 'KANBAN') + '</div>' +
+        '<div style="font-size:' + subFont + 'px;color:#64748b;letter-spacing:.04em;">' + projSub + '</div></div>' +
+        (logoHtml ? '<div style="flex-shrink:0;">' + logoHtml + '</div>' : '');
+      pageDiv.appendChild(hdrDiv);
+
+      var today = new Date();
+      var ftrDiv = document.createElement('div');
+      ftrDiv.style.cssText = 'position:absolute;bottom:' + Math.max(8, mB) + 'px;right:' + Math.max(8, mR) + 'px;font-size:' + Math.max(7, opts.cardFont - 1) + 'px;color:#94a3b8;text-align:right;white-space:nowrap;font-family:system-ui,sans-serif;';
+      ftrDiv.textContent = 'Printed ' + _tpFmtDate(today);
+      pageDiv.appendChild(ftrDiv);
+
+      var boardDiv = document.createElement('div');
+      boardDiv.className = 'kp-board';
+      boardDiv.style.cssText = 'margin-top:8px;';
+
+      _kanbanNormalizeBoard(board);
+      var data = _kanbanBuildBoardData(board);
+      var depIdx = data.depIdx;
+
+      data.cols.forEach(function(colKey) {
+        var colTasks = _kanbanSortCards(data.buckets[colKey] || [], board);
+        var colDiv = document.createElement('div');
+        colDiv.className = 'kp-col';
+        colDiv.style.cssText = 'width:' + opts.colW + 'px;margin-bottom:10px;';
+
+        var head = document.createElement('div');
+        head.className = 'kp-col-head';
+        head.style.cssText = 'padding:7px 9px;font-size:' + opts.headFont + 'px;';
+        if (board.groupBy === 'status') {
+          var sw = document.createElement('span');
+          sw.className = 'kp-col-swatch';
+          sw.style.background = STATUS_COLOR_MAP[colKey] || '#94a3b8';
+          head.appendChild(sw);
+        }
+        head.appendChild(document.createTextNode(colKey));
+        var cnt = document.createElement('span');
+        cnt.className = 'kp-col-count';
+        cnt.textContent = colTasks.length;
+        head.appendChild(cnt);
+        colDiv.appendChild(head);
+
+        var cardsWrap = document.createElement('div');
+        cardsWrap.style.cssText = 'padding:8px;display:flex;flex-direction:column;gap:6px;';
+
+        _kanbanClusterVisible(colTasks, board).forEach(function(cluster) {
+          if (cluster.key !== null) {
+            var subEl = document.createElement('div');
+            subEl.className = 'kp-subtitle';
+            subEl.style.cssText = 'font-size:' + Math.max(6, opts.headFont - 1) + 'px;padding:2px 1px;';
+            if (board.subGroupBy === 'status') {
+              var sw2 = document.createElement('span');
+              sw2.className = 'kp-col-swatch';
+              sw2.style.background = STATUS_COLOR_MAP[cluster.key] || '#94a3b8';
+              subEl.appendChild(sw2);
+            }
+            subEl.appendChild(document.createTextNode(cluster.key));
+            var c2 = document.createElement('span');
+            c2.className = 'kp-subtitle-count';
+            c2.textContent = cluster.cards.length;
+            subEl.appendChild(c2);
+            cardsWrap.appendChild(subEl);
+          }
+          cluster.cards.forEach(function(task) {
+            cardsWrap.appendChild(_kpBuildCard(task, depIdx, opts));
+          });
+        });
+
+        colDiv.appendChild(cardsWrap);
+        boardDiv.appendChild(colDiv);
+      });
+
+      pageDiv.appendChild(boardDiv);
+      kpSlot.appendChild(pageDiv);
+      applyKpZoom();
+    }
+
+    function openKanbanPrintPreview() {
+      document.getElementById('kanban-print-overlay').style.display = 'flex';
+      _loadKpSettings();
+      renderKanbanPrintPreview();
+    }
+
+    function closeKanbanPrintPreview() {
+      _saveKpSettings();
+      document.getElementById('kanban-print-overlay').style.display = 'none';
+    }
+
+    async function exportKanbanPDF() {
+      var btn = document.getElementById('kp-export-pdf-btn');
+      var orig = btn ? btn.textContent : '';
+      if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
+      var sz   = document.getElementById('kp-size').value;
+      var land = document.getElementById('kp-orient').value === 'landscape';
+      var dims = PRINT_PAGE_SIZES[sz] || PRINT_PAGE_SIZES.tabloid;
+      var pgW  = land ? Math.max(dims.w, dims.h) : Math.min(dims.w, dims.h);
+      var pgH  = land ? Math.min(dims.w, dims.h) : Math.max(dims.w, dims.h);
+      var savedZoom = kpZoom; kpZoom = 100; applyKpZoom();
+      try {
+        await _exportPagesToPDF('#kp-pages-wrapper .kp-page', pgW, pgH, 'timeline-kanban.pdf');
+      } finally {
+        kpZoom = savedZoom; applyKpZoom();
+        if (btn) { btn.textContent = orig; btn.disabled = false; }
+      }
+    }
+
+    function initKanbanPrintMode() {
+      document.getElementById('kp-close-btn').addEventListener('click', closeKanbanPrintPreview);
+      document.getElementById('kp-print-btn').addEventListener('click', function() { window.print(); });
+      var kpPdfBtn = document.getElementById('kp-export-pdf-btn');
+      if (kpPdfBtn) kpPdfBtn.addEventListener('click', exportKanbanPDF);
+
+      var reRender = function() { renderKanbanPrintPreview(); };
+      ['kp-size','kp-orient','kp-mt','kp-mb','kp-ml','kp-mr'].forEach(function(id) {
+        document.getElementById(id).addEventListener('change', reRender);
+      });
+      ['kp-title-font','kp-head-font','kp-card-font','kp-colw','kp-logo-h'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var valEl = document.getElementById(id + '-val');
+        el.addEventListener('input', function() {
+          if (valEl) valEl.textContent = el.value;
+          if (id === 'kp-logo-h') kpLogoH = parseInt(el.value, 10) || 42;
+          reRender();
+        });
+      });
+      ['kp-show-person','kp-show-badges'].forEach(function(id) {
+        document.getElementById(id).addEventListener('change', reRender);
+      });
+
+      var kpZoomIn    = document.getElementById('kp-zoom-in');
+      var kpZoomOut   = document.getElementById('kp-zoom-out');
+      var kpZoomFit   = document.getElementById('kp-zoom-fit');
+      var kpZoomInput = document.getElementById('kp-zoom-display');
+      if (kpZoomIn)  kpZoomIn.addEventListener('click',  function() { kpZoom = Math.min(200, kpZoom + 10); applyKpZoom(); });
+      if (kpZoomOut) kpZoomOut.addEventListener('click', function() { kpZoom = Math.max(25,  kpZoom - 10); applyKpZoom(); });
+      if (kpZoomFit) kpZoomFit.addEventListener('click', function() {
+        var area = document.getElementById('kanban-print-preview-area');
+        if (!area || !_lastKpPgW) return;
+        kpZoom = Math.max(25, Math.min(200, Math.floor(((area.clientWidth - 48) / _lastKpPgW) * 100)));
+        applyKpZoom();
+      });
+      if (kpZoomInput) {
+        var _kpCommitZoom = function() {
+          var v = parseInt(kpZoomInput.value, 10);
+          if (!isNaN(v)) { kpZoom = Math.max(25, Math.min(200, v)); applyKpZoom(); }
+        };
+        kpZoomInput.addEventListener('change', _kpCommitZoom);
+        kpZoomInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); _kpCommitZoom(); } });
+      }
+
+      var kpSettingsToggle = document.getElementById('kp-settings-toggle');
+      var kpSettingsPanel  = document.getElementById('kp-settings-panel');
+      if (kpSettingsToggle && kpSettingsPanel) {
+        kpSettingsToggle.addEventListener('click', function() {
+          var collapsed = kpSettingsPanel.classList.toggle('collapsed');
+          kpSettingsToggle.classList.toggle('collapsed', collapsed);
+        });
+      }
+
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('kanban-print-overlay').style.display !== 'none') {
+          closeKanbanPrintPreview();
+        }
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initKanbanPrintMode);
+    } else {
+      initKanbanPrintMode();
+    }
+
   </script>
 
   <!-- ── Task Print Overlay ─────────────────────────────────────── -->
@@ -11959,6 +12440,74 @@
       </div>
     </div>
     <div id="task-print-preview-area"></div>
+  </div>
+
+  <!-- ── Kanban Print Overlay ───────────────────────────────────── -->
+  <div id="kanban-print-overlay">
+    <div id="kanban-print-ctrl-bar">
+      <div class="pr-fixed-bar">
+        <span class="pr-overlay-title">KANBAN — PRINT PREVIEW</span>
+        <button class="pr-toggle-btn" id="kp-settings-toggle">⚙ Settings <span class="pr-toggle-chevron">▾</span></button>
+        <div class="pr-zoom-ctrl">
+          <button class="pr-zoom-btn" id="kp-zoom-out" title="Zoom out (−10%)">−</button>
+          <input type="number" id="kp-zoom-display" class="pr-zoom-display" value="100" min="25" max="200" step="10" title="Zoom % (25–200)" /><span style="font-size:0.68rem;color:var(--text-muted);margin-left:-2px;">%</span>
+          <button class="pr-zoom-btn" id="kp-zoom-in" title="Zoom in (+10%)">+</button>
+          <button class="pr-zoom-btn" id="kp-zoom-fit" title="Fit page to window">Fit</button>
+        </div>
+        <div class="pr-actions">
+          <button class="pr-pdf-btn" id="kp-export-pdf-btn">⬇ Export PDF</button>
+          <button id="kp-print-btn">⬜ Print</button>
+          <button id="kp-close-btn">✕ Close</button>
+        </div>
+      </div>
+      <div class="pr-settings-panel" id="kp-settings-panel">
+        <div class="pr-card">
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Page</div>
+            <div class="pr-row">Size <select id="kp-size" class="pr-select">
+              <option value="tabloid">Tabloid 11×17</option>
+              <option value="letter">Letter 8.5×11</option>
+              <option value="legal">Legal 8.5×14</option>
+              <option value="archd">Arch D 24×36</option>
+              <option value="a4">A4</option>
+              <option value="a3">A3</option>
+            </select></div>
+            <div class="pr-row">Orient <select id="kp-orient" class="pr-select">
+              <option value="landscape">Landscape</option>
+              <option value="portrait">Portrait</option>
+            </select></div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Layout</div>
+            <div class="pr-row">Col width <input type="range" id="kp-colw" class="pr-slider" min="120" max="320" value="190" /> <span class="pr-val" id="kp-colw-val">190</span>px</div>
+            <div class="pr-row">Title <input type="range" id="kp-title-font" class="pr-slider" min="8" max="28" value="14" /> <span class="pr-val" id="kp-title-font-val">14</span>pt</div>
+            <div class="pr-row">Header <input type="range" id="kp-head-font" class="pr-slider" min="6" max="14" value="8" /> <span class="pr-val" id="kp-head-font-val">8</span>pt</div>
+            <div class="pr-row">Card <input type="range" id="kp-card-font" class="pr-slider" min="6" max="14" value="8" /> <span class="pr-val" id="kp-card-font-val">8</span>pt</div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Show</div>
+            <label class="pr-row"><input type="checkbox" id="kp-show-person" checked /> Person</label>
+            <label class="pr-row"><input type="checkbox" id="kp-show-badges" checked /> Dependency badges</label>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Margins</div>
+            <div class="pr-row">T <input type="number" id="kp-mt" class="pr-num" min="0" max="200" value="36" /> B <input type="number" id="kp-mb" class="pr-num" min="0" max="200" value="36" /></div>
+            <div class="pr-row">L <input type="number" id="kp-ml" class="pr-num" min="0" max="200" value="36" /> R <input type="number" id="kp-mr" class="pr-num" min="0" max="200" value="36" /></div>
+          </div>
+
+          <div class="pr-section">
+            <div class="pr-sec-label">Logo</div>
+            <div class="pr-row">H <input type="range" id="kp-logo-h" class="pr-slider" min="16" max="80" value="42" /> <span class="pr-val" id="kp-logo-h-val">42</span>px</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div id="kanban-print-preview-area"></div>
   </div>
 
   <!-- ── Print Mode Overlay ──────────────────────────────────────── -->
