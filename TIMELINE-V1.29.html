@@ -5,6 +5,32 @@
 
   VERSION HISTORY
   ───────────────
+  V1.29  2026-08-25 (cont'd)
+    • Kanban columns can now be reordered independently of sort/groupBy via a
+      new "⇅ Columns" popover with per-column ▲/▼ buttons (drag was avoided
+      here since cards already use drag-and-drop on the same board). Order is
+      stored per board as columnOrder and persists through Load/Save.
+    • Kanban columns can be sub-grouped by a second dimension (Status, Person,
+      or Discipline) via a new "Subtitle" control, clustering the visible
+      cards in each column under a labeled divider (with a count) instead of
+      one flat list. Clustering runs over the already-sorted, already-limited
+      card list in first-encounter order, so each cluster comes out sorted for
+      free. A multi-assignee task can appear under more than one Person
+      subtitle in the same column, matching how it already appears in more
+      than one column when the board itself is grouped by Person.
+    • Kanban card color now always reflects task STATUS via a dedicated
+      _kanbanStatusColor() helper, independent of the Gantt/Timeline "Status
+      Colors" toggle — a card sitting in a status column/subgroup showing a
+      different color than its status was confusing regardless of that
+      toggle's state.
+    • Task Properties: added an explicit "✕" button to clear the PERSON field.
+      The existing focus/blur datalist trick (clears the field on focus so the
+      dropdown isn't prefix-filtered, restores the prior value on blur if
+      untouched) made "leave it blank" indistinguishable from "changed my
+      mind" — there was no way to actually unassign someone. The button sets
+      the field to empty unambiguously and only appears when there's a value
+      to clear.
+
   V1.29  2026-08-25
     • PERSON column (task assignments) surfaced end-to-end. The backend already
       READ the sheet's PERSON column but never emitted it, so the value never
@@ -940,6 +966,9 @@
     .kanban-col-swatch { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
     .kanban-col-count { margin-left:auto; font-weight:700; color:var(--text-muted); font-size:0.7rem; }
     .kanban-cards { padding:9px; display:flex; flex-direction:column; gap:8px; overflow-y:auto; }
+    .kanban-subtitle { display:flex; align-items:center; gap:6px; font-size:0.66rem; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-muted); padding:4px 2px 2px; }
+    .kanban-subtitle:first-child { padding-top:0; }
+    .kanban-subtitle-count { margin-left:auto; font-weight:700; }
     .kanban-card { background:var(--panel, #fff); border:1px solid var(--border-strong, #cbd5e1); border-left-width:4px; border-radius:8px; padding:8px 10px; cursor:grab; font-size:0.78rem; }
     .kanban-card:hover { border-color:var(--accent, #0284c7); }
     .kanban-card.dragging { opacity:0.45; }
@@ -963,6 +992,9 @@
     .kanban-filter-sec + .kanban-filter-sec { margin-top:12px; padding-top:10px; border-top:1px solid var(--border, #e2e8f0); }
     .kanban-filter-sec-head { display:flex; align-items:center; gap:8px; font-size:0.66rem; font-weight:800; letter-spacing:0.07em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; }
     .kanban-filter-sec-head button { font-size:0.62rem; padding:1px 6px; margin-left:auto; }
+    .kanban-reorder-row { display:flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:600; color:var(--text, #0f172a); padding:3px 0; }
+    .kanban-reorder-label { flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .kanban-reorder-row button { font-size:0.65rem; padding:2px 6px; }
     .kanban-filter-opt { display:flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:500; color:var(--text, #0f172a); padding:2px 0; cursor:pointer; text-transform:none; letter-spacing:0; }
     /* Drop indicator shown between cards while dragging */
     .kanban-drop-line { height:0; border-top:2px dashed var(--accent, #0284c7); margin:-3px 0; border-radius:2px; }
@@ -1684,6 +1716,15 @@
             <option value="person">Person</option>
           </select>
         </label>
+        <button id="kanban-reorder-cols-btn" class="secondary" title="Reorder columns">⇅ Columns</button>
+        <label>Subtitle
+          <select id="kanban-subgroup">
+            <option value="none">(none)</option>
+            <option value="status">Status</option>
+            <option value="person">Person</option>
+            <option value="group">Discipline</option>
+          </select>
+        </label>
         <label>Sort
           <select id="kanban-sort-field">
             <option value="manual">Manual (drag)</option>
@@ -1707,6 +1748,7 @@
           <button id="kanban-filter-btn" class="secondary" title="Show/hide cards by status, discipline or person">Filter ▾</button>
           <div class="kanban-filter-panel" id="kanban-filter-panel"></div>
         </span>
+        <div class="kanban-filter-panel" id="kanban-reorder-panel"></div>
         <label style="display:flex;align-items:center;gap:5px;">
           <input type="checkbox" id="kanban-blocked-only" /> Blocked only
         </label>
@@ -2592,18 +2634,36 @@
                // person added later shows up by default instead of being hidden
                // by a stale allow-list.
                filters: { status: [], group: [], person: [] },
-               manualOrder: [] };  // task ids, used when sortField === 'manual'
+               manualOrder: [],    // task ids, used when sortField === 'manual'
+               columnOrder: [],    // column keys, in the user's preferred order
+               subGroupBy: 'none' };  // 'none' | 'status' | 'person' | 'group' — clusters cards within each column under a subtitle divider
     }
     function _kanbanDefaultBoards() { return [_kanbanNewBoard('By Status')]; }
 
-    // Boards saved before filters/manual order existed won't have those keys.
+    // Boards saved before filters/manual order/column order/sub-group existed
+    // won't have those keys.
     function _kanbanNormalizeBoard(b) {
       if (!b.filters || typeof b.filters !== 'object') b.filters = {};
       ['status', 'group', 'person'].forEach(function(k) {
         if (!Array.isArray(b.filters[k])) b.filters[k] = [];
       });
       if (!Array.isArray(b.manualOrder)) b.manualOrder = [];
+      if (!Array.isArray(b.columnOrder)) b.columnOrder = [];
+      if (!b.subGroupBy) b.subGroupBy = 'none';
+      // A subtitle grouping by the same dimension the board is already grouped
+      // into columns by would just repeat the column name on every card.
+      if (b.subGroupBy === b.groupBy) b.subGroupBy = 'none';
       return b;
+    }
+
+    // Apply the board's saved column order: known columns first (in that
+    // order), then any new column not yet in the saved order appended at the
+    // end, so a status/person that appears later still shows up.
+    function _kanbanOrderedColumns(board, rawCols) {
+      var order = board.columnOrder || [];
+      var known = order.filter(function(c) { return rawCols.indexOf(c) !== -1; });
+      var rest  = rawCols.filter(function(c) { return known.indexOf(c) === -1; });
+      return known.concat(rest);
     }
 
     // The value set a task contributes to each filter dimension. Person is a
@@ -2669,6 +2729,15 @@
         });
       });
       return { blockedBy: blockedBy, feeds: feeds };
+    }
+    // Kanban always colors by status, independent of the Gantt "Status Colors"
+    // toggle (_effectiveBarColor only uses STATUS_COLOR_MAP when useStatusColors
+    // is on) — a card's status is literally the column/subgroup it's sitting in,
+    // so showing its assigned task color there instead would be confusing no
+    // matter what the Gantt chart's own display toggle is set to.
+    function _kanbanStatusColor(task) {
+      var st = String(task.note || '').split('·')[0].trim().toUpperCase();
+      return STATUS_COLOR_MAP[st] || '#94a3b8';
     }
     function _kanbanIsDone(task) {
       var st = String(task.note || '').split('·')[0].trim().toUpperCase();
@@ -2741,6 +2810,39 @@
       });
     }
 
+    // Clusters an already-sorted card list by board.subGroupBy, in first-
+    // encountered order. A multi-assignee task appearing under a person
+    // subtitle can land in more than one cluster, same as it can occupy more
+    // than one column on a Person-grouped board — consistent, not a bug.
+    function _kanbanClusterVisible(cards, board) {
+      if (!board.subGroupBy || board.subGroupBy === 'none') return [{ key: null, cards: cards }];
+      var dim = board.subGroupBy;
+      var buckets = {}, order = [];
+      cards.forEach(function(t) {
+        _kanbanFilterValues(t, dim).forEach(function(v) {
+          if (!buckets[v]) { buckets[v] = []; order.push(v); }
+          buckets[v].push(t);
+        });
+      });
+      return order.map(function(v) { return { key: v, cards: buckets[v] }; });
+    }
+    function _kanbanSubtitle(key, dim, count) {
+      var el = document.createElement('div');
+      el.className = 'kanban-subtitle';
+      if (dim === 'status') {
+        var sw = document.createElement('span');
+        sw.className = 'kanban-col-swatch';
+        sw.style.background = STATUS_COLOR_MAP[key] || '#94a3b8';
+        el.appendChild(sw);
+      }
+      el.appendChild(document.createTextNode(key));
+      var cnt = document.createElement('span');
+      cnt.className = 'kanban-subtitle-count';
+      cnt.textContent = count;
+      el.appendChild(cnt);
+      return el;
+    }
+
     function renderKanban() {
       var boardEl = document.getElementById('kanban-board');
       if (!boardEl) return;
@@ -2757,6 +2859,7 @@
       var _gDim = board.groupBy === 'person' ? 'person' : 'status';
       var _gExcluded = (board.filters[_gDim] || []);
       var cols = _kanbanColumns(board).filter(function(c) { return _gExcluded.indexOf(c) === -1; });
+      cols = _kanbanOrderedColumns(board, cols);
 
       // Bucket tasks into columns (a task can land in several on person boards)
       var buckets = {};
@@ -2795,8 +2898,16 @@
         cardsEl.className = 'kanban-cards';
         var expandKey = board.id + '|' + colKey;
         var limit = _kanbanExpanded[expandKey] ? colTasks.length : Math.max(1, parseInt(board.limit, 10) || 6);
-        colTasks.slice(0, limit).forEach(function(t) {
-          cardsEl.appendChild(_kanbanCard(t, depIdx));
+        // Sub-group the cards actually being shown (after the limit, not
+        // before) into clusters under a subtitle divider. Clustering a list
+        // that's already sorted by the board's sort field, in first-seen
+        // order, gets "grouped, and sorted within each group" for free — no
+        // separate per-cluster sort needed.
+        _kanbanClusterVisible(colTasks.slice(0, limit), board).forEach(function(cluster) {
+          if (cluster.key !== null) cardsEl.appendChild(_kanbanSubtitle(cluster.key, board.subGroupBy, cluster.cards.length));
+          cluster.cards.forEach(function(t) {
+            cardsEl.appendChild(_kanbanCard(t, depIdx));
+          });
         });
         if (colTasks.length > limit) {
           var more = document.createElement('button');
@@ -2851,7 +2962,7 @@
       card.className = 'kanban-card';
       card.draggable = true;
       card.dataset.taskId = task.id;
-      card.style.borderLeftColor = _effectiveBarColor(task);
+      card.style.borderLeftColor = _kanbanStatusColor(task);
 
       var head = document.createElement('div');
       head.className = 'kanban-card-head';
@@ -3067,14 +3178,16 @@
         btn.textContent = n ? 'Filter (' + n + ' hidden) ▾' : 'Filter ▾';
         btn.classList.toggle('kanban-filter-btn-active', n > 0);
       }
-      if (panel.classList.contains('open')) _kanbanPositionFilterPanel();
+      if (panel.classList.contains('open')) _kanbanPositionPanel('kanban-filter-btn', 'kanban-filter-panel');
     }
 
     // Place the (fixed-position) filter popover under its button, flipping above
     // it and clamping its height when the viewport is too short below.
-    function _kanbanPositionFilterPanel() {
-      var btn = document.getElementById('kanban-filter-btn');
-      var panel = document.getElementById('kanban-filter-panel');
+    // Generalized so the Reorder-columns popover can reuse the same flip/clamp
+    // placement logic as the Filter popover.
+    function _kanbanPositionPanel(btnId, panelId) {
+      var btn = document.getElementById(btnId);
+      var panel = document.getElementById(panelId);
       if (!btn || !panel) return;
       var r = btn.getBoundingClientRect();
       var margin = 8;
@@ -3088,6 +3201,74 @@
       // Keep it on screen horizontally too
       var w = panel.offsetWidth || 230;
       panel.style.left = Math.max(margin, Math.min(r.left, window.innerWidth - w - margin)) + 'px';
+    }
+
+    // Reorder-columns popover: current columns (in their displayed order) each
+    // with up/down buttons — the same list+arrows pattern already used for
+    // reordering Task Properties groups, rather than dragging whole column
+    // headers, which would conflict with the card drag/drop already wired on
+    // the same elements.
+    function _kanbanBuildReorderPanel() {
+      var panel = document.getElementById('kanban-reorder-panel');
+      if (!panel) return;
+      var board = _kanbanActiveBoard();
+      panel.innerHTML = '';
+      if (!board) return;
+      _kanbanNormalizeBoard(board);
+
+      var _gDim = board.groupBy === 'person' ? 'person' : 'status';
+      var _gExcluded = (board.filters[_gDim] || []);
+      var rawCols = _kanbanColumns(board).filter(function(c) { return _gExcluded.indexOf(c) === -1; });
+      var cols = _kanbanOrderedColumns(board, rawCols);
+      // Persist this as the board's order now, so subsequent ▲/▼ clicks (which
+      // splice columnOrder directly) operate on a complete, current list.
+      board.columnOrder = cols.slice();
+
+      var sec = document.createElement('div');
+      sec.className = 'kanban-filter-sec';
+      var head = document.createElement('div');
+      head.className = 'kanban-filter-sec-head';
+      head.appendChild(document.createTextNode(board.groupBy === 'person' ? 'Person columns' : 'Status columns'));
+      sec.appendChild(head);
+
+      cols.forEach(function(c, i) {
+        var row = document.createElement('div');
+        row.className = 'kanban-reorder-row';
+        if (board.groupBy === 'status') {
+          var sw = document.createElement('span');
+          sw.className = 'kanban-col-swatch';
+          sw.style.background = STATUS_COLOR_MAP[c] || '#94a3b8';
+          row.appendChild(sw);
+        }
+        var lbl = document.createElement('span');
+        lbl.className = 'kanban-reorder-label';
+        lbl.textContent = c;
+        row.appendChild(lbl);
+
+        var up = document.createElement('button');
+        up.className = 'secondary'; up.textContent = '▲'; up.title = 'Move up';
+        up.disabled = (i === 0);
+        up.addEventListener('click', function() { _kanbanMoveColumn(board, i, -1); });
+        var down = document.createElement('button');
+        down.className = 'secondary'; down.textContent = '▼'; down.title = 'Move down';
+        down.disabled = (i === cols.length - 1);
+        down.addEventListener('click', function() { _kanbanMoveColumn(board, i, 1); });
+        row.appendChild(up); row.appendChild(down);
+
+        sec.appendChild(row);
+      });
+      panel.appendChild(sec);
+    }
+    function _kanbanMoveColumn(board, index, dir) {
+      var order = board.columnOrder || [];
+      var target = index + dir;
+      if (target < 0 || target >= order.length) return;
+      var tmp = order[index]; order[index] = order[target]; order[target] = tmp;
+      board.columnOrder = order;
+      markDirty();
+      _kanbanBuildReorderPanel();
+      _kanbanPositionPanel('kanban-reorder-cols-btn', 'kanban-reorder-panel');
+      renderKanban();
     }
 
     function _kanbanSyncControls() {
@@ -3104,6 +3285,15 @@
       }
       if (!board) return;
       var g = document.getElementById('kanban-groupby');       if (g) g.value = board.groupBy || 'status';
+      var sg = document.getElementById('kanban-subgroup');
+      if (sg) {
+        sg.value = board.subGroupBy || 'none';
+        // Disable whichever dimension the board is already grouped into
+        // columns by — sub-grouping by it would just repeat the column name.
+        Array.prototype.forEach.call(sg.options, function(opt) {
+          opt.disabled = (opt.value !== 'none' && opt.value === board.groupBy);
+        });
+      }
       var f = document.getElementById('kanban-sort-field');    if (f) f.value = board.sortField || 'start';
       var d = document.getElementById('kanban-sort-dir');      if (d) d.value = board.sortDir || 'asc';
       var l = document.getElementById('kanban-limit');         if (l) l.value = board.limit || 6;
@@ -3132,22 +3322,44 @@
           var opening = !fPanel.classList.contains('open');
           if (opening) _kanbanBuildFilterPanel();
           fPanel.classList.toggle('open', opening);
-          if (opening) _kanbanPositionFilterPanel();
+          if (opening) _kanbanPositionPanel('kanban-filter-btn', 'kanban-filter-panel');
         });
         window.addEventListener('resize', function() {
-          if (fPanel.classList.contains('open')) _kanbanPositionFilterPanel();
+          if (fPanel.classList.contains('open')) _kanbanPositionPanel('kanban-filter-btn', 'kanban-filter-panel');
         });
         window.addEventListener('scroll', function() {
-          if (fPanel.classList.contains('open')) _kanbanPositionFilterPanel();
+          if (fPanel.classList.contains('open')) _kanbanPositionPanel('kanban-filter-btn', 'kanban-filter-panel');
         }, true);
         fPanel.addEventListener('click', function(e) { e.stopPropagation(); });
         document.addEventListener('click', function() { fPanel.classList.remove('open'); });
+      }
+
+      // Reorder-columns popover — same open/close/position pattern as Filter.
+      var rBtn = document.getElementById('kanban-reorder-cols-btn');
+      var rPanel = document.getElementById('kanban-reorder-panel');
+      if (rBtn && rPanel) {
+        rBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var opening = !rPanel.classList.contains('open');
+          if (opening) _kanbanBuildReorderPanel();
+          rPanel.classList.toggle('open', opening);
+          if (opening) _kanbanPositionPanel('kanban-reorder-cols-btn', 'kanban-reorder-panel');
+        });
+        window.addEventListener('resize', function() {
+          if (rPanel.classList.contains('open')) _kanbanPositionPanel('kanban-reorder-cols-btn', 'kanban-reorder-panel');
+        });
+        window.addEventListener('scroll', function() {
+          if (rPanel.classList.contains('open')) _kanbanPositionPanel('kanban-reorder-cols-btn', 'kanban-reorder-panel');
+        }, true);
+        rPanel.addEventListener('click', function(e) { e.stopPropagation(); });
+        document.addEventListener('click', function() { rPanel.classList.remove('open'); });
       }
 
       function edit(fn) {
         var b = _kanbanActiveBoard();
         if (!b) return;
         fn(b);
+        _kanbanNormalizeBoard(b);   // e.g. groupBy changing might collide with subGroupBy
         markDirty();
         _kanbanSyncControls();
         renderKanban();
@@ -3160,6 +3372,8 @@
       });
       var g = document.getElementById('kanban-groupby');
       if (g) g.addEventListener('change', function() { var v = this.value; edit(function(b) { b.groupBy = v; }); });
+      var sg = document.getElementById('kanban-subgroup');
+      if (sg) sg.addEventListener('change', function() { var v = this.value; edit(function(b) { b.subGroupBy = v; }); });
       var f = document.getElementById('kanban-sort-field');
       if (f) f.addEventListener('change', function() { var v = this.value; edit(function(b) { b.sortField = v; }); });
       var d = document.getElementById('kanban-sort-dir');
@@ -4148,6 +4362,8 @@
       // A datalist offers every name already used in the project; typing a new
       // one is still allowed, since the sheet's PERSON column is free text.
       var tdPerson = document.createElement('td');
+      var personWrap = document.createElement('div');
+      personWrap.style.cssText = 'display:flex;align-items:center;gap:2px;';
       var plId = 'person-list-' + task.id;
       var personInp = document.createElement('input');
       personInp.type = 'text'; personInp.className = 'row-input';
@@ -4179,7 +4395,27 @@
           personInp.value = personInp.dataset.prevValue;
         }
       });
-      tdPerson.appendChild(pl); tdPerson.appendChild(personInp);
+      personWrap.appendChild(pl); personWrap.appendChild(personInp);
+      // Explicit clear button: the focus/blur trick above always shows the field
+      // blank while browsing the dropdown, so a plain empty field on blur can't
+      // be told apart from "didn't touch it" (which restores the old value) —
+      // there was no way to actually unassign someone. This bypasses that
+      // entirely and sets the field to empty unambiguously.
+      if (task.person) {
+        var personClearBtn = document.createElement('button');
+        personClearBtn.type = 'button';
+        personClearBtn.className = 'secondary';
+        personClearBtn.textContent = '✕';
+        personClearBtn.title = 'Clear assignee(s)';
+        personClearBtn.style.cssText = 'font-size:0.65rem;padding:2px 5px;flex-shrink:0;';
+        personClearBtn.addEventListener('click', function() {
+          task.person = '';
+          markDirty();
+          refreshTaskTable();
+        });
+        personWrap.appendChild(personClearBtn);
+      }
+      tdPerson.appendChild(personWrap);
       tr.appendChild(tdPerson);
 
       // Type
