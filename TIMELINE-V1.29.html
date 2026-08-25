@@ -18,6 +18,20 @@
       columns reassigns its status/person locally and marks the chart dirty —
       the change reaches the sheet on the next Save, matching how every other
       edit in the app behaves.
+    • Kanban filter dropdown: a checkbox popover with Status / Discipline /
+      Person sections (each with an All/None shortcut) controlling which cards
+      are shown. Filters are stored per-board as EXCLUDED values rather than an
+      allow-list, so a status or assignee added to the sheet later shows up by
+      default instead of being silently hidden by a stale list. A task with
+      several assignees stays visible while any one of them is still enabled.
+      Saved with the board in the kanbanBoards setting.
+    • Kanban cards can be dragged to reorder within (or across) columns, with a
+      dashed insertion line showing the drop position and the target column
+      highlighted. Because an explicit order only makes sense without an
+      automatic sort, the first reordering drop switches the board to the new
+      "Manual (drag)" sort option and seeds the order from what is currently on
+      screen, so nothing visibly jumps. Order persists per board via
+      manualOrder; tasks not yet dragged sort after the ordered ones by name.
     • Kanban cards surface dependency state: a "blocked by N" badge when an
       upstream task isn't COMPLETED/APPROVED, and a "feeds N" badge for
       downstream work. Note the stored dependency direction is
@@ -918,6 +932,17 @@
     .kanban-badge.blocked { background:#fee2e2; color:#b91c1c; }
     .kanban-badge.feeds   { background:#e0f2fe; color:#0369a1; }
     .kanban-more { border:1px dashed var(--border-strong, #cbd5e1); border-radius:8px; padding:6px; font-size:0.72rem; font-weight:700; color:var(--text-muted); background:none; width:100%; cursor:pointer; }
+    .kanban-filter-wrap { position:relative; display:inline-flex; }
+    .kanban-filter-btn-active { background:var(--accent, #0284c7) !important; color:#fff !important; border-color:var(--accent, #0284c7) !important; }
+    .kanban-filter-panel { display:none; position:absolute; top:calc(100% + 6px); left:0; z-index:60; min-width:230px; max-height:340px; overflow-y:auto;
+      background:var(--panel, #fff); border:1px solid var(--border-strong, #cbd5e1); border-radius:10px; box-shadow:0 10px 30px rgba(15,23,42,0.18); padding:10px 12px; }
+    .kanban-filter-panel.open { display:block; }
+    .kanban-filter-sec + .kanban-filter-sec { margin-top:12px; padding-top:10px; border-top:1px solid var(--border, #e2e8f0); }
+    .kanban-filter-sec-head { display:flex; align-items:center; gap:8px; font-size:0.66rem; font-weight:800; letter-spacing:0.07em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; }
+    .kanban-filter-sec-head button { font-size:0.62rem; padding:1px 6px; margin-left:auto; }
+    .kanban-filter-opt { display:flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:500; color:var(--text, #0f172a); padding:2px 0; cursor:pointer; text-transform:none; letter-spacing:0; }
+    /* Drop indicator shown between cards while dragging */
+    .kanban-drop-line { height:0; border-top:2px dashed var(--accent, #0284c7); margin:-3px 0; border-radius:2px; }
     .kanban-empty { padding:16px 10px; font-size:0.74rem; color:var(--text-muted); text-align:center; }
     .app-tab-btn { border-radius: 8px 8px 0 0; border: 1px solid var(--border-strong); border-bottom: none; padding: 7px 20px; font-size: 0.82rem; font-weight: 600; background: var(--panel-soft); color: var(--text-muted); cursor: pointer; transition: background 0.15s; margin-bottom: -2px; }
     .app-tab-btn:hover { background: var(--border); transform: none; color: var(--text); }
@@ -1633,6 +1658,7 @@
         </label>
         <label>Sort
           <select id="kanban-sort-field">
+            <option value="manual">Manual (drag)</option>
             <option value="start">Start Date</option>
             <option value="end">End Date</option>
             <option value="name">Name</option>
@@ -1649,6 +1675,10 @@
         <label>Show
           <input type="number" id="kanban-limit" min="1" max="200" value="6" style="width:62px;" title="Cards shown per column before collapsing" /> per column
         </label>
+        <span class="kanban-filter-wrap">
+          <button id="kanban-filter-btn" class="secondary" title="Show/hide cards by status, discipline or person">Filter ▾</button>
+          <div class="kanban-filter-panel" id="kanban-filter-panel"></div>
+        </span>
         <label style="display:flex;align-items:center;gap:5px;">
           <input type="checkbox" id="kanban-blocked-only" /> Blocked only
         </label>
@@ -2523,9 +2553,70 @@
     // A dependency is satisfied once its upstream task reaches one of these.
     var KANBAN_DONE_STATUSES = { 'COMPLETED': 1, 'APPROVED': 1 };
 
-    function _kanbanDefaultBoards() {
-      return [{ id: 'b' + Date.now(), name: 'By Status', groupBy: 'status',
-                limit: 6, sortField: 'start', sortDir: 'asc', blockedOnly: false }];
+    function _kanbanNewBoard(name) {
+      return { id: 'b' + Date.now(), name: name, groupBy: 'status',
+               limit: 6, sortField: 'start', sortDir: 'asc', blockedOnly: false,
+               // Filters store EXCLUDED values, not included ones, so a status or
+               // person added later shows up by default instead of being hidden
+               // by a stale allow-list.
+               filters: { status: [], group: [], person: [] },
+               manualOrder: [] };  // task ids, used when sortField === 'manual'
+    }
+    function _kanbanDefaultBoards() { return [_kanbanNewBoard('By Status')]; }
+
+    // Boards saved before filters/manual order existed won't have those keys.
+    function _kanbanNormalizeBoard(b) {
+      if (!b.filters || typeof b.filters !== 'object') b.filters = {};
+      ['status', 'group', 'person'].forEach(function(k) {
+        if (!Array.isArray(b.filters[k])) b.filters[k] = [];
+      });
+      if (!Array.isArray(b.manualOrder)) b.manualOrder = [];
+      return b;
+    }
+
+    // The value set a task contributes to each filter dimension. Person is a
+    // list (comma-separated assignees); the others are single values.
+    function _kanbanFilterValues(task, dim) {
+      if (dim === 'person') {
+        var ppl = _splitPersons(task.person);
+        return ppl.length ? ppl : [KANBAN_UNASSIGNED];
+      }
+      if (dim === 'group') return [task.group || KANBAN_UNASSIGNED];
+      return [String(task.note || '').split('·')[0].trim().toUpperCase() || KANBAN_UNASSIGNED];
+    }
+
+    // A task passes when, for every dimension, at least one of its values is
+    // not excluded. (Multi-assignee tasks stay visible if any assignee is on.)
+    function _kanbanPassesFilters(task, board) {
+      var f = board.filters || {};
+      return ['status', 'group', 'person'].every(function(dim) {
+        var excluded = f[dim] || [];
+        if (!excluded.length) return true;
+        return _kanbanFilterValues(task, dim).some(function(v) { return excluded.indexOf(v) === -1; });
+      });
+    }
+
+    // Every distinct value present in the data for a filter dimension.
+    function _kanbanAllValues(dim) {
+      var seen = {}, out = [];
+      tasks.forEach(function(t) {
+        _kanbanFilterValues(t, dim).forEach(function(v) {
+          if (!seen[v]) { seen[v] = true; out.push(v); }
+        });
+      });
+      if (dim === 'status') {
+        // Include configured statuses that aren't in use yet, so a board can be
+        // set up to hide them before any task lands there.
+        STATUS_OPTIONS.forEach(function(st) {
+          var label = st || KANBAN_UNASSIGNED;
+          if (!seen[label]) { seen[label] = true; out.push(label); }
+        });
+      }
+      return out.sort(function(a, b) { return a.localeCompare(b); });
+    }
+    function _kanbanFilterCount(board) {
+      var f = board.filters || {};
+      return (f.status || []).length + (f.group || []).length + (f.person || []).length;
     }
     function _kanbanActiveBoard() {
       return kanbanBoards.find(function(b) { return b.id === kanbanActiveId; }) || kanbanBoards[0] || null;
@@ -2589,6 +2680,18 @@
     function _kanbanSortCards(cards, board) {
       var dir = board.sortDir === 'desc' ? -1 : 1;
       var f = board.sortField || 'start';
+      if (f === 'manual') {
+        // Drag order. Anything not yet in manualOrder (new task, or never
+        // dragged) sorts after the explicitly ordered ones, by name.
+        var pos = {};
+        (board.manualOrder || []).forEach(function(id, i) { pos[id] = i; });
+        return cards.slice().sort(function(a, b) {
+          var ai = pos[a.id] === undefined ? Infinity : pos[a.id];
+          var bi = pos[b.id] === undefined ? Infinity : pos[b.id];
+          if (ai !== bi) return (ai - bi) * dir;
+          return String(a.name || '').localeCompare(String(b.name || '')) * dir;
+        });
+      }
       return cards.slice().sort(function(a, b) {
         var av, bv;
         if (f === 'duration') {
@@ -2622,6 +2725,7 @@
       cols.forEach(function(c) { buckets[c] = []; });
       tasks.forEach(function(t) {
         if (board.blockedOnly && !_kanbanBlockers(t, depIdx).length) return;
+        if (!_kanbanPassesFilters(t, board)) return;
         _kanbanTaskColumns(t, board).forEach(function(c) {
           if (!buckets[c]) { buckets[c] = []; cols.push(c); }
           buckets[c].push(t);
@@ -2677,14 +2781,27 @@
         }
         colEl.appendChild(cardsEl);
 
-        // Drop target — reassigns the card's status/person for this column
-        colEl.addEventListener('dragover', function(e) { e.preventDefault(); colEl.classList.add('drop-target'); });
-        colEl.addEventListener('dragleave', function() { colEl.classList.remove('drop-target'); });
+        // Drop target — reassigns the card's status/person for this column, and
+        // (when the board is in Manual sort) drops it at the exact position the
+        // insertion line is showing.
+        colEl.addEventListener('dragover', function(e) {
+          e.preventDefault();
+          colEl.classList.add('drop-target');
+          _kanbanShowDropLine(cardsEl, e.clientY);
+        });
+        colEl.addEventListener('dragleave', function(e) {
+          // Ignore the dragleave that fires when moving between child elements
+          if (colEl.contains(e.relatedTarget)) return;
+          colEl.classList.remove('drop-target');
+          _kanbanClearDropLine();
+        });
         colEl.addEventListener('drop', function(e) {
           e.preventDefault();
           colEl.classList.remove('drop-target');
+          var beforeId = _kanbanDropBeforeId(cardsEl, e.clientY);
+          _kanbanClearDropLine();
           var id = parseInt(e.dataTransfer.getData('text/plain'), 10);
-          _kanbanMoveTask(id, colKey, board);
+          _kanbanMoveTask(id, colKey, board, beforeId);
         });
 
         boardEl.appendChild(colEl);
@@ -2744,9 +2861,40 @@
       return card;
     }
 
-    // Dropping a card rewrites the field the board groups by. Local-only +
-    // markDirty(), exactly like every other edit — it reaches the sheet on Save.
-    function _kanbanMoveTask(taskId, colKey, board) {
+    // ── Drag feedback: a dashed insertion line between cards ──────────────
+    var _kanbanDropLineEl = null;
+    function _kanbanClearDropLine() {
+      if (_kanbanDropLineEl && _kanbanDropLineEl.parentNode) _kanbanDropLineEl.parentNode.removeChild(_kanbanDropLineEl);
+      _kanbanDropLineEl = null;
+    }
+    // The card the pointer is currently above the midpoint of — i.e. the card
+    // the dragged one would be inserted BEFORE. null means "append to the end".
+    function _kanbanCardBeforeY(cardsEl, clientY) {
+      var cards = Array.prototype.slice.call(cardsEl.querySelectorAll('.kanban-card:not(.dragging)'));
+      for (var i = 0; i < cards.length; i++) {
+        var r = cards[i].getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) return cards[i];
+      }
+      return null;
+    }
+    function _kanbanShowDropLine(cardsEl, clientY) {
+      var before = _kanbanCardBeforeY(cardsEl, clientY);
+      if (!_kanbanDropLineEl) {
+        _kanbanDropLineEl = document.createElement('div');
+        _kanbanDropLineEl.className = 'kanban-drop-line';
+      }
+      if (before) cardsEl.insertBefore(_kanbanDropLineEl, before);
+      else        cardsEl.appendChild(_kanbanDropLineEl);
+    }
+    function _kanbanDropBeforeId(cardsEl, clientY) {
+      var before = _kanbanCardBeforeY(cardsEl, clientY);
+      return before ? parseInt(before.dataset.taskId, 10) : null;
+    }
+
+    // Dropping a card rewrites the field the board groups by, and places it at
+    // the drop position. Local-only + markDirty(), exactly like every other edit
+    // — it reaches the sheet on Save.
+    function _kanbanMoveTask(taskId, colKey, board, beforeId) {
       var task = tasks.find(function(t) { return t.id === taskId; });
       if (!task) return;
       if (board.groupBy === 'status') {
@@ -2756,10 +2904,108 @@
         // person. Dragging to "(unassigned)" clears it.
         task.person = (colKey === KANBAN_UNASSIGNED) ? '' : colKey;
       }
+
+      // Reordering is only meaningful with an explicit manual order, so a drop
+      // that changes position switches the board to Manual sort and seeds the
+      // order from what's on screen right now (so nothing visibly jumps).
+      if (beforeId !== taskId) {
+        if (board.sortField !== 'manual') {
+          board.sortField = 'manual';
+          board.manualOrder = _kanbanSeedManualOrder(board);
+          var sf = document.getElementById('kanban-sort-field');
+          if (sf) sf.value = 'manual';
+        }
+        var order = (board.manualOrder || []).filter(function(id) { return id !== taskId; });
+        var at = beforeId == null ? -1 : order.indexOf(beforeId);
+        if (at === -1) order.push(taskId);
+        else           order.splice(at, 0, taskId);
+        board.manualOrder = order;
+      }
+
       markDirty();
       renderKanban();
       refreshTaskTable();
       renderGantt();
+    }
+
+    // Current on-screen order of every task, used as the starting point the
+    // first time a board switches into Manual sort.
+    function _kanbanSeedManualOrder(board) {
+      var probe = { sortField: board.sortField === 'manual' ? 'start' : board.sortField,
+                    sortDir: board.sortDir };
+      return _kanbanSortCards(tasks.slice(), probe).map(function(t) { return t.id; });
+    }
+
+    // Build the Filter popover: one checkbox section per dimension. Checked =
+    // visible; the board stores the UNCHECKED values.
+    function _kanbanBuildFilterPanel() {
+      var panel = document.getElementById('kanban-filter-panel');
+      var btn   = document.getElementById('kanban-filter-btn');
+      if (!panel) return;
+      var board = _kanbanActiveBoard();
+      panel.innerHTML = '';
+      if (!board) return;
+
+      [['status', 'Status'], ['group', 'Discipline'], ['person', 'Person']].forEach(function(pair) {
+        var dim = pair[0], label = pair[1];
+        var vals = _kanbanAllValues(dim);
+        if (!vals.length) return;
+        var sec = document.createElement('div');
+        sec.className = 'kanban-filter-sec';
+
+        var head = document.createElement('div');
+        head.className = 'kanban-filter-sec-head';
+        head.appendChild(document.createTextNode(label));
+        var allBtn = document.createElement('button');
+        allBtn.className = 'secondary';
+        allBtn.textContent = (board.filters[dim] || []).length ? 'All' : 'None';
+        allBtn.title = allBtn.textContent === 'All' ? 'Show all ' + label.toLowerCase() + ' values' : 'Hide all ' + label.toLowerCase() + ' values';
+        allBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          board.filters[dim] = (board.filters[dim] || []).length ? [] : vals.slice();
+          markDirty();
+          _kanbanBuildFilterPanel();
+          _kanbanSyncControls();
+          renderKanban();
+        });
+        head.appendChild(allBtn);
+        sec.appendChild(head);
+
+        vals.forEach(function(v) {
+          var row = document.createElement('label');
+          row.className = 'kanban-filter-opt';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = (board.filters[dim] || []).indexOf(v) === -1;
+          cb.addEventListener('change', function() {
+            var ex = board.filters[dim] || [];
+            if (cb.checked) ex = ex.filter(function(x) { return x !== v; });
+            else if (ex.indexOf(v) === -1) ex = ex.concat([v]);
+            board.filters[dim] = ex;
+            markDirty();
+            _kanbanSyncControls();
+            renderKanban();
+            var ab = sec.querySelector('.kanban-filter-sec-head button');
+            if (ab) ab.textContent = ex.length ? 'All' : 'None';
+          });
+          row.appendChild(cb);
+          if (dim === 'status') {
+            var sw = document.createElement('span');
+            sw.className = 'kanban-col-swatch';
+            sw.style.background = STATUS_COLOR_MAP[v] || '#94a3b8';
+            row.appendChild(sw);
+          }
+          row.appendChild(document.createTextNode(v));
+          sec.appendChild(row);
+        });
+        panel.appendChild(sec);
+      });
+
+      if (btn) {
+        var n = _kanbanFilterCount(board);
+        btn.textContent = n ? 'Filter (' + n + ' hidden) ▾' : 'Filter ▾';
+        btn.classList.toggle('kanban-filter-btn-active', n > 0);
+      }
     }
 
     function _kanbanSyncControls() {
@@ -2782,11 +3028,32 @@
       var bo = document.getElementById('kanban-blocked-only'); if (bo) bo.checked = !!board.blockedOnly;
       var del = document.getElementById('kanban-delete-board-btn');
       if (del) del.disabled = kanbanBoards.length <= 1;
+      var fbtn = document.getElementById('kanban-filter-btn');
+      if (fbtn) {
+        var n = _kanbanFilterCount(board);
+        fbtn.textContent = n ? 'Filter (' + n + ' hidden) ▾' : 'Filter ▾';
+        fbtn.classList.toggle('kanban-filter-btn-active', n > 0);
+      }
     }
 
     function initKanban() {
       if (!kanbanBoards.length) { kanbanBoards = _kanbanDefaultBoards(); }
+      kanbanBoards.forEach(_kanbanNormalizeBoard);
       if (!kanbanActiveId) kanbanActiveId = kanbanBoards[0].id;
+
+      // Filter popover open/close
+      var fBtn = document.getElementById('kanban-filter-btn');
+      var fPanel = document.getElementById('kanban-filter-panel');
+      if (fBtn && fPanel) {
+        fBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var opening = !fPanel.classList.contains('open');
+          if (opening) _kanbanBuildFilterPanel();
+          fPanel.classList.toggle('open', opening);
+        });
+        fPanel.addEventListener('click', function(e) { e.stopPropagation(); });
+        document.addEventListener('click', function() { fPanel.classList.remove('open'); });
+      }
 
       function edit(fn) {
         var b = _kanbanActiveBoard();
@@ -2821,8 +3088,7 @@
       if (addBtn) addBtn.addEventListener('click', function() {
         var name = prompt('Board name:', 'Board ' + (kanbanBoards.length + 1));
         if (!name || !name.trim()) return;
-        var nb = { id: 'b' + Date.now(), name: name.trim(), groupBy: 'status',
-                   limit: 6, sortField: 'start', sortDir: 'asc', blockedOnly: false };
+        var nb = _kanbanNewBoard(name.trim());
         kanbanBoards.push(nb);
         kanbanActiveId = nb.id;
         markDirty();
@@ -8267,7 +8533,7 @@
         try {
           var _kb = JSON.parse(s.kanbanBoards);
           if (Array.isArray(_kb) && _kb.length) {
-            kanbanBoards = _kb;
+            kanbanBoards = _kb.map(_kanbanNormalizeBoard);
             if (!kanbanBoards.some(function(b) { return b.id === kanbanActiveId; })) {
               kanbanActiveId = kanbanBoards[0].id;
             }

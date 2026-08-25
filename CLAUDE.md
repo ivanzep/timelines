@@ -203,7 +203,9 @@ authoritative, detailed per-release changelog (both files carry their own). High
 - **V1.29** — PERSON column surfaced end-to-end (backend already read it but never emitted it; now editable
   in Task Properties and written back, multiple assignees comma-separated). New **Kanban tab**: user-defined
   boards (add/rename/delete) grouped by STATUS or PERSON, each with its own card limit, sort field/direction,
-  and "blocked only" filter; boards persist per-version via a `kanbanBoards` setting. Dragging a card between
+  a checkbox filter popover (Status/Discipline/Person, storing excluded values), and a "blocked only"
+  filter; cards drag to reorder (auto-switching the board to "Manual (drag)" sort, with a dashed insertion
+  line as feedback); boards persist per-version via a `kanbanBoards` setting. Dragging a card between
   columns rewrites that task's status/person locally and marks the chart dirty (reaches the sheet on Save).
   Cards show dependency state — note `task.dependencies` stores **successors**, so the "blocked by" view is
   built from a reverse index computed per render.
