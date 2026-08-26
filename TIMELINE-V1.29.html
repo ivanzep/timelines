@@ -5,6 +5,22 @@
 
   VERSION HISTORY
   ───────────────
+  V1.29  2026-08-25 (cont'd, 4)
+    • Tab bar show/hide + reorder: a new "Tabs" section in the hamburger menu
+      lists Timeline/Tasks/Milestones/Flags/Kanban as checkboxes with ▲/▼
+      buttons. Unchecking a tab hides its button (blocked once it's the last
+      remaining visible tab); ▲/▼ reorders the actual tab-bar buttons via
+      tabOrder. If the active tab is hidden, the app falls back to the first
+      remaining visible tab rather than stranding on a tab with no button
+      left to click back to. Clicks inside the list no longer auto-close the
+      hamburger menu the way every other menu action does, so several tabs
+      can be adjusted in one visit. Persisted per-version as tabOrder /
+      tabVisible (backend redeploy required — see SETTINGS_KEYS).
+    • Refactored: the tab-activation DOM logic (panel visibility, active
+      button state, task-list panel title) that used to be duplicated between
+      switchTab() and the settings-restore path is now one shared
+      _setActiveTabDOM(), reused by both plus the new hidden-tab fallback.
+
   V1.29  2026-08-25 (cont'd, 3)
     • Kanban panel header decluttered: the standalone "Kanban" title was
       dropped and the board-settings row (Group by / Columns / Subtitle /
@@ -1383,6 +1399,19 @@
       transition: background 0.1s;
     }
     .overflow-menu button:hover { background: var(--panel-soft); }
+    .tab-toggle-list { display: flex; flex-direction: column; gap: 1px; }
+    .tab-toggle-row { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; }
+    .tab-toggle-row:hover { background: var(--panel-soft); }
+    .tab-toggle-row label { display: flex; align-items: center; gap: 7px; flex: 1 1 auto; min-width: 0; font-size: 0.8rem; color: var(--text); font-weight: 500; cursor: pointer; white-space: nowrap; }
+    .tab-toggle-row input[type="checkbox"] { width: 13px; height: 13px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
+    .tab-toggle-row .tab-order-btns { display: flex; gap: 2px; flex-shrink: 0; }
+    .tab-toggle-row .tab-order-btns button {
+      width: auto; padding: 1px 5px; font-size: 0.62rem; line-height: 1.4;
+      border: 1px solid var(--border-strong); background: var(--panel-soft);
+      color: var(--text); border-radius: 4px;
+    }
+    .tab-toggle-row .tab-order-btns button:disabled { opacity: 0.35; cursor: default; }
+    .tab-toggle-row .tab-order-btns button:not(:disabled):hover { background: var(--border); }
 
     /* ---- iPad / responsive fixes ---- */
     @media (max-width: 1100px) {
@@ -1496,6 +1525,10 @@
         </div>
         <div class="overflow-section">
           <button id="theme-toggle-btn" title="Toggle dark / light theme">🌙 Dark Mode</button>
+        </div>
+        <div class="overflow-section">
+          <div class="overflow-section-label">Tabs</div>
+          <div class="tab-toggle-list" id="tabs-visibility-list"></div>
         </div>
         <div class="overflow-section">
           <div class="overflow-section-label">Logo</div>
@@ -2240,6 +2273,144 @@
     var _lastKpPgW          = 1056;    // page width of last kanban print render (px), used for Fit zoom
     var _lastPrintPgW      = 1056;    // page width of last print render (px), used for Fit zoom
     var currentTab   = 'gantt'; // 'gantt' | 'tasks' | 'milestones' | 'flags'
+    var TAB_KEYS   = ['gantt', 'tasks', 'milestones', 'flags', 'kanban'];
+    var TAB_LABELS = { gantt: 'Timeline', tasks: 'Tasks', milestones: 'Milestones', flags: 'Flags', kanban: 'Kanban' };
+    var tabOrder   = TAB_KEYS.slice();                                          // display order of the tab bar
+    var tabVisible = { gantt: true, tasks: true, milestones: true, flags: true, kanban: true }; // key -> false when hidden
+
+    // Adds back any tab keys missing from a saved/loaded order (e.g. a key
+    // added in a later version) at the end, same pattern as Kanban's
+    // _kanbanOrderedColumns — never lose a tab just because it wasn't in an
+    // older settings blob.
+    function _normalizeTabOrder(order) {
+      var known = Array.isArray(order) ? order.filter(function(k) { return TAB_KEYS.indexOf(k) !== -1; }) : [];
+      var rest = TAB_KEYS.filter(function(k) { return known.indexOf(k) === -1; });
+      return known.concat(rest);
+    }
+
+    // Sets currentTab plus every panel/button DOM state that depends on it —
+    // shared by the click-driven switchTab() (inside init()) and every place
+    // that needs to activate a tab without going through a click (settings
+    // restore, and the "active tab just got hidden" fallback below).
+    function _setActiveTabDOM(tab) {
+      currentTab = tab;
+      taskTypeFilter = tab === 'milestones' ? 'milestone' : tab === 'flags' ? 'flag' : null;
+      var isGantt  = (tab === 'gantt');
+      var isKanban = (tab === 'kanban');
+      var gp = document.getElementById('gantt-panel');
+      var gt = document.getElementById('gantt-toolbar');
+      var tp = document.querySelector('.task-list-panel');
+      var kp = document.getElementById('kanban-panel');
+      if (gp) gp.style.display = isGantt ? '' : 'none';
+      if (gt) gt.style.display = isGantt ? '' : 'none';
+      if (kp) kp.style.display = isKanban ? '' : 'none';
+      if (tp) {
+        tp.style.display = isKanban ? 'none' : '';
+        if (isGantt) tp.classList.remove('tasks-fullscreen'); else tp.classList.add('tasks-fullscreen');
+      }
+      if (isKanban && typeof renderKanban === 'function') renderKanban();
+      TAB_KEYS.forEach(function(t) {
+        var btn = document.getElementById('tab-' + t);
+        if (btn) btn.classList.toggle('active', t === tab);
+      });
+      var ttEl = document.querySelector('.task-list-panel .panel-title');
+      if (ttEl) ttEl.textContent = tab === 'milestones' ? 'Milestone Properties' : tab === 'flags' ? 'Flag Properties' : 'Task Properties';
+    }
+
+    // Reorders the tab-bar buttons to match tabOrder and shows/hides them per
+    // tabVisible. If the active tab was just hidden, falls back to the first
+    // remaining visible tab rather than stranding the app on a tab with no
+    // button left to click back to.
+    function _applyTabOrderVisibility() {
+      var wrap = document.querySelector('.app-tabs');
+      if (!wrap) return;
+      tabOrder = _normalizeTabOrder(tabOrder);
+      tabOrder.forEach(function(key) {
+        var btn = document.getElementById('tab-' + key);
+        if (!btn) return;
+        wrap.appendChild(btn);
+        btn.style.display = (tabVisible[key] === false) ? 'none' : '';
+      });
+      if (tabVisible[currentTab] === false) {
+        var fallback = tabOrder.filter(function(k) { return tabVisible[k] !== false; })[0] || 'gantt';
+        _setActiveTabDOM(fallback);
+        if (typeof refreshTaskTable === 'function') refreshTaskTable();
+      }
+    }
+
+    // Moves a tab left/right in tabOrder (dir -1/+1), re-applies, and
+    // rebuilds the hamburger list so its ▲/▼ disabled states stay correct.
+    function _moveTabOrder(key, dir) {
+      var idx = tabOrder.indexOf(key);
+      var target = idx + dir;
+      if (idx === -1 || target < 0 || target >= tabOrder.length) return;
+      var tmp = tabOrder[idx]; tabOrder[idx] = tabOrder[target]; tabOrder[target] = tmp;
+      _applyTabOrderVisibility();
+      _buildTabsMenuList();
+      markDirty();
+    }
+
+    // Builds the show/hide + reorder checklist in the hamburger "Tabs"
+    // section. Rebuilt (not just updated) whenever tabOrder/tabVisible
+    // change so row order and ▲/▼ disabled states always match reality.
+    function _buildTabsMenuList() {
+      var list = document.getElementById('tabs-visibility-list');
+      if (!list) return;
+      list.innerHTML = '';
+      tabOrder = _normalizeTabOrder(tabOrder);
+      tabOrder.forEach(function(key, i) {
+        var row = document.createElement('div');
+        row.className = 'tab-toggle-row';
+
+        var label = document.createElement('label');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = tabVisible[key] !== false;
+        cb.addEventListener('change', function() {
+          if (!cb.checked) {
+            var otherVisible = tabOrder.some(function(k) { return k !== key && tabVisible[k] !== false; });
+            if (!otherVisible) {
+              cb.checked = true;
+              alert('At least one tab must stay visible.');
+              return;
+            }
+          }
+          tabVisible[key] = cb.checked;
+          _applyTabOrderVisibility();
+          markDirty();
+        });
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(TAB_LABELS[key] || key));
+        row.appendChild(label);
+
+        var btns = document.createElement('span');
+        btns.className = 'tab-order-btns';
+        var up = document.createElement('button');
+        up.type = 'button'; up.textContent = '▲'; up.title = 'Move up';
+        up.disabled = (i === 0);
+        up.addEventListener('click', function() { _moveTabOrder(key, -1); });
+        var down = document.createElement('button');
+        down.type = 'button'; down.textContent = '▼'; down.title = 'Move down';
+        down.disabled = (i === tabOrder.length - 1);
+        down.addEventListener('click', function() { _moveTabOrder(key, 1); });
+        btns.appendChild(up); btns.appendChild(down);
+        row.appendChild(btns);
+
+        list.appendChild(row);
+      });
+    }
+
+    function initTabsVisibilityMenu() {
+      var list = document.getElementById('tabs-visibility-list');
+      if (!list) return;
+      // Clicks inside the list (checkbox toggle, ▲/▼) shouldn't close the
+      // hamburger menu the way every other menu action does — you typically
+      // want to adjust more than one tab per visit.
+      list.addEventListener('click', function(e) { e.stopPropagation(); });
+      _buildTabsMenuList();
+      _applyTabOrderVisibility();
+    }
+
     var taskTypeFilter = null;  // null = all | 'milestone' | 'flag'
     var collapsedGroups          = {};  // task list tab collapse state
     var milestonesCollapsedGroups = {}; // milestones tab collapse state
@@ -8311,62 +8482,19 @@
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
 
-      // Tab switching
-      var tabGanttBtn = document.getElementById('tab-gantt');
-      var tabTasksBtn = document.getElementById('tab-tasks');
-      var ganttPanelEl  = document.getElementById('gantt-panel');
-      var tasksPanelEl  = document.querySelector('.task-list-panel');
-      var ganttToolbarEl = document.getElementById('gantt-toolbar');
-
-      var tabMilestonesBtn = document.getElementById('tab-milestones');
-      var tabFlagsBtn      = document.getElementById('tab-flags');
-      var tabKanbanBtn     = document.getElementById('tab-kanban');
-      var kanbanPanelEl    = document.getElementById('kanban-panel');
-      var taskListTitleEl  = document.querySelector('.task-list-panel .panel-title');
-
+      // Tab switching — _setActiveTabDOM (top-level) owns the actual panel/
+      // button DOM state so applySettings() and the tab-visibility fallback
+      // can activate a tab without going through a click.
       function switchTab(tab) {
-        currentTab = tab;
-        // Set type filter
-        if      (tab === 'milestones') taskTypeFilter = 'milestone';
-        else if (tab === 'flags')      taskTypeFilter = 'flag';
-        else                           taskTypeFilter = null;
-
-        var isGantt  = (tab === 'gantt');
-        var isKanban = (tab === 'kanban');
-        if (ganttPanelEl)   ganttPanelEl.style.display  = isGantt ? '' : 'none';
-        if (ganttToolbarEl) ganttToolbarEl.style.display = isGantt ? '' : 'none';
-        if (kanbanPanelEl)  kanbanPanelEl.style.display  = isKanban ? '' : 'none';
-        // Kanban is its own full-width view — the task table is hidden entirely
-        // rather than shown fullscreen underneath it.
-        if (tasksPanelEl) {
-          tasksPanelEl.style.display = isKanban ? 'none' : '';
-          if (isGantt) tasksPanelEl.classList.remove('tasks-fullscreen');
-          else         tasksPanelEl.classList.add('tasks-fullscreen');
-        }
-        if (isKanban) renderKanban();
-
-        // Update tab button active states
-        [tabGanttBtn, tabTasksBtn, tabMilestonesBtn, tabFlagsBtn, tabKanbanBtn].forEach(function(btn) {
-          if (btn) btn.classList.remove('active');
-        });
-        var activeBtn = { gantt: tabGanttBtn, tasks: tabTasksBtn, milestones: tabMilestonesBtn, flags: tabFlagsBtn, kanban: tabKanbanBtn }[tab];
-        if (activeBtn) activeBtn.classList.add('active');
-
-        // Update panel title
-        if (taskListTitleEl) {
-          if      (tab === 'milestones') taskListTitleEl.textContent = 'Milestone Properties';
-          else if (tab === 'flags')      taskListTitleEl.textContent = 'Flag Properties';
-          else                           taskListTitleEl.textContent = 'Task Properties';
-        }
-
+        _setActiveTabDOM(tab);
         refreshTaskTable();
       }
-      if (tabGanttBtn)      tabGanttBtn.addEventListener('click',      function() { switchTab('gantt'); });
-      if (tabTasksBtn)      tabTasksBtn.addEventListener('click',      function() { switchTab('tasks'); });
-      if (tabMilestonesBtn) tabMilestonesBtn.addEventListener('click', function() { switchTab('milestones'); });
-      if (tabFlagsBtn)      tabFlagsBtn.addEventListener('click',      function() { switchTab('flags'); });
-      if (tabKanbanBtn)     tabKanbanBtn.addEventListener('click',     function() { switchTab('kanban'); });
+      TAB_KEYS.forEach(function(key) {
+        var btn = document.getElementById('tab-' + key);
+        if (btn) btn.addEventListener('click', function() { switchTab(key); });
+      });
       initKanban();
+      initTabsVisibilityMenu();
 
       // Task Properties table — column resize + visibility toggle
       loadTaskTableColPrefs();
@@ -8699,6 +8827,8 @@
         sortColumn:            sortState.column        || '',
         sortDirection:         sortState.direction,
         currentTab:            currentTab              || 'gantt',
+        tabOrder:              JSON.stringify(tabOrder || TAB_KEYS),
+        tabVisible:            JSON.stringify(tabVisible || {}),
         kanbanBoards:          JSON.stringify(kanbanBoards || []),
         kanbanTextSize:        kanbanTextSize || 'md',
         taskListGroupSortMode: taskListGroupSortMode   || 'custom',
@@ -9003,32 +9133,31 @@
         if (typeof _kanbanApplyTextSize === 'function') _kanbanApplyTextSize();
       }
 
+      // Restore tab bar order/visibility before activating currentTab below,
+      // so a saved active tab that's now hidden falls back correctly.
+      if (s.tabOrder !== undefined) {
+        try {
+          var _to = JSON.parse(s.tabOrder);
+          if (Array.isArray(_to) && _to.length) tabOrder = _normalizeTabOrder(_to);
+        } catch(e) {}
+      }
+      if (s.tabVisible !== undefined) {
+        try {
+          var _tv = JSON.parse(s.tabVisible);
+          if (_tv && typeof _tv === 'object') tabVisible = _tv;
+        } catch(e) {}
+      }
+      if (s.tabOrder !== undefined || s.tabVisible !== undefined) {
+        _applyTabOrderVisibility();
+        if (typeof _buildTabsMenuList === 'function') _buildTabsMenuList();
+      }
+
       if (s.currentTab !== undefined) {
         var _tab = s.currentTab || 'gantt';
-        currentTab   = _tab;
-        taskTypeFilter = _tab === 'milestones' ? 'milestone' : _tab === 'flags' ? 'flag' : null;
-        var _isGantt = (_tab === 'gantt');
-        var _isKanban = (_tab === 'kanban');
-        var _gp = document.getElementById('gantt-panel');
-        var _gt = document.getElementById('gantt-toolbar');
-        var _tp = document.querySelector('.task-list-panel');
-        var _kp = document.getElementById('kanban-panel');
-        if (_gp) _gp.style.display = _isGantt ? '' : 'none';
-        if (_gt) _gt.style.display = _isGantt ? '' : 'none';
-        if (_kp) _kp.style.display = _isKanban ? '' : 'none';
-        if (_tp) {
-          _tp.style.display = _isKanban ? 'none' : '';
-          if (_isGantt) _tp.classList.remove('tasks-fullscreen'); else _tp.classList.add('tasks-fullscreen');
+        if (tabVisible[_tab] === false) {
+          _tab = tabOrder.filter(function(k) { return tabVisible[k] !== false; })[0] || 'gantt';
         }
-        if (_isKanban && typeof renderKanban === 'function') renderKanban();
-        ['gantt', 'tasks', 'milestones', 'flags', 'kanban'].forEach(function(t) {
-          var btn = document.getElementById('tab-' + t);
-          if (btn) btn.classList.toggle('active', t === _tab);
-        });
-        var _ttEl = document.querySelector('.task-list-panel .panel-title');
-        if (_ttEl) {
-          _ttEl.textContent = _tab === 'milestones' ? 'Milestone Properties' : _tab === 'flags' ? 'Flag Properties' : 'Task Properties';
-        }
+        _setActiveTabDOM(_tab);
       }
 
       // Restore task-list group sort mode
