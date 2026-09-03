@@ -20,24 +20,26 @@ of empty "trigger: retry GitHub Pages deploy" commits exist only to kick a stuck
 
 | File | Role |
 |------|------|
-| `TIMELINE-V1.29.html` | **Active HTML frontend.** All chart rendering, drag-to-reschedule, Load/Save, print mode, the ⚙ Setup modal, and the Version dropdown (multi-scenario task lists) live here. Open this file directly in a browser to test. |
-| `Code_V1.29.gs` | **Active backend.** Paste into the Google Sheet's Extensions → Apps Script editor and deploy as a Web App. |
+| `TIMELINE-V2.0.html` | **Active HTML frontend.** All chart rendering, drag-to-reschedule, Load/Save, print mode, the ⚙ Setup modal, the Version dropdown (multi-scenario task lists), and Baseline comparison (📍 Baseline popover) live here. Open this file directly in a browser to test. |
+| `Code_V2.0.gs` | **Active backend.** Paste into the Google Sheet's Extensions → Apps Script editor and deploy as a Web App. |
 
 Every other `TIMELINE-V*.html` / `Code_V*.gs` file in the repo root is a **superseded version kept for
 reference only** — do not edit them, and do not assume the highest-numbered file you see is necessarily the
 one in active use; check `## Version History` at the bottom of this doc (and the file's own in-file
-`VERSION HISTORY` header comment) to confirm which pair is current before starting work. New feature/fix
-work happens by editing `TIMELINE-V1.29.html` and `Code_V1.29.gs` in place — bump to a new `V1.XX` pair only
-when explicitly asked to cut a new version; mid-flight branch versions (e.g. a stray `TIMELINE-V1.30.html`)
-have historically been merged back into the active pair rather than kept, so don't assume a new numbered
-file should persist unless told to keep it.
+`VERSION HISTORY` header comment) to confirm which pair is current before starting work. `TIMELINE-V1.29.html`
+/ `Code_V1.29.gs` was the active pair before V2.0 cut the Baseline-comparison feature as a new pair — it's
+now frozen for reference like every other prior version. New feature/fix work happens by editing
+`TIMELINE-V2.0.html` and `Code_V2.0.gs` in place — bump to a new version pair only when explicitly asked to
+cut one; mid-flight branch versions (e.g. a stray `TIMELINE-V1.30.html`) have historically been merged back
+into the active pair rather than kept, so don't assume a new numbered file should persist unless told to
+keep it.
 
 ### Deployed/mirrored snapshots — do not treat as sources of truth
 
 - `index.html` (repo root) and `LA_COSTA/index.html`, `SANFORD_145/index.html` are **static GitHub Pages
   snapshots**, each frozen at whatever `TIMELINE-V*.html` state existed when it was copied in (all three
   were last touched in commit `271ff6e`, an old V1.15/V1.16-era snapshot — they are **not** kept in sync
-  with `TIMELINE-V1.29.html` automatically). If asked to update a deployed/hosted timeline, that means
+  with `TIMELINE-V2.0.html` automatically). If asked to update a deployed/hosted timeline, that means
   manually copying the current active HTML over the relevant `index.html` and committing — this repo has no
   automation that does it for you.
 - `PROJECTS/*.html` and the other files inside `LA_COSTA/` / `SANFORD_145/` are dated, per-client export
@@ -70,11 +72,15 @@ deployment steps below (under "Deployment") are the current procedure; treat tha
   symbol) keyed by task, independent of the main task list.
 - `GANTT VERSIONS-DO NOT EDIT` — auto-created on first save of a non-default version; registry of
   `{version name, task sheet name}` pairs powering the Version dropdown (see Versions below).
+- `GANTT BASELINE-DO NOT EDIT` — auto-created the first time Set Baseline is clicked; stores a frozen
+  per-version snapshot of task dates (TASKID | KEY | TYPE | START | END) for the Baseline comparison
+  feature. Never touched by an ordinary task Save — only by Set/Update/Clear Baseline.
 - Non-default versions get their own `PROJECT TASK LIST - <NAME>` task tab plus their own suffixed
   `GANTT SETTINGS-DO NOT EDIT [...]` / `GANTT TASK PARAMS-DO NOT EDIT [...]` / `GANTT TASK IDS-DO NOT EDIT
-  [...]` tabs, auto-created the first time that version is saved.
+  [...]` / `GANTT BASELINE-DO NOT EDIT [...]` tabs, auto-created the first time that version is saved (or,
+  for the baseline tab, the first time it captures its own baseline).
 
-## Apps Script architecture (`Code_V1.29.gs`)
+## Apps Script architecture (`Code_V2.0.gs`)
 
 ### Entry points
 - `doGet(e)` — called by the HTML on Load. `e.parameter.taskSheetName` selects which task-list **version**
@@ -88,9 +94,11 @@ deployment steps below (under "Deployment") are the current procedure; treat tha
 - `doPost(e)` — called by the HTML on Save. Resolves `SOURCE_SHEET`/version tabs from `payload.settings.
   taskSheetName` first, calls `_ensureTaskSheetExists()` (creates the target task-list tab as a copy of
   `payload.newVersionSourceSheet` if this is the first save into a brand-new version), then runs
-  `saveBackToTaskList(payload)`, `writeTaskParams(payload)`, `writeSettings(payload.settings)`, and
-  `writeVersions(payload.versions)` independently, each in its own try/catch, so a failure in one never
-  blocks the others (e.g. a bad task write still lets settings persist).
+  `saveBackToTaskList(payload)`, `writeTaskParams(payload)`, `writeSettings(payload.settings)`,
+  `writeVersions(payload.versions)`, and (when `payload.baseline` is present — only on an explicit
+  Set/Update/Clear Baseline, never an ordinary task Save) `writeBaseline(payload.baseline,
+  payload.baselineClear)`, independently, each in its own try/catch, so a failure in one never blocks the
+  others (e.g. a bad task write still lets settings persist).
 - `onOpen()` — injects a **📊 Gantt Timeline** custom menu into the Sheets UI (Get Web App URL, About/Setup
   Help). Only takes effect after redeploying — menu registration doesn't apply retroactively.
 
@@ -120,6 +128,10 @@ header row + data validation + current tasks all carry over) the first time a ne
   of truth for the URL, not the browser's local copy.
 - `readTaskParams()` / `writeTaskParams(tasks)` — read/write the (version-resolved) `GANTT TASK PARAMS` tab.
 - `readVersions()` / `writeVersions(versions)` — read/write the `GANTT VERSIONS` registry tab (see Versions above).
+- `readBaseline()` / `writeBaseline(baselineTasks, isClear)` — read/write the (version-resolved)
+  `GANTT BASELINE` tab. Same `TASKID`-first, `KEY`-fallback matching convention as `readTaskParams()`, so a
+  plain task rename doesn't orphan its baseline entry. `writeBaseline()` skips entirely (leaves the tab
+  untouched) when `baselineTasks` is `undefined` — only an explicit `isClear=true` empties it.
 
 ### Column mapping (task sheet)
 Columns are auto-detected by header name, falling back to a fixed index only if the header isn't found:
@@ -139,7 +151,7 @@ Columns are auto-detected by header name, falling back to a fixed index only if 
 | PRIORITY | 13 |
 | NOTES | 20 |
 
-### Status → bar color map (`STATUS_COLORS`, top of `Code_V1.29.gs`)
+### Status → bar color map (`STATUS_COLORS`, top of `Code_V2.0.gs`)
 `IN PROGRESS` green `#16a34a` · `UPCOMING` amber `#f59e0b` · `DOWNSTREAM` purple `#8b5cf6` ·
 `PENDING` yellow `#d9c34a` · `COMPLETED` / `ON HOLD` grey `#94a3b8` · `CANCELLED` / `URGENT` red `#dc2626` ·
 `75% COMPLETE` light green `#22c55e` · `WAITING ON OTHERS` / `WITING ON THE CITY` [sic, do not "fix" the
@@ -147,20 +159,22 @@ typo without checking live sheet data for that exact string] orange `#f97316` ·
 `#06b6d4`. Unknown status falls back to slate `#64748b`. This map is duplicated conceptually on the HTML
 side as `STATUS_COLOR_MAP` for the "Status Colors" display toggle — keep both in sync when editing.
 
-### Chart settings (`SETTINGS_KEYS` array + `SETTINGS_DESCRIPTIONS` object, `Code_V1.29.gs`)
+### Chart settings (`SETTINGS_KEYS` array + `SETTINGS_DESCRIPTIONS` object, `Code_V2.0.gs`)
 Persisted to the `GANTT SETTINGS` tab as flat key/value rows — covers project meta (name/subtitle/date/note),
 layout (label width, font size, dark/flat mode, bar text color), independent per-tab collapse state
 (`collapsedGroups`, `ganttCollapsedGroups`, `milestonesCollapsedGroups`, `flagsCollapsedGroups`), group
 ordering, column visibility toggles, print/zoom state, dependencies, today-line color, status-color toggle,
-the configurable `taskSheetName`, and persisted sort/tab state (`sortColumn`, `sortDirection`, `currentTab`).
-**Section colors** are the one exception: stored as individual `groupColor.DISCIPLINE_NAME: #hexcolor` rows
-(one per discipline, sorted A–Z) rather than as a key in `SETTINGS_KEYS`, so they're directly readable/
-editable in the sheet; reconstructed into a `groupColors` JSON object on read.
+the configurable `taskSheetName`, persisted sort/tab state (`sortColumn`, `sortDirection`, `currentTab`,
+`tabOrder`, `tabVisible`), the Kanban tab's `kanbanBoards`/`kanbanTextSize`, and Baseline comparison's
+`showBaseline` / `baselineCapturedAt`. **Section colors** are the one exception: stored as individual
+`groupColor.DISCIPLINE_NAME: #hexcolor` rows (one per discipline, sorted A–Z) rather than as a key in
+`SETTINGS_KEYS`, so they're directly readable/editable in the sheet; reconstructed into a `groupColors` JSON
+object on read.
 
 ## Deployment (Apps Script)
 
 1. Open the Google Sheet → Extensions → Apps Script.
-2. Paste the contents of `Code_V1.29.gs` → Save.
+2. Paste the contents of `Code_V2.0.gs` → Save.
 3. Deploy → New deployment → Web app:
    - Execute as: **Me**
    - Who has access: **Anyone** ← must be exactly this, not "Anyone within [domain]"
@@ -178,28 +192,40 @@ editable in the sheet; reconstructed into a `groupColors` JSON object on read.
 - `testImport()` — verifies the sheet is readable; logs task count to the Execution Log.
 - `testWriteSettings()` — writes dummy settings to the `GANTT SETTINGS` tab; verifies write works.
 - `testCreateSettingsTab()` — creates/recreates the `GANTT SETTINGS` tab from scratch.
+- `testWriteBaseline()` — writes/reads/clears a couple of dummy `GANTT BASELINE` entries; verifies the
+  Baseline comparison feature's read/write round-trip.
 
 ## Common tasks
 
-- **Edit the status color map:** `STATUS_COLORS` in `Code_V1.29.gs`, and mirror in `STATUS_COLOR_MAP` inside
-  `TIMELINE-V1.29.html` if the change should also affect the "Status Colors" display toggle.
+- **Edit the status color map:** `STATUS_COLORS` in `Code_V2.0.gs`, and mirror in `STATUS_COLOR_MAP` inside
+  `TIMELINE-V2.0.html` if the change should also affect the "Status Colors" display toggle.
 - **Add a new chart setting:** add the key to `SETTINGS_KEYS` and describe it in `SETTINGS_DESCRIPTIONS` in
-  `Code_V1.29.gs`, then read/write it from `collectSettings()` / `applySettings()` in the HTML frontend.
+  `Code_V2.0.gs`, then read/write it from `collectSettings()` / `applySettings()` in the HTML frontend.
   Redeploy the Apps Script for the new key to actually persist.
-- **Change which rows appear on the chart:** filter logic in `importFromTaskList()` in `Code_V1.29.gs`
+- **Change which rows appear on the chart:** filter logic in `importFromTaskList()` in `Code_V2.0.gs`
   (currently: `SCHEDULE=TRUE` OR `MILESTONE=TRUE`, plus valid dates).
-- **Change how new tasks are appended on Save:** `saveBackToTaskList()` in `Code_V1.29.gs` — new rows go
+- **Change how new tasks are appended on Save:** `saveBackToTaskList()` in `Code_V2.0.gs` — new rows go
   after the last row of their discipline group; unknown disciplines go to the bottom.
 - **Frontend changes (rendering, drag-to-reschedule, print mode, Load/Save, ⚙ Setup modal):** all in
-  `TIMELINE-V1.29.html`, a single self-contained file with no external dependencies to install. Open it
+  `TIMELINE-V2.0.html`, a single self-contained file with no external dependencies to install. Open it
   directly in a browser to iterate — there's no dev server or hot reload.
 
 ## Version history
 
-See the `VERSION HISTORY` comment block at the top of `TIMELINE-V1.29.html` and `Code_V1.29.gs` for the
+See the `VERSION HISTORY` comment block at the top of `TIMELINE-V2.0.html` and `Code_V2.0.gs` for the
 authoritative, detailed per-release changelog (both files carry their own). Highlights of the current
-(V1.29) state relative to earlier majors documented in prior revisions of this file:
+(V2.0) state relative to earlier majors documented in prior revisions of this file:
 
+- **V2.0** — Baseline comparison. Capture a frozen snapshot of every task's dates (📍 Baseline toolbar
+  popover, next to Version) and see it as a muted-grey ghost bar/diamond/flag under the live one on the
+  Timeline tab, in a row-height band reserved for it so the live bar itself doesn't grow. Matching is
+  taskId-first with a `DISCIPLINE|TASKNAME` fallback (same rename-safe convention as `GANTT TASK PARAMS`).
+  Per-Version (each Version's own settings/baseline tabs are independent); per-frozen-snapshot, not a live
+  pointer to another Version — only Set/Update/Clear Baseline changes it. Persisted as a new
+  `GANTT BASELINE-DO NOT EDIT` tab plus `showBaseline`/`baselineCapturedAt` settings. Print Preview gets its
+  own independent "Baseline" checkbox. Task Properties table gains BASELINE START / BASELINE END /
+  VARIANCE (DAYS) columns (positive variance = later/behind schedule). Cut as a new file pair rather than
+  extending V1.29 in place.
 - **V1.29** — PERSON column surfaced end-to-end (backend already read it but never emitted it; now editable
   in Task Properties and written back, multiple assignees comma-separated). New **Kanban tab**: user-defined
   boards (add/rename/delete) grouped by STATUS or PERSON, each with its own card limit, sort field/direction,
@@ -237,8 +263,8 @@ authoritative, detailed per-release changelog (both files carry their own). High
 - **V1.0–V1.08** — Baseline sheet import/export, `GANTT SETTINGS` tab, per-task color/type/style overrides
   in `GANTT TASK PARAMS`, section colors, NOTES column round-trip.
 
-New feature/fix work happens by editing `TIMELINE-V1.29.html` and `Code_V1.29.gs` in place — bump to a
-new `V1.XX` pair only when explicitly asked to cut a new version. When making a change, prefer updating
+New feature/fix work happens by editing `TIMELINE-V2.0.html` and `Code_V2.0.gs` in place — bump to a
+new version pair only when explicitly asked to cut a new one. When making a change, prefer updating
 this summary only for genuinely repo-wide/structural shifts (new active file pair, new folder convention,
 new deployment step) — routine feature work should just extend the in-file `VERSION HISTORY` comments in
 the active `.html`/`.gs` pair, which are the detailed record.
