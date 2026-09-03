@@ -5,6 +5,37 @@
 
   VERSION HISTORY
   ───────────────
+  V2.0  2026-09-03 (cont'd)
+    • Baseline reworked from a frozen dates-only snapshot into a real,
+      editable Version. Set/Update Baseline now pushes the current tasks into
+      a dedicated Version's own task-list tab (auto-created the first time,
+      named "Baseline: <this version>") using the exact same save mechanism
+      "+ New Version…" already uses — no new backend write path. The
+      comparison itself reads that Version's LIVE tasks read-only via the
+      normal doGet(taskSheetName=...) endpoint (no new backend read path
+      either) — so switching to it (new "✎ Edit Baseline" button) and editing
+      its tasks by hand sticks, and a new "↻ Refresh Comparison" button
+      re-fetches those edits into the ghost data without needing to re-run
+      Set/Update. Clear Baseline now just unlinks the comparison — it no
+      longer deletes anything, since the linked Version is a first-class
+      Version the user may still want (delete it from the Version dropdown
+      instead, like any other version). Removed the old GANTT BASELINE-DO
+      NOT EDIT tab and its readBaseline()/writeBaseline() backend functions
+      entirely — replaced by the `baselineVersionTaskSheetName` setting (new
+      SETTINGS_KEYS entry, per-version like every other setting).
+    • Baseline ghost color is now customizable (🎨 picker in the Baseline
+      popover, `baselineColor` setting) instead of a fixed constant, and
+      Print Preview's independent Baseline checkbox now reads the exact same
+      color, so the two always match.
+    • Baseline ghosts extended to group-header rollup bars: a muted band
+      under each discipline's rollup bar shows the aggregate baseline range
+      (min start → max end across that discipline's baseline tasks), in both
+      the interactive Timeline (normal/non-flat mode; renderBaselineGroupBar)
+      and Print Preview. The rollup bar itself is sized off the row height as
+      it would be without the added ghost band (same fix already applied to
+      renderTaskBar for individual bars), so it doesn't visually grow just
+      because a group ghost exists.
+
   V2.0  2026-09-03
     • Baseline comparison. Capture a frozen snapshot of every task's dates
       (Set Baseline, in the new 📍 Baseline toolbar popover, next to Version)
@@ -1756,17 +1787,22 @@
             <div class="pill-label">Baseline</div>
             <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               <span class="kanban-filter-wrap">
-                <button id="baseline-btn" class="secondary" title="Compare the active schedule against a frozen baseline">📍 Baseline</button>
+                <button id="baseline-btn" class="secondary" title="Compare the active schedule against a baseline version">📍 Baseline</button>
                 <div class="kanban-filter-panel" id="baseline-panel">
                   <div class="kanban-filter-sec">
-                    <label style="display:flex;align-items:center;gap:7px;font-size:0.78rem;font-weight:600;color:var(--text);cursor:pointer;">
-                      <input type="checkbox" id="baseline-show-cb" checked /> Show Baseline
-                    </label>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <label style="display:flex;align-items:center;gap:7px;font-size:0.78rem;font-weight:600;color:var(--text);cursor:pointer;flex:1 1 auto;">
+                        <input type="checkbox" id="baseline-show-cb" checked /> Show Baseline
+                      </label>
+                      <input type="color" id="baseline-color-picker" value="#94a3b8" title="Ghost bar/marker color (matches Print Preview)" style="width:26px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;flex-shrink:0;" />
+                    </div>
                     <div id="baseline-captured-label" style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;"></div>
                     <div id="baseline-unmatched-label" style="font-size:0.7rem;color:#f59e0b;margin-top:2px;display:none;"></div>
                   </div>
                   <div class="kanban-filter-sec" style="display:flex;flex-direction:column;gap:6px;">
                     <button type="button" class="secondary" id="baseline-set-btn" style="width:100%;">Set Baseline</button>
+                    <button type="button" class="secondary" id="baseline-edit-btn" style="width:100%;" title="Switch to the baseline version to edit its tasks directly">✎ Edit Baseline</button>
+                    <button type="button" class="secondary" id="baseline-refresh-btn" style="width:100%;" title="Re-fetch the baseline version's current tasks (e.g. after editing it directly)">↻ Refresh Comparison</button>
                     <button type="button" class="secondary" id="baseline-clear-btn" style="width:100%;color:#dc2626;border-color:#fca5a5;">Clear Baseline</button>
                   </div>
                 </div>
@@ -2528,50 +2564,120 @@
     var _isDirty = false; // true when there are unsaved changes
     var _saveInFlight = false; // true from the moment saveToSheets() starts its network request until it settles
 
-    // ── Baseline comparison (V2.0) ──────────────────────────────────────
-    // A frozen snapshot of task dates, captured explicitly via the Baseline
-    // popover and compared against the live schedule. Per-version (each
-    // Version's own settings tab carries its own showBaseline/capturedAt).
-    var baselineTasks      = [];  // [{taskId, group, name, type, start:Date, end:Date}] — the captured snapshot, kept so Save can resend it
-    var baselineById       = {};  // taskId -> {type, start:Date, end:Date}
-    var baselineByKey      = {};  // normKey(group|name) -> {type, start:Date, end:Date} — fallback if taskId lookup misses
-    var baselineCapturedAt = '';  // ISO string, '' = no baseline captured for the active version
-    var baselineUnmatchedCount = 0; // baseline entries that resolved to no current task, computed once per Load
+    // ── Baseline comparison (V2.0, reworked) ─────────────────────────────
+    // A baseline is a real, editable Version (its own task-list tab) that
+    // this version is compared against — not a frozen snapshot blob. Set/
+    // Update Baseline pushes the current tasks into that Version's tab (via
+    // the same save mechanism "+ New Version" already uses); the comparison
+    // itself reads that Version's LIVE tasks read-only via the normal
+    // doGet(taskSheetName=...) endpoint, so edits made directly in the
+    // baseline Version (switch to it via "Edit Baseline") show up after a
+    // Refresh without needing to re-run Set/Update.
+    var baselineVersionTaskSheetName = ''; // taskSheetName of the Version used as baseline; '' = none linked
+    var baselineColor   = '#94a3b8';       // ghost bar/marker color — customizable, shared by live + print
+    var baselineCapturedAt = '';  // ISO string — last Set/Update Baseline sync time (informational)
+    var baselineById       = {};  // taskId -> {type, start:Date, end:Date, group}
+    var baselineByKey      = {};  // normKey(group|name) -> {type, start:Date, end:Date, group} — fallback if taskId lookup misses
+    var _baselineGroupRange = {}; // discipline -> {start:Date, end:Date} — aggregate range for group-header ghost bars
+    var baselineUnmatchedCount = 0; // baseline entries that resolved to no current task, computed on each fetch
     var showBaseline    = true;  // visibility toggle (persisted per-version via settings)
-    var _baselineDirty  = false; // true after Set/Update/Clear Baseline, until the next successful Save
+    var _baselineFetchInFlight = false;
 
     // Client-side mirror of the backend's normKey() (Code_V2.0.gs) — must stay
     // in sync: uppercase, trimmed, whitespace-collapsed "DISCIPLINE|TASKNAME".
     function normKey(s) { return String(s || '').trim().toUpperCase().replace(/\s+/g, ' '); }
 
-    // Resolves a task's baseline entry, taskId first (rename-safe), then
-    // falling back to the discipline|name key — same fallback chain as the
-    // backend's readTaskParams()/readBaseline().
+    // Resolves a task's baseline entry, taskId first (rename-safe — the
+    // baseline Version's own ID tab starts as a clone of the active
+    // version's at the moment it's first created, so IDs still line up right
+    // after a sync), then falling back to the discipline|name key.
     function _baselineFor(task) {
       if (task.taskId && baselineById[task.taskId]) return baselineById[task.taskId];
       var k = normKey((task.group || '') + '|' + (task.name || ''));
       return baselineByKey[k] || null;
     }
 
+    // Re-fetches the linked baseline Version's tasks (read-only, via the same
+    // doGet endpoint Version-switching already uses) and rebuilds the lookup
+    // maps + per-discipline range used for group-bar ghosts. Call after
+    // Set/Update Baseline, after Load, and from the popover's Refresh button
+    // (for when the baseline Version was edited directly and the comparison
+    // should pick that up without a full re-sync).
+    async function _fetchBaselineComparisonData() {
+      baselineById = {}; baselineByKey = {}; _baselineGroupRange = {}; baselineUnmatchedCount = 0;
+      if (!baselineVersionTaskSheetName || !sheetsURL) {
+        renderGantt(); refreshTaskTable(); _refreshBaselinePopover();
+        return;
+      }
+      _baselineFetchInFlight = true;
+      try {
+        var url = sheetsURL + (sheetsURL.indexOf('?') === -1 ? '?' : '&') +
+          'taskSheetName=' + encodeURIComponent(baselineVersionTaskSheetName) + '&_=' + Date.now();
+        var resp = await fetch(url, { method: 'GET', cache: 'no-store' });
+        var data = await resp.json();
+        if (!data.success && data.error) throw new Error(data.error);
+
+        var seenIds = {}, seenKeys = {};
+        tasks.forEach(function(t) {
+          if (t.taskId) seenIds[t.taskId] = true;
+          seenKeys[normKey((t.group || '') + '|' + (t.name || ''))] = true;
+        });
+
+        (data.tasks || []).forEach(function(t) {
+          var s = parseDate(t.start), e = parseDate(t.end);
+          if (!s || !e) return;
+          var group = t.group || '';
+          var entry = { type: t.type || 'bar', start: s, end: e, group: group };
+          var matched = false;
+          if (t.taskId) {
+            baselineById[t.taskId] = entry;
+            if (seenIds[t.taskId]) matched = true;
+          }
+          var k = normKey(group + '|' + (t.name || ''));
+          baselineByKey[k] = entry;
+          if (!matched && seenKeys[k]) matched = true;
+          if (!matched) baselineUnmatchedCount++;
+
+          if (!_baselineGroupRange[group]) _baselineGroupRange[group] = { start: s, end: e };
+          else {
+            if (s < _baselineGroupRange[group].start) _baselineGroupRange[group].start = s;
+            if (e > _baselineGroupRange[group].end)   _baselineGroupRange[group].end   = e;
+          }
+        });
+      } catch (err) {
+        console.warn('[GANTT] baseline comparison fetch failed:', err);
+      } finally {
+        _baselineFetchInFlight = false;
+      }
+      renderGantt();
+      refreshTaskTable();
+      _refreshBaselinePopover();
+    }
+
     // Syncs the Baseline popover's checkbox/labels/buttons to current state —
-    // called on open, and after any capture/clear/load.
+    // called on open, and after any link/sync/clear/fetch.
     function _refreshBaselinePopover() {
       var cb = document.getElementById('baseline-show-cb');
       var capturedLabel  = document.getElementById('baseline-captured-label');
       var unmatchedLabel = document.getElementById('baseline-unmatched-label');
       var setBtn   = document.getElementById('baseline-set-btn');
       var clearBtn = document.getElementById('baseline-clear-btn');
-      var hasBaseline = !!baselineCapturedAt;
+      var editBtn  = document.getElementById('baseline-edit-btn');
+      var refreshBtn = document.getElementById('baseline-refresh-btn');
+      var colorPicker = document.getElementById('baseline-color-picker');
+      var hasBaseline = !!baselineVersionTaskSheetName;
 
       if (cb) {
         cb.checked  = showBaseline;
         cb.disabled = !hasBaseline;
-        if (cb.parentElement) cb.parentElement.title = hasBaseline ? '' : 'No baseline captured for this version';
+        if (cb.parentElement) cb.parentElement.title = hasBaseline ? '' : 'No baseline version linked for this version';
       }
+      if (colorPicker) colorPicker.value = baselineColor || '#94a3b8';
       if (capturedLabel) {
         capturedLabel.textContent = hasBaseline
-          ? 'Captured ' + new Date(baselineCapturedAt).toLocaleString()
-          : 'No baseline captured for this version yet.';
+          ? 'Comparing against "' + _versionDisplayName(baselineVersionTaskSheetName) + '"' +
+            (baselineCapturedAt ? ' · synced ' + new Date(baselineCapturedAt).toLocaleString() : '')
+          : 'No baseline version linked yet.';
       }
       if (unmatchedLabel) {
         if (baselineUnmatchedCount > 0) {
@@ -2582,44 +2688,101 @@
           unmatchedLabel.style.display = 'none';
         }
       }
-      if (setBtn)   setBtn.textContent   = hasBaseline ? 'Update Baseline' : 'Set Baseline';
-      if (clearBtn) clearBtn.style.display = hasBaseline ? '' : 'none';
+      if (setBtn)     setBtn.textContent = hasBaseline ? 'Update Baseline' : 'Set Baseline';
+      if (clearBtn)   clearBtn.style.display   = hasBaseline ? '' : 'none';
+      if (editBtn)    editBtn.style.display    = hasBaseline ? '' : 'none';
+      if (refreshBtn) refreshBtn.style.display = hasBaseline ? '' : 'none';
     }
 
-    // Snapshots every current task's dates as the new frozen baseline —
-    // overwrites any prior baseline for the active version after confirming.
-    function _captureBaseline() {
-      if (baselineCapturedAt) {
-        var when = new Date(baselineCapturedAt).toLocaleString();
-        if (!confirm('This will overwrite the existing baseline captured on ' + when + '. Continue?')) return;
+    // Pushes the current tasks into the linked baseline Version's tab
+    // (creating it — named "Baseline: <this version>" — the first time), then
+    // immediately persists the baselineVersionTaskSheetName/baselineCapturedAt
+    // pointer onto THIS version's own settings via a normal Save, and
+    // refetches the comparison data. The baseline Version itself is a first-
+    // class Version afterward — switch to it (Edit Baseline) and its edits
+    // stick; they're only overwritten by clicking Update Baseline again.
+    async function _captureBaseline() {
+      if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
+      if (_saveInFlight) { alert('A save to Google Sheets is still in progress.\nPlease wait for it to finish.'); return; }
+
+      var isUpdate = !!baselineVersionTaskSheetName;
+      if (isUpdate) {
+        var ok = confirm('This will overwrite the linked baseline version ("' +
+          _versionDisplayName(baselineVersionTaskSheetName) + '") with the current schedule.\n' +
+          'Any edits made directly in that version\'s tasks will be replaced. Continue?');
+        if (!ok) return;
       }
-      baselineTasks = tasks.map(function(t) {
-        return { taskId: t.taskId, group: t.group, name: t.name, type: t.type, start: t.start, end: t.end };
-      });
-      baselineById = {}; baselineByKey = {};
-      baselineTasks.forEach(function(t) {
-        var entry = { type: t.type, start: t.start, end: t.end };
-        if (t.taskId) baselineById[t.taskId] = entry;
-        baselineByKey[normKey((t.group || '') + '|' + (t.name || ''))] = entry;
-      });
-      baselineCapturedAt = new Date().toISOString();
-      baselineUnmatchedCount = 0;
-      _baselineDirty = true;
-      markDirty();
-      _refreshBaselinePopover();
-      renderGantt();
+
+      var targetSheet = baselineVersionTaskSheetName;
+      var isNew = !targetSheet;
+      if (isNew) {
+        var base = (taskSheetName || DEFAULT_TASK_SHEET_NAME) + ' - BASELINE';
+        var candidate = base;
+        var existingNames = versions.map(function(v) { return (v.taskSheetName || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase(); });
+        var n = 2;
+        while (existingNames.indexOf(candidate.toUpperCase()) !== -1) { candidate = base + ' ' + n; n++; }
+        targetSheet = candidate;
+      }
+
+      var setBtn = document.getElementById('baseline-set-btn');
+      if (setBtn) setBtn.disabled = true;
+      _syncDot('busy', 'Syncing baseline…');
+      try {
+        var payload = {
+          settings: { taskSheetName: targetSheet }, // minimal — NOT collectSettings(), so this doesn't overwrite the baseline version's own display settings
+          tasks: tasks.map(function(t) {
+            return {
+              id: t.id, taskId: null, // fresh IDs in the baseline version's own ID space, not the active version's
+              name: t.name || '', group: t.group || '', sub: t.sub || '', type: t.type || 'bar',
+              start: formatDate(t.start), end: formatDate(t.end),
+              color: t.color || '#0284c7', colorOverride: t.colorOverride || '',
+              note: t.note || '', notes: t.notes || '', person: t.person || '',
+              dashed: t.dashed ? 'true' : 'false', dashedOutline: t.dashedOutline ? 'true' : 'false',
+              symbol: t.symbol || '',
+              dependencies: '' // deps reference this version's runtime IDs — meaningless to carry into a separate version
+            };
+          }),
+          newVersionSourceSheet: taskSheetName || DEFAULT_TASK_SHEET_NAME
+        };
+        if (isNew) payload.versions = versions.concat([{ name: 'Baseline: ' + _versionDisplayName(taskSheetName), taskSheetName: targetSheet }]);
+
+        var resp = await fetch(sheetsURL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(payload) });
+        var result = await resp.json();
+        if (!result.success) throw new Error(result.error || 'Unknown error from script');
+
+        if (isNew) versions.push({ name: 'Baseline: ' + _versionDisplayName(taskSheetName), taskSheetName: targetSheet });
+        baselineVersionTaskSheetName = targetSheet;
+        baselineCapturedAt = new Date().toISOString();
+        markDirty();
+        await saveToSheets(); // persists the pointer settings onto THIS version's own settings tab
+        await _fetchBaselineComparisonData();
+        _syncDot('ok', 'Baseline synced');
+        if (statusText) statusText.textContent = '☁ Baseline synced at ' + new Date().toLocaleTimeString();
+      } catch (err) {
+        _syncDot('err', 'Baseline sync failed');
+        alert('Could not sync baseline:\n' + err.message);
+      } finally {
+        if (setBtn) setBtn.disabled = false;
+        _refreshBaselinePopover();
+      }
     }
 
-    function _clearBaseline() {
-      if (!confirm('Remove the captured baseline for this version? This cannot be undone.')) return;
-      baselineTasks = [];
-      baselineById = {}; baselineByKey = {};
+    // Unlinks the baseline comparison — does NOT delete the baseline Version
+    // itself (it's a first-class Version now; delete it from the Version
+    // dropdown like any other if it's no longer wanted).
+    async function _clearBaseline() {
+      if (!baselineVersionTaskSheetName) return;
+      var ok = confirm('Stop comparing against "' + _versionDisplayName(baselineVersionTaskSheetName) + '"?\n' +
+        'The version itself is not deleted — switch to it from the Version dropdown, or delete it from there.');
+      if (!ok) return;
+      baselineVersionTaskSheetName = '';
       baselineCapturedAt = '';
-      baselineUnmatchedCount = 0;
-      _baselineDirty = true;
+      baselineById = {}; baselineByKey = {}; _baselineGroupRange = {}; baselineUnmatchedCount = 0;
       markDirty();
       _refreshBaselinePopover();
       renderGantt();
+      refreshTaskTable();
+      await saveToSheets(); // persist the unlink immediately, matching Set/Update's immediate-persist behavior
     }
 
     // Wires the Baseline toolbar popover — reuses the generic Kanban floating-
@@ -2653,10 +2816,28 @@
         renderGantt();
       });
 
+      var colorPicker = document.getElementById('baseline-color-picker');
+      if (colorPicker) colorPicker.addEventListener('input', function() {
+        baselineColor = colorPicker.value;
+        markDirty();
+        renderGantt();
+      });
+
       var setBtn = document.getElementById('baseline-set-btn');
       if (setBtn) setBtn.addEventListener('click', _captureBaseline);
       var clearBtn = document.getElementById('baseline-clear-btn');
       if (clearBtn) clearBtn.addEventListener('click', _clearBaseline);
+      var editBtn = document.getElementById('baseline-edit-btn');
+      if (editBtn) editBtn.addEventListener('click', function() {
+        if (!baselineVersionTaskSheetName) return;
+        panel.classList.remove('open');
+        switchToVersion(baselineVersionTaskSheetName);
+      });
+      var refreshBtn = document.getElementById('baseline-refresh-btn');
+      if (refreshBtn) refreshBtn.addEventListener('click', function() {
+        if (_baselineFetchInFlight) return;
+        _fetchBaselineComparisonData();
+      });
 
       _refreshBaselinePopover();
     }
@@ -5525,6 +5706,8 @@
           } else if (displayedRows[_ri].type === 'task') {
             var _rTask = _baselineTaskById[displayedRows[_ri].taskId];
             _rHasBaseline = !!(_rTask && _baselineFor(_rTask));
+          } else if (displayedRows[_ri].type === 'gh') {
+            _rHasBaseline = !!_baselineGroupRange[_rDisc];
           }
         }
         var _rBaselineAddH = _rHasBaseline ? BASELINE_BAND_H : 0;
@@ -6236,10 +6419,16 @@
           var grx1  = dateToX(rng.start), grx2 = dateToX(rng.end);
           var gryT  = geom.rowYOffsets[gr2] || 0;
           var ghRH  = ghRow.rowHeight || geom.rowHeight;
+          // Baseline (V2.0): ghRH may include an added baseline band — size the
+          // rollup bar/ticks off the row height as it would be without that
+          // band, same as renderTaskBar does for individual bars, so the
+          // rollup bar doesn't visually grow just because a group ghost exists.
+          var _ghBaselineAdd = ghRow._baselineAddH || 0;
+          var ghEffRH = ghRH - _ghBaselineAdd;
           var rollColor = (groupColors[ghRow.discipline]) || (rng.color) || '#0284c7';
           if (showGroupBars) {
-            var rollH = Math.max(10, ghRH - 14);
-            var rollY = gryT + (ghRH - rollH) / 2;
+            var rollH = Math.max(10, ghEffRH - 14);
+            var rollY = gryT + (ghEffRH - rollH) / 2;
             var rollup = document.createElementNS(svgNS, 'rect');
             rollup.setAttribute('x', Math.min(grx1, grx2));
             rollup.setAttribute('y', rollY);
@@ -6253,7 +6442,7 @@
             [grx1, grx2].forEach(function(cx) {
               var tick = document.createElementNS(svgNS, 'line');
               tick.setAttribute('x1', cx); tick.setAttribute('y1', gryT + 3);
-              tick.setAttribute('x2', cx); tick.setAttribute('y2', gryT + ghRH - 3);
+              tick.setAttribute('x2', cx); tick.setAttribute('y2', gryT + ghEffRH - 3);
               tick.setAttribute('stroke', rollColor); tick.setAttribute('stroke-width', 2);
               svg.appendChild(tick);
             });
@@ -7140,7 +7329,9 @@
     // Deliberately carry no dataset.taskId/role and no event listeners, so
     // they're structurally unreachable by onBarMouseDown — never draggable,
     // never intercept a drag on the real bar/milestone/flag above them.
-    var BASELINE_GHOST_COLOR = '#94a3b8'; // slate-400 — the app's existing "neutral/inactive" color
+    // Color reads from the user-customizable baselineColor (Baseline popover
+    // color picker) rather than a fixed constant, so live + print can share it.
+    function _baselineGhostColor() { return baselineColor || '#94a3b8'; }
 
     function renderBaselineBar(svg, task, bl) {
       var rowIdx = findRowIdx(task);
@@ -7159,7 +7350,7 @@
       rect.setAttribute('width', barW);
       rect.setAttribute('height', barH);
       rect.setAttribute('rx', 2);
-      rect.setAttribute('fill', BASELINE_GHOST_COLOR);
+      rect.setAttribute('fill', _baselineGhostColor());
       rect.setAttribute('opacity', '0.65');
       rect.style.pointerEvents = 'none';
       svg.appendChild(rect);
@@ -7179,7 +7370,7 @@
         x + ',' + (yMid - s) + ' ' + (x + s) + ',' + yMid + ' ' +
         x + ',' + (yMid + s) + ' ' + (x - s) + ',' + yMid
       );
-      poly.setAttribute('fill', BASELINE_GHOST_COLOR);
+      poly.setAttribute('fill', _baselineGhostColor());
       poly.setAttribute('opacity', '0.65');
       poly.style.pointerEvents = 'none';
       svg.appendChild(poly);
@@ -7200,13 +7391,40 @@
       poly.setAttribute('points',
         (x - s) + ',' + (yMid - s) + ' ' + (x + s) + ',' + yMid + ' ' + (x - s) + ',' + (yMid + s)
       );
-      poly.setAttribute('fill', BASELINE_GHOST_COLOR);
+      poly.setAttribute('fill', _baselineGhostColor());
       poly.setAttribute('opacity', '0.65');
       poly.style.pointerEvents = 'none';
       svg.appendChild(poly);
     }
 
-    // Draws a baseline ghost for every task that has one, respecting the
+    // Group-header rollup ghost — a thin band under the discipline's rollup
+    // bar showing where the baseline's aggregate date range (min start, max
+    // end across that discipline's baseline tasks) used to be. Normal
+    // (non-flat) mode only — flat mode has no group-header row to anchor to.
+    function renderBaselineGroupBar(svg, rowIdx, range) {
+      if (rowIdx < 0 || !range) return;
+      var yTop = geom.rowYOffsets[rowIdx] || 0;
+      var rowH = (geom.displayedRows[rowIdx] && geom.displayedRows[rowIdx].rowHeight) || geom.rowHeight;
+      var x1 = dateToX(range.start), x2 = dateToX(range.end);
+      var barX = Math.min(x1, x2);
+      var barW = Math.max(8, Math.abs(x2 - x1));
+      var barH = Math.min(6, BASELINE_BAND_H - 4);
+      var barY = yTop + rowH - barH - 3;
+
+      var rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', barX);
+      rect.setAttribute('y', barY);
+      rect.setAttribute('width', barW);
+      rect.setAttribute('height', barH);
+      rect.setAttribute('rx', 2);
+      rect.setAttribute('fill', _baselineGhostColor());
+      rect.setAttribute('opacity', '0.55');
+      rect.style.pointerEvents = 'none';
+      svg.appendChild(rect);
+    }
+
+    // Draws a baseline ghost for every task that has one, plus a group-header
+    // rollup ghost per discipline (normal mode only), respecting the
     // showBaseline toggle. Called once per full renderBodySvg() pass (both
     // flat- and normal-mode call sites use this same helper).
     function renderBaselineGhosts(svg) {
@@ -7218,6 +7436,14 @@
         if (bTask.type === 'bar') renderBaselineBar(svg, bTask, bMatch);
         else if (bTask.type === 'milestone') renderBaselineMilestone(svg, bTask, bMatch);
         else if (bTask.type === 'flag') renderBaselineFlag(svg, bTask, bMatch);
+      }
+      if (!flatMode) {
+        for (var gr = 0; gr < geom.displayedRows.length; gr++) {
+          var row = geom.displayedRows[gr];
+          if (row.type !== 'gh') continue;
+          var range = _baselineGroupRange[row.discipline];
+          if (range) renderBaselineGroupBar(svg, gr, range);
+        }
       }
     }
 
@@ -9187,6 +9413,8 @@
         tabVisible:            JSON.stringify(tabVisible || {}),
         showBaseline:          showBaseline ? 'true' : 'false',
         baselineCapturedAt:    baselineCapturedAt || '',
+        baselineVersionTaskSheetName: baselineVersionTaskSheetName || '',
+        baselineColor:         baselineColor || '#94a3b8',
         kanbanBoards:          JSON.stringify(kanbanBoards || []),
         kanbanTextSize:        kanbanTextSize || 'md',
         taskListGroupSortMode: taskListGroupSortMode   || 'custom',
@@ -9498,6 +9726,14 @@
       if (s.baselineCapturedAt !== undefined) {
         baselineCapturedAt = s.baselineCapturedAt || '';
       }
+      if (s.baselineVersionTaskSheetName !== undefined) {
+        baselineVersionTaskSheetName = s.baselineVersionTaskSheetName || '';
+      }
+      if (s.baselineColor !== undefined) {
+        baselineColor = s.baselineColor || '#94a3b8';
+        var _bcPicker = document.getElementById('baseline-color-picker');
+        if (_bcPicker) _bcPicker.value = baselineColor;
+      }
 
       // Restore tab bar order/visibility before activating currentTab below,
       // so a saved active tab that's now hidden falls back correctly.
@@ -9691,47 +9927,12 @@
         }
         populateVersionDropdown();
 
-        // Baseline (V2.0) — reset unconditionally on every Load so switching
-        // Versions (which reloads via forceEmptyClear) naturally lands on
-        // whichever baseline belongs to the newly active version, with no
-        // extra clearing logic needed. Guarded on data.baseline so an old,
-        // not-yet-redeployed backend just yields empty maps, not a crash.
-        baselineTasks = [];
-        baselineById = {};
-        baselineByKey = {};
-        if (data.baseline) {
-          Object.keys(data.baseline.byId || {}).forEach(function(id) {
-            var b = data.baseline.byId[id];
-            baselineById[id] = { type: b.type, start: parseDate(b.start), end: parseDate(b.end) };
-          });
-          Object.keys(data.baseline.byKey || {}).forEach(function(k) {
-            var b = data.baseline.byKey[k];
-            baselineByKey[k] = { type: b.type, start: parseDate(b.start), end: parseDate(b.end) };
-          });
-        }
-        _baselineDirty = false;
-        // Unmatched count: baseline entries that don't resolve against the
-        // freshly loaded task list — surfaced as a small note in the popover.
-        // Every captured baseline row carries both a taskId and a key, so
-        // count off whichever index is populated (id preferred) rather than
-        // summing both maps, which would double-count the same row.
-        (function() {
-          var seenIds = {}, seenKeys = {};
-          loaded.forEach(function(t) {
-            if (t.taskId) seenIds[t.taskId] = true;
-            seenKeys[normKey((t.group || '') + '|' + (t.name || ''))] = true;
-          });
-          var idKeys = Object.keys(baselineById);
-          var useIds = idKeys.length > 0;
-          var total = useIds ? idKeys.length : Object.keys(baselineByKey).length;
-          var matched = 0;
-          if (useIds) {
-            idKeys.forEach(function(id) { if (seenIds[id]) matched++; });
-          } else {
-            Object.keys(baselineByKey).forEach(function(k) { if (seenKeys[k]) matched++; });
-          }
-          baselineUnmatchedCount = Math.max(0, total - matched);
-        })();
+        // Baseline (V2.0): baselineVersionTaskSheetName/baselineColor/showBaseline/
+        // baselineCapturedAt were already restored by applySettings() above.
+        // Reset the comparison maps now (so a stale prior version's ghosts
+        // never flash on screen) — the actual fetch runs after `tasks` is
+        // assigned below, since matching needs the freshly loaded task list.
+        baselineById = {}; baselineByKey = {}; _baselineGroupRange = {}; baselineUnmatchedCount = 0;
         if (typeof _refreshBaselinePopover === 'function') _refreshBaselinePopover();
 
         if (loaded.length > 0) {
@@ -9785,6 +9986,9 @@
         _syncDot('err', 'Load failed');
         if (!silent) alert('Failed to load from Google Sheets:\n' + err.message);
       }
+      // Baseline (V2.0): fire-and-forget — matches against whatever `tasks`
+      // ended up as above, and no-ops (clearing state) if nothing is linked.
+      if (typeof _fetchBaselineComparisonData === 'function') _fetchBaselineComparisonData();
     }
 
     // POST only settings to the sheet — no task data touched.
@@ -10303,17 +10507,11 @@
       };
       if (opts.newVersionSourceSheet) payload.newVersionSourceSheet = opts.newVersionSourceSheet;
       if (opts.newVersionBlank) payload.newVersionBlank = true;
-      // Baseline (V2.0) — only sent when Set/Update/Clear Baseline was clicked
-      // since the last Save, so an ordinary task edit never touches the
-      // baseline tab server-side (writeBaseline() also guards on this).
-      if (_baselineDirty) {
-        payload.baseline = baselineTasks.map(function(t) {
-          return { taskId: t.taskId || null, group: t.group || '', name: t.name || '',
-                    type: t.type || 'bar', start: formatDate(t.start), end: formatDate(t.end) };
-        });
-        payload.baselineCapturedAt = baselineCapturedAt;
-        if (!baselineTasks.length) payload.baselineClear = true;
-      }
+      // Baseline (V2.0): no longer sent from here — a baseline is a real
+      // Version now, synced via its own dedicated POST in _captureBaseline().
+      // This normal Save just needs to persist the pointer settings
+      // (baselineVersionTaskSheetName / baselineColor / baselineCapturedAt /
+      // showBaseline), which collectSettings() above already includes.
 
       // Use text/plain content-type — avoids CORS preflight that Apps Script can't handle.
       // The body is still JSON; Apps Script reads it via e.postData.contents regardless.
@@ -10327,8 +10525,7 @@
         if (result.success) {
           deletedGroups = []; // backend has processed them — clear so they're not re-sent
           clearDirty();
-          _baselineDirty = false;
-          var _anyErr = result.taskError || result.groupSepError || result.versionsError || result.baselineError;
+          var _anyErr = result.taskError || result.groupSepError || result.versionsError;
           if (_anyErr) {
             _syncDot('warn', 'Saved with errors');
             if (statusText) statusText.textContent = '⚠ Saved with errors: ' + _anyErr;
@@ -10350,7 +10547,6 @@
             body:   JSON.stringify(payload)
           });
           clearDirty();
-          _baselineDirty = false;
           _syncDot('ok', 'Save sent ✓');
           if (statusText) statusText.textContent = '☁ Save request sent to Google Sheets at ' + new Date().toLocaleTimeString() + ' (open the sheet to confirm).';
         } catch(err2) {
@@ -11548,10 +11744,24 @@
       // every live row using this page's own row/x-mapping, rather than
       // threading into the row-drawing branches above. Gated on opts.showBaseline
       // (the print-only checkbox), independent of the live Timeline's toggle.
+      // Color reads from the same user-customizable baselineColor as the live
+      // Timeline, so the two always match.
       if (opts.showBaseline) {
+        var _bColor = opts.baselineColor || '#94a3b8';
         for (var bri = 0; bri < opts.rowSlice.length; bri++) {
           var brow = opts.rowSlice[bri];
           var bry  = bodyY + bri * rowH;
+          if (brow.type === 'gh') {
+            var bRange = _baselineGroupRange[brow.disc];
+            if (bRange && bRange.start && bRange.end && !(bRange.end <= opts.sliceMin || bRange.start >= opts.sliceMax)) {
+              var gbx1 = _pDateToX(bRange.start, opts.sliceMin, opts.sliceMax, tw);
+              var gbx2 = _pDateToX(bRange.end,   opts.sliceMin, opts.sliceMax, tw);
+              var gbBandH = Math.max(4, Math.min(7, (opts.baselineBandH || 0) + 2));
+              var gbBandY = bry + rowH - gbBandH - 2;
+              rect(mL+lw+Math.min(gbx1,gbx2), gbBandY, Math.max(4, Math.abs(gbx2-gbx1)), gbBandH, _bColor, {opacity:'0.5', rx:2});
+            }
+            continue;
+          }
           var bTasksHere = brow.type === 'task' ? [brow.task] : (brow.type === 'disc' ? (brow.tasks || []) : []);
           for (var bti2 = 0; bti2 < bTasksHere.length; bti2++) {
             var bt2 = bTasksHere[bti2];
@@ -11564,13 +11774,13 @@
             var bBandH = Math.max(4, Math.min(7, (opts.baselineBandH || 0) + 2));
             var bBandY = bry + rowH - bBandH - 2;
             if (bt2.type === 'bar') {
-              rect(mL+lw+Math.min(bx1p,bx2p), bBandY, Math.max(4, Math.abs(bx2p-bx1p)), bBandH, '#94a3b8', {opacity:'0.6', rx:2});
+              rect(mL+lw+Math.min(bx1p,bx2p), bBandY, Math.max(4, Math.abs(bx2p-bx1p)), bBandH, _bColor, {opacity:'0.6', rx:2});
             } else {
               var bcx = mL+lw+bx1p, bcy = bBandY + bBandH/2, bs = bBandH/2;
               var bpts = bt2.type === 'flag'
                 ? (bcx-bs)+','+(bcy-bs)+' '+(bcx+bs)+','+bcy+' '+(bcx-bs)+','+(bcy+bs)
                 : bcx+','+(bcy-bs)+' '+(bcx+bs)+','+bcy+' '+bcx+','+(bcy+bs)+' '+(bcx-bs)+','+bcy;
-              mk('polygon', {points: bpts, fill: '#94a3b8', opacity: '0.6'});
+              mk('polygon', {points: bpts, fill: _bColor, opacity: '0.6'});
             }
           }
         }
@@ -11909,7 +12119,8 @@
             logoDataUrl:  projectLogo,
             logoH:        prLogoH,
             showBaseline: _prShowBaseline,
-            baselineBandH: _prShowBaseline ? PRINT_BASELINE_BAND_H : 0
+            baselineBandH: _prShowBaseline ? PRINT_BASELINE_BAND_H : 0,
+            baselineColor: baselineColor || '#94a3b8'
           });
 
           var prSlot = document.createElement('div');

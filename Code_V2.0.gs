@@ -56,22 +56,26 @@
 //
 //  VERSION HISTORY
 //  ───────────────
+//  V2.0  2026-09-03 (cont'd)
+//    • Baseline comparison reworked to be a real, editable Version instead of
+//      a frozen dates-only snapshot tab. Removed: BASELINE_SHEET,
+//      readBaseline()/writeBaseline(), doGet's result.baseline, doPost's
+//      baseline save step, testWriteBaseline() — none of that machinery is
+//      needed anymore, since a baseline is now just another entry in the
+//      GANTT VERSIONS registry, read via the existing doGet(taskSheetName=...)
+//      path like any other Version (no new backend read path required) and
+//      written via the existing saveBackToTaskList()/_ensureTaskSheetExists()
+//      path the frontend already uses for creating/syncing Versions (no new
+//      backend write path required either). New SETTINGS_KEYS:
+//      baselineVersionTaskSheetName (which Version this version compares
+//      against) and baselineColor (ghost color, hex) — both automatically
+//      per-version like every other setting. showBaseline and
+//      baselineCapturedAt are kept (still used, same meaning).
+//
 //  V2.0  2026-09-03
-//    • Baseline comparison. New GANTT BASELINE-DO NOT EDIT tab (one per
-//      version, TASKID | KEY | TYPE | START | END) storing a frozen snapshot
-//      of task dates, captured explicitly by the frontend (Set/Update/Clear
-//      Baseline) — never touched by an ordinary task Save. readBaseline()/
-//      writeBaseline() mirror readTaskParams()/writeTaskParams()'s taskId-
-//      first, KEY-fallback matching convention, so a plain task rename
-//      doesn't orphan its baseline entry. doGet() returns it as
-//      result.baseline; doPost() writes it as step 6, independent try/catch
-//      like every other save step. Two new SETTINGS_KEYS: showBaseline,
-//      baselineCapturedAt (both automatically per-version, since
-//      SETTINGS_SHEET is already version-suffixed). New BASELINE_SHEET
-//      global + _applyVersionTabs() extension. testWriteBaseline() added
-//      alongside the existing manual test functions.
-//    • Cut as a new file pair (Code_V2.0.gs / TIMELINE-V2.0.html) rather than
-//      extending V1.29 in place — V1.29 is now frozen for reference.
+//    • Baseline comparison (first cut, later reworked above). Cut as a new
+//      file pair (Code_V2.0.gs / TIMELINE-V2.0.html) rather than extending
+//      V1.29 in place — V1.29 is now frozen for reference.
 //
 //  V1.29  2026-08-25
 //    • PERSON column now round-trips. importFromTaskList() already READ the
@@ -319,7 +323,6 @@ var SOURCE_SHEET      = SOURCE_SHEET_DEFAULT;            // master task data —
 var TASK_PARAMS_SHEET = 'GANTT TASK PARAMS-DO NOT EDIT'; // per-task Gantt display params (color, type, style, symbol, deps)
 var TASK_IDS_SHEET    = 'GANTT TASK IDS-DO NOT EDIT';    // persistent numeric task ID registry — never cleared by saves
 var SETTINGS_SHEET    = 'GANTT SETTINGS-DO NOT EDIT';    // chart-wide UI settings
-var BASELINE_SHEET    = 'GANTT BASELINE-DO NOT EDIT';    // frozen baseline date snapshot (V2.0)
 
 // Resolve the version-specific tab name for a given base tab name. The default
 // version (SOURCE_SHEET_DEFAULT) always keeps the exact unsuffixed base name, so
@@ -329,14 +332,14 @@ function _versionSuffixTab(baseName, taskSheetName) {
   return baseName + ' [' + taskSheetName + ']';
 }
 
-// Point SETTINGS_SHEET / TASK_PARAMS_SHEET / TASK_IDS_SHEET / BASELINE_SHEET at
-// the tabs for the given task-list version. Call this immediately after
-// resolving SOURCE_SHEET.
+// Point SETTINGS_SHEET / TASK_PARAMS_SHEET / TASK_IDS_SHEET at the tabs for
+// the given task-list version. Call this immediately after resolving
+// SOURCE_SHEET. (Baseline comparison no longer has its own tab — a baseline
+// is just another Version, read via the normal doGet(taskSheetName=...) path.)
 function _applyVersionTabs(taskSheetName) {
   SETTINGS_SHEET    = _versionSuffixTab('GANTT SETTINGS-DO NOT EDIT', taskSheetName);
   TASK_PARAMS_SHEET = _versionSuffixTab('GANTT TASK PARAMS-DO NOT EDIT', taskSheetName);
   TASK_IDS_SHEET    = _versionSuffixTab('GANTT TASK IDS-DO NOT EDIT', taskSheetName);
-  BASELINE_SHEET     = _versionSuffixTab('GANTT BASELINE-DO NOT EDIT', taskSheetName);
 }
 
 // ---- Status text → Gantt bar colour ----
@@ -458,7 +461,6 @@ function doGet(e) {
       result.spreadsheetUrl  = activeSs.getUrl();
     } catch(e) {}
     try { result.versions = readVersions(); } catch(e) { result.versions = [{ name: 'Default', taskSheetName: SOURCE_SHEET_DEFAULT }]; }
-    try { result.baseline = readBaseline(); } catch(e) { result.baseline = { byId: {}, byKey: {} }; }
     result.currentTaskSheetName = SOURCE_SHEET;
     return buildResponse(result);
 
@@ -578,21 +580,6 @@ function doPost(e) {
       }
     }
 
-    // 6. Write the frozen baseline snapshot (V2.0) — only present when the
-    // frontend is explicitly capturing/updating/clearing one (Set/Update/Clear
-    // Baseline). An ordinary task Save omits payload.baseline entirely, so
-    // writeBaseline()'s own "skip if undefined" guard means routine edits
-    // never touch this tab.
-    var baselineError = '';
-    if (payload.baseline !== undefined) {
-      try {
-        writeBaseline(payload.baseline, !!payload.baselineClear);
-      } catch (blErr) {
-        baselineError = blErr.toString();
-        Logger.log('writeBaseline error: ' + blErr);
-      }
-    }
-
     return buildResponse({
       success:            true,
       message:            taskMsg,
@@ -601,8 +588,7 @@ function doPost(e) {
       settingsError:      settingsErr,
       groupSepError:      groupSepError,
       versionsError:      versionsError,
-      deleteVersionError: deleteVersionError,
-      baselineError:      baselineError
+      deleteVersionError: deleteVersionError
     });
 
   } catch (err) {
@@ -1501,70 +1487,6 @@ function writeTaskParams(tasks) {
 }
 
 // ============================================================
-//  GANTT BASELINE TAB — read / write (V2.0)
-// ============================================================
-// A frozen snapshot of task dates the user explicitly captures, compared
-// against the live schedule to show drift. One tab per version (via
-// _versionSuffixTab), never touched by an ordinary task Save — only written
-// when the frontend sends payload.baseline (Set/Update/Clear Baseline).
-//
-// Tab columns: TASKID | KEY | TYPE | START | END
-// Same TASKID-first, KEY-fallback matching convention as GANTT TASK PARAMS —
-// KEY = normKey(DISC|TASKNAME) — so a plain rename doesn't orphan the ghost.
-function readBaseline() {
-  var result = { byId: {}, byKey: {} };
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(BASELINE_SHEET);
-  if (!sh || sh.getLastRow() < 2) return result;
-
-  var data = sh.getDataRange().getValues();
-  for (var r = 1; r < data.length; r++) {
-    var entry = {
-      type:  String(data[r][2] || 'bar').trim().toLowerCase(),
-      start: String(data[r][3] || '').trim(),
-      end:   String(data[r][4] || '').trim()
-    };
-    if (!entry.start) continue;
-
-    var id = parseInt(String(data[r][0] || '').trim(), 10);
-    if (id) result.byId[id] = entry;
-
-    var k = normKey(String(data[r][1] || '').trim());
-    if (k) result.byKey[k] = entry;
-  }
-  return result;
-}
-
-// Fully rewrites GANTT BASELINE from a frontend-supplied array of
-// {taskId, group, name, type, start, end}. Skips entirely (leaves the
-// existing tab untouched) when baselineTasks is undefined — an ordinary Save
-// never sends this field, so it must never wipe a captured baseline. An
-// explicit Clear Baseline sends an empty array WITH isClear=true, which is
-// the only way to actually empty the tab.
-function writeBaseline(baselineTasks, isClear) {
-  if (!baselineTasks) return;
-  if (!baselineTasks.length && !isClear) return;
-
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(BASELINE_SHEET);
-  if (!sh) sh = ss.insertSheet(BASELINE_SHEET);
-  sh.clearContents();
-
-  if (!baselineTasks.length) { sh.hideSheet(); return; } // cleared — leave an empty, hidden tab
-
-  var rows = [['TASKID', 'KEY', 'TYPE', 'START', 'END']];
-  baselineTasks.forEach(function(t) {
-    var taskId = parseInt(t.taskId, 10) || '';
-    var key    = normKey((t.group || '') + '|' + (t.name || ''));
-    var type   = String(t.type || 'bar').trim().toLowerCase();
-    rows.push([taskId, key, type, t.start || '', t.end || '']);
-  });
-
-  sh.getRange(1, 1, rows.length, 5).setValues(rows);
-  sh.hideSheet();
-}
-
-// ============================================================
 //  GANTT SETTINGS TAB — read / write
 //
 //  Fixed settings stored as KEY → VALUE rows.
@@ -1593,7 +1515,7 @@ var SETTINGS_KEYS = [
   'taskSheetName',
   'sortColumn', 'sortDirection', 'currentTab',
   'tabOrder', 'tabVisible',
-  'showBaseline', 'baselineCapturedAt',
+  'showBaseline', 'baselineCapturedAt', 'baselineVersionTaskSheetName', 'baselineColor',
   'taskListGroupSortMode',
   'taskTableColWidths', 'taskTableColVisible',
   'taskListUseUniformRowColor', 'taskListUniformRowColor', 'taskListRowColorTint',
@@ -1658,8 +1580,10 @@ var SETTINGS_DESCRIPTIONS = {
   currentTab:              'Active view tab — gantt | tasks | milestones | flags | kanban',
   tabOrder:                'JSON array: display order of the top app tabs (gantt/tasks/milestones/flags/kanban)',
   tabVisible:              'JSON object: which top app tabs are shown — key -> false when hidden',
-  showBaseline:            'Show the frozen baseline overlay under bars/milestones/flags (true/false)',
-  baselineCapturedAt:      'ISO timestamp of the last baseline capture for this version (empty = no baseline captured)',
+  showBaseline:            'Show the baseline overlay under bars/milestones/flags/group bars (true/false)',
+  baselineCapturedAt:      'ISO timestamp of the last Set/Update Baseline sync for this version (empty = no baseline linked)',
+  baselineVersionTaskSheetName: 'Task sheet name of the Version used as this version\'s baseline for comparison (empty = none linked) — a real, editable Version, not a frozen copy',
+  baselineColor:           'Hex color used for baseline ghost bars/markers, in both the live Timeline and Print Preview (empty = default slate)',
   taskListGroupSortMode:   'Task Properties group ordering mode — date | alpha | custom',
   taskTableColWidths:      'JSON object: Task Properties table column widths in px, keyed by column key',
   taskTableColVisible:     'JSON object: Task Properties table column visibility, keyed by column key (false = hidden)',
@@ -1844,39 +1768,6 @@ function testWriteSettings() {
 
     SpreadsheetApp.flush();
     Logger.log('DONE — check GANTT SETTINGS and GANTT TASK PARAMS tabs');
-
-  } catch (e) {
-    Logger.log('ERROR: ' + e.toString());
-  }
-}
-
-// Verify GANTT BASELINE read/write against a couple of dummy entries (V2.0).
-function testWriteBaseline() {
-  try {
-    var dummyBaseline = [
-      { taskId: 1, group: 'ARCHITECTURE', name: 'SCHEMATIC DESIGN', type: 'bar',
-        start: '2026-01-01', end: '2026-01-15' },
-      { taskId: 2, group: 'STRUCTURAL', name: 'FOUNDATION REVIEW', type: 'milestone',
-        start: '2026-02-01', end: '2026-02-01' }
-    ];
-
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    Logger.log('Spreadsheet: ' + ss.getName());
-
-    writeBaseline(dummyBaseline, false);
-    Logger.log('writeBaseline() done');
-
-    var b = readBaseline();
-    Logger.log('readBaseline(): ' + JSON.stringify(b));
-
-    writeBaseline([], true);
-    Logger.log('writeBaseline([], true) — clear — done');
-
-    var bCleared = readBaseline();
-    Logger.log('readBaseline() after clear: ' + JSON.stringify(bCleared));
-
-    SpreadsheetApp.flush();
-    Logger.log('DONE — check GANTT BASELINE tab');
 
   } catch (e) {
     Logger.log('ERROR: ' + e.toString());

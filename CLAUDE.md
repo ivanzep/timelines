@@ -71,14 +71,11 @@ deployment steps below (under "Deployment") are the current procedure; treat tha
 - `GANTT TASK PARAMS` — auto-created; stores per-task Gantt-only display overrides (color, bar type/style,
   symbol) keyed by task, independent of the main task list.
 - `GANTT VERSIONS-DO NOT EDIT` — auto-created on first save of a non-default version; registry of
-  `{version name, task sheet name}` pairs powering the Version dropdown (see Versions below).
-- `GANTT BASELINE-DO NOT EDIT` — auto-created the first time Set Baseline is clicked; stores a frozen
-  per-version snapshot of task dates (TASKID | KEY | TYPE | START | END) for the Baseline comparison
-  feature. Never touched by an ordinary task Save — only by Set/Update/Clear Baseline.
+  `{version name, task sheet name}` pairs powering the Version dropdown (see Versions below). A Baseline
+  comparison (see below) is just another row here — there is no separate baseline tab.
 - Non-default versions get their own `PROJECT TASK LIST - <NAME>` task tab plus their own suffixed
   `GANTT SETTINGS-DO NOT EDIT [...]` / `GANTT TASK PARAMS-DO NOT EDIT [...]` / `GANTT TASK IDS-DO NOT EDIT
-  [...]` / `GANTT BASELINE-DO NOT EDIT [...]` tabs, auto-created the first time that version is saved (or,
-  for the baseline tab, the first time it captures its own baseline).
+  [...]` tabs, auto-created the first time that version is saved.
 
 ## Apps Script architecture (`Code_V2.0.gs`)
 
@@ -94,11 +91,11 @@ deployment steps below (under "Deployment") are the current procedure; treat tha
 - `doPost(e)` — called by the HTML on Save. Resolves `SOURCE_SHEET`/version tabs from `payload.settings.
   taskSheetName` first, calls `_ensureTaskSheetExists()` (creates the target task-list tab as a copy of
   `payload.newVersionSourceSheet` if this is the first save into a brand-new version), then runs
-  `saveBackToTaskList(payload)`, `writeTaskParams(payload)`, `writeSettings(payload.settings)`,
-  `writeVersions(payload.versions)`, and (when `payload.baseline` is present — only on an explicit
-  Set/Update/Clear Baseline, never an ordinary task Save) `writeBaseline(payload.baseline,
-  payload.baselineClear)`, independently, each in its own try/catch, so a failure in one never blocks the
-  others (e.g. a bad task write still lets settings persist).
+  `saveBackToTaskList(payload)`, `writeTaskParams(payload)`, `writeSettings(payload.settings)`, and
+  `writeVersions(payload.versions)` independently, each in its own try/catch, so a failure in one never
+  blocks the others (e.g. a bad task write still lets settings persist). A Baseline comparison's Set/Update
+  Baseline reuses this exact same endpoint — it's just a POST targeting a different `taskSheetName` (the
+  linked baseline Version's own tab), no special-cased baseline payload field involved.
 - `onOpen()` — injects a **📊 Gantt Timeline** custom menu into the Sheets UI (Get Web App URL, About/Setup
   Help). Only takes effect after redeploying — menu registration doesn't apply retroactively.
 
@@ -114,6 +111,19 @@ the exact unsuffixed legacy tab names, so existing single-version spreadsheets n
 `_ensureTaskSheetExists(taskSheetName, sourceSheetName)` clones `sourceSheetName` (`Sheet.copyTo()`, so
 header row + data validation + current tasks all carry over) the first time a new version is saved.
 
+### Baseline comparison (V2.0)
+A "baseline" is **just another Version** — there is no separate storage mechanism on the backend. The
+frontend's 📍 Baseline popover (toolbar, next to Version) links this version to a chosen baseline Version via
+the `baselineVersionTaskSheetName` setting. **Set/Update Baseline** pushes the current tasks into that
+Version's tab using the exact same `doPost` flow "+ New Version…" already uses (auto-creating it the first
+time, named `Baseline: <this version>`) — no dedicated backend function. The comparison itself is read
+**live**, read-only, via a normal `doGet(taskSheetName=<linked version>)` call — so switching to the linked
+Version (✎ Edit Baseline) and editing its tasks by hand sticks, and ↻ Refresh Comparison re-fetches those
+edits into the ghost overlay without re-running Set/Update. Clear Baseline only unlinks the pointer — it
+never deletes the linked Version (delete it from the Version dropdown instead, like any other version).
+Ghosts (ghost bars/diamonds/flags under bars, plus a group-header rollup ghost) render on the Timeline tab
+and in Print Preview (its own independent checkbox), using the `baselineColor` setting for both.
+
 ### Key functions
 - `importFromTaskList()` — scans the task sheet (`SOURCE_SHEET`, resolved per-version) for rows where
   `SCHEDULE=TRUE` or `MILESTONE=TRUE`, with valid START DATE + END DATE. Returns `{ tasks: [...], meta: {...} }`.
@@ -127,11 +137,10 @@ header row + data validation + current tasks all carry over) the first time a ne
   HTML adopts it as `sheetsURL` if it differs from what's stored, since the sheet is treated as the source
   of truth for the URL, not the browser's local copy.
 - `readTaskParams()` / `writeTaskParams(tasks)` — read/write the (version-resolved) `GANTT TASK PARAMS` tab.
-- `readVersions()` / `writeVersions(versions)` — read/write the `GANTT VERSIONS` registry tab (see Versions above).
-- `readBaseline()` / `writeBaseline(baselineTasks, isClear)` — read/write the (version-resolved)
-  `GANTT BASELINE` tab. Same `TASKID`-first, `KEY`-fallback matching convention as `readTaskParams()`, so a
-  plain task rename doesn't orphan its baseline entry. `writeBaseline()` skips entirely (leaves the tab
-  untouched) when `baselineTasks` is `undefined` — only an explicit `isClear=true` empties it.
+- `readVersions()` / `writeVersions(versions)` — read/write the `GANTT VERSIONS` registry tab (see Versions
+  above). There is no dedicated baseline read/write function — a Baseline comparison is just another Version,
+  read via `doGet(taskSheetName=<linked version>)` and written via the same `doPost` path as any other
+  Version save.
 
 ### Column mapping (task sheet)
 Columns are auto-detected by header name, falling back to a fixed index only if the header isn't found:
@@ -166,7 +175,9 @@ layout (label width, font size, dark/flat mode, bar text color), independent per
 ordering, column visibility toggles, print/zoom state, dependencies, today-line color, status-color toggle,
 the configurable `taskSheetName`, persisted sort/tab state (`sortColumn`, `sortDirection`, `currentTab`,
 `tabOrder`, `tabVisible`), the Kanban tab's `kanbanBoards`/`kanbanTextSize`, and Baseline comparison's
-`showBaseline` / `baselineCapturedAt`. **Section colors** are the one exception: stored as individual
+`showBaseline` / `baselineColor` / `baselineCapturedAt` / `baselineVersionTaskSheetName` (which Version, if
+any, this version is compared against — see Baseline comparison below). **Section colors** are the one
+exception: stored as individual
 `groupColor.DISCIPLINE_NAME: #hexcolor` rows (one per discipline, sorted A–Z) rather than as a key in
 `SETTINGS_KEYS`, so they're directly readable/editable in the sheet; reconstructed into a `groupColors` JSON
 object on read.
@@ -192,8 +203,6 @@ object on read.
 - `testImport()` — verifies the sheet is readable; logs task count to the Execution Log.
 - `testWriteSettings()` — writes dummy settings to the `GANTT SETTINGS` tab; verifies write works.
 - `testCreateSettingsTab()` — creates/recreates the `GANTT SETTINGS` tab from scratch.
-- `testWriteBaseline()` — writes/reads/clears a couple of dummy `GANTT BASELINE` entries; verifies the
-  Baseline comparison feature's read/write round-trip.
 
 ## Common tasks
 
@@ -216,14 +225,15 @@ See the `VERSION HISTORY` comment block at the top of `TIMELINE-V2.0.html` and `
 authoritative, detailed per-release changelog (both files carry their own). Highlights of the current
 (V2.0) state relative to earlier majors documented in prior revisions of this file:
 
-- **V2.0** — Baseline comparison. Capture a frozen snapshot of every task's dates (📍 Baseline toolbar
-  popover, next to Version) and see it as a muted-grey ghost bar/diamond/flag under the live one on the
-  Timeline tab, in a row-height band reserved for it so the live bar itself doesn't grow. Matching is
-  taskId-first with a `DISCIPLINE|TASKNAME` fallback (same rename-safe convention as `GANTT TASK PARAMS`).
-  Per-Version (each Version's own settings/baseline tabs are independent); per-frozen-snapshot, not a live
-  pointer to another Version — only Set/Update/Clear Baseline changes it. Persisted as a new
-  `GANTT BASELINE-DO NOT EDIT` tab plus `showBaseline`/`baselineCapturedAt` settings. Print Preview gets its
-  own independent "Baseline" checkbox. Task Properties table gains BASELINE START / BASELINE END /
+- **V2.0** — Baseline comparison: link this version to a chosen Version (📍 Baseline popover, next to
+  Version — see "Baseline comparison" under Apps Script architecture above) and see its tasks as a
+  customizable-color ghost bar/diamond/flag under the live one, plus a group-header rollup ghost, in a
+  row-height band reserved for them so the live elements don't visually grow. A baseline is a **real,
+  editable Version** — Set/Update Baseline pushes current tasks into it (reusing the same save path
+  "+ New Version…" uses); the comparison reads it back live and read-only; ✎ Edit Baseline jumps to it, ↻
+  Refresh Comparison re-pulls after editing it directly, Clear Baseline only unlinks (never deletes it).
+  Matching is taskId-first with a `DISCIPLINE|TASKNAME` fallback. Print Preview gets its own independent
+  "Baseline" checkbox, sharing the same color. Task Properties table gains BASELINE START / BASELINE END /
   VARIANCE (DAYS) columns (positive variance = later/behind schedule). Cut as a new file pair rather than
   extending V1.29 in place.
 - **V1.29** — PERSON column surfaced end-to-end (backend already read it but never emitted it; now editable
