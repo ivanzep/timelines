@@ -93,9 +93,8 @@ deployment steps below (under "Deployment") are the current procedure; treat tha
   `payload.newVersionSourceSheet` if this is the first save into a brand-new version), then runs
   `saveBackToTaskList(payload)`, `writeTaskParams(payload)`, `writeSettings(payload.settings)`, and
   `writeVersions(payload.versions)` independently, each in its own try/catch, so a failure in one never
-  blocks the others (e.g. a bad task write still lets settings persist). A Baseline comparison's Set/Update
-  Baseline reuses this exact same endpoint — it's just a POST targeting a different `taskSheetName` (the
-  linked baseline Version's own tab), no special-cased baseline payload field involved.
+  blocks the others (e.g. a bad task write still lets settings persist). Linking a Baseline comparison
+  writes nothing extra here — `baselineVersionTaskSheetName` is just one more field inside `payload.settings`.
 - `onOpen()` — injects a **📊 Gantt Timeline** custom menu into the Sheets UI (Get Web App URL, About/Setup
   Help). Only takes effect after redeploying — menu registration doesn't apply retroactively.
 
@@ -112,17 +111,23 @@ the exact unsuffixed legacy tab names, so existing single-version spreadsheets n
 header row + data validation + current tasks all carry over) the first time a new version is saved.
 
 ### Baseline comparison (V2.0)
-A "baseline" is **just another Version** — there is no separate storage mechanism on the backend. The
-frontend's 📍 Baseline popover (toolbar, next to Version) links this version to a chosen baseline Version via
-the `baselineVersionTaskSheetName` setting. **Set/Update Baseline** pushes the current tasks into that
-Version's tab using the exact same `doPost` flow "+ New Version…" already uses (auto-creating it the first
-time, named `Baseline: <this version>`) — no dedicated backend function. The comparison itself is read
-**live**, read-only, via a normal `doGet(taskSheetName=<linked version>)` call — so switching to the linked
-Version (✎ Edit Baseline) and editing its tasks by hand sticks, and ↻ Refresh Comparison re-fetches those
-edits into the ghost overlay without re-running Set/Update. Clear Baseline only unlinks the pointer — it
-never deletes the linked Version (delete it from the Version dropdown instead, like any other version).
-Ghosts (ghost bars/diamonds/flags under bars, plus a group-header rollup ghost) render on the Timeline tab
-and in Print Preview (its own independent checkbox), using the `baselineColor` setting for both.
+A "baseline" is **just another Version, linked by pointer** — there is no separate storage mechanism on the
+backend and no data is ever copied between Versions for this feature. The frontend's 📍 Baseline popover
+(toolbar, next to Version) has a "Compare against" `<select>` listing every Version except whichever one is
+currently active (comparing a version against itself would be a no-op); picking one just sets the
+`baselineVersionTaskSheetName` setting — **any Version can be linked as the baseline of any other Version**,
+and since nothing is copied, comparing an arbitrary pair of schedules is simply: make one of them the active
+version, then pick the other from the select. The comparison itself is read **live**, read-only, via a
+normal `doGet(taskSheetName=<linked version>)` call (no dedicated backend function) — so switching to the
+linked Version (✎ Edit Baseline) and editing its tasks by hand sticks immediately, and ↻ Refresh Comparison
+re-fetches those edits into the ghost overlay on demand. Picking "(none)" unlinks — it never deletes the
+linked Version (delete it from the Version dropdown instead, like any other version). The Default version
+needs a dedicated sentinel value in the frontend's `baselineVersionTaskSheetName` state (since `''` already
+means "linked to Default" everywhere else `taskSheetName` is used, but had to mean "nothing linked" here) —
+translated back to `''`/the literal default sheet name at the point of use; this is purely a frontend
+concern, invisible to the backend. Ghosts (ghost bars/diamonds/flags under bars, plus a group-header rollup
+ghost) render on the Timeline tab and in Print Preview (its own independent checkbox), using the
+`baselineColor` setting for both.
 
 ### Key functions
 - `importFromTaskList()` — scans the task sheet (`SOURCE_SHEET`, resolved per-version) for rows where
@@ -225,17 +230,17 @@ See the `VERSION HISTORY` comment block at the top of `TIMELINE-V2.0.html` and `
 authoritative, detailed per-release changelog (both files carry their own). Highlights of the current
 (V2.0) state relative to earlier majors documented in prior revisions of this file:
 
-- **V2.0** — Baseline comparison: link this version to a chosen Version (📍 Baseline popover, next to
-  Version — see "Baseline comparison" under Apps Script architecture above) and see its tasks as a
-  customizable-color ghost bar/diamond/flag under the live one, plus a group-header rollup ghost, in a
-  row-height band reserved for them so the live elements don't visually grow. A baseline is a **real,
-  editable Version** — Set/Update Baseline pushes current tasks into it (reusing the same save path
-  "+ New Version…" uses); the comparison reads it back live and read-only; ✎ Edit Baseline jumps to it, ↻
-  Refresh Comparison re-pulls after editing it directly, Clear Baseline only unlinks (never deletes it).
-  Matching is taskId-first with a `DISCIPLINE|TASKNAME` fallback. Print Preview gets its own independent
-  "Baseline" checkbox, sharing the same color. Task Properties table gains BASELINE START / BASELINE END /
-  VARIANCE (DAYS) columns (positive variance = later/behind schedule). Cut as a new file pair rather than
-  extending V1.29 in place.
+- **V2.0** — Baseline comparison: link this version to **any other Version** (📍 Baseline popover's
+  "Compare against" select, next to Version — see "Baseline comparison" under Apps Script architecture
+  above) — a pure pointer, no data copied, so any Version can be any other Version's baseline and comparing
+  an arbitrary pair of schedules is just switch-active-and-pick. See its tasks as a customizable-color ghost
+  bar/diamond/flag under the live one, plus a group-header rollup ghost, in a row-height band reserved for
+  them so the live elements don't visually grow. The comparison is read live and read-only; ✎ Edit Baseline
+  jumps to the linked Version, ↻ Refresh Comparison re-pulls after editing it directly, picking "(none)"
+  unlinks (never deletes anything). Matching is taskId-first with a `DISCIPLINE|TASKNAME` fallback. Print
+  Preview gets its own independent "Baseline" checkbox, sharing the same color. Task Properties table gains
+  BASELINE START / BASELINE END / VARIANCE (DAYS) columns (positive variance = later/behind schedule). Cut
+  as a new file pair rather than extending V1.29 in place.
 - **V1.29** — PERSON column surfaced end-to-end (backend already read it but never emitted it; now editable
   in Task Properties and written back, multiple assignees comma-separated). New **Kanban tab**: user-defined
   boards (add/rename/delete) grouped by STATUS or PERSON, each with its own card limit, sort field/direction,

@@ -56,6 +56,15 @@
 //
 //  VERSION HISTORY
 //  ───────────────
+//  V2.0  2026-09-03 (cont'd, 2)
+//    • Baseline linking generalized: any Version can now be linked as the
+//      baseline of any other Version, not just a dedicated auto-created
+//      "Baseline: <name>" clone. No backend change needed for this — it was
+//      already just a doGet(taskSheetName=...) read of whatever Version
+//      baselineVersionTaskSheetName points at; only the frontend's "which
+//      Version can I pick" restriction changed. baselineVersionTaskSheetName's
+//      description updated to reflect it's an unrestricted pointer.
+//
 //  V2.0  2026-09-03 (cont'd)
 //    • Baseline comparison reworked to be a real, editable Version instead of
 //      a frozen dates-only snapshot tab. Removed: BASELINE_SHEET,
@@ -1581,8 +1590,8 @@ var SETTINGS_DESCRIPTIONS = {
   tabOrder:                'JSON array: display order of the top app tabs (gantt/tasks/milestones/flags/kanban)',
   tabVisible:              'JSON object: which top app tabs are shown — key -> false when hidden',
   showBaseline:            'Show the baseline overlay under bars/milestones/flags/group bars (true/false)',
-  baselineCapturedAt:      'ISO timestamp of the last Set/Update Baseline sync for this version (empty = no baseline linked)',
-  baselineVersionTaskSheetName: 'Task sheet name of the Version used as this version\'s baseline for comparison (empty = none linked) — a real, editable Version, not a frozen copy',
+  baselineCapturedAt:      'ISO timestamp of when the baseline link was last set/changed for this version (empty = no baseline linked)',
+  baselineVersionTaskSheetName: 'Task sheet name of the Version this version is linked to for comparison (empty = none linked). Any Version can be linked as any other Version\'s baseline — this is a live pointer, not a copy; a special sentinel value represents "the Default version" since \'\' already means "none linked" here',
   baselineColor:           'Hex color used for baseline ghost bars/markers, in both the live Timeline and Print Preview (empty = default slate)',
   taskListGroupSortMode:   'Task Properties group ordering mode — date | alpha | custom',
   taskTableColWidths:      'JSON object: Task Properties table column widths in px, keyed by column key',

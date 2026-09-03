@@ -5,6 +5,29 @@
 
   VERSION HISTORY
   ───────────────
+  V2.0  2026-09-03 (cont'd, 2)
+    • Baseline linking generalized: any Version can now be the baseline of
+      any other Version — the popover's "Set/Update Baseline" push-a-copy
+      action is gone, replaced by a "Compare against" <select> listing every
+      Version except whichever one is currently active (comparing a version
+      against itself would be a no-op). Picking one just sets
+      baselineVersionTaskSheetName and re-fetches — no task data copied
+      anywhere, so switching the active version and re-picking lets you
+      compare any pair of schedules, and there's no more "update" step to
+      remember: whichever Version is linked is always read live.
+    • The Default version needed a dedicated sentinel value
+      (BASELINE_DEFAULT_SENTINEL) in the "Compare against" select, since ''
+      already means "linked to Default" in every OTHER Version-related
+      variable in this file (taskSheetName's own convention) but had to mean
+      "nothing linked" here — reusing it would have made the two
+      indistinguishable. _baselineActualTaskSheetName() translates the
+      sentinel back wherever real taskSheetName semantics are needed
+      (switchToVersion, _versionDisplayName); the raw doGet fetch is handed
+      the literal default sheet name directly instead, which doGet already
+      treats identically to omitting the parameter.
+    • Clear Baseline as a separate button is gone too — picking "(none)" in
+      the same select unlinks. Edit Baseline / Refresh Comparison unchanged.
+
   V2.0  2026-09-03 (cont'd)
     • Baseline reworked from a frozen dates-only snapshot into a real,
       editable Version. Set/Update Baseline now pushes the current tasks into
@@ -1796,14 +1819,16 @@
                       </label>
                       <input type="color" id="baseline-color-picker" value="#94a3b8" title="Ghost bar/marker color (matches Print Preview)" style="width:26px;height:22px;padding:1px;border-radius:4px;border:1px solid var(--border-strong);cursor:pointer;flex-shrink:0;" />
                     </div>
+                    <label style="display:block;font-size:0.66rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-muted);margin-top:9px;margin-bottom:3px;">Compare against</label>
+                    <select id="baseline-version-select" class="secondary" style="width:100%;">
+                      <option value="">(none)</option>
+                    </select>
                     <div id="baseline-captured-label" style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;"></div>
                     <div id="baseline-unmatched-label" style="font-size:0.7rem;color:#f59e0b;margin-top:2px;display:none;"></div>
                   </div>
                   <div class="kanban-filter-sec" style="display:flex;flex-direction:column;gap:6px;">
-                    <button type="button" class="secondary" id="baseline-set-btn" style="width:100%;">Set Baseline</button>
-                    <button type="button" class="secondary" id="baseline-edit-btn" style="width:100%;" title="Switch to the baseline version to edit its tasks directly">✎ Edit Baseline</button>
-                    <button type="button" class="secondary" id="baseline-refresh-btn" style="width:100%;" title="Re-fetch the baseline version's current tasks (e.g. after editing it directly)">↻ Refresh Comparison</button>
-                    <button type="button" class="secondary" id="baseline-clear-btn" style="width:100%;color:#dc2626;border-color:#fca5a5;">Clear Baseline</button>
+                    <button type="button" class="secondary" id="baseline-edit-btn" style="width:100%;" title="Switch to the linked version to edit its tasks directly">✎ Edit Baseline</button>
+                    <button type="button" class="secondary" id="baseline-refresh-btn" style="width:100%;" title="Re-fetch the linked version's current tasks (e.g. after editing it directly)">↻ Refresh Comparison</button>
                   </div>
                 </div>
               </span>
@@ -2564,18 +2589,31 @@
     var _isDirty = false; // true when there are unsaved changes
     var _saveInFlight = false; // true from the moment saveToSheets() starts its network request until it settles
 
-    // ── Baseline comparison (V2.0, reworked) ─────────────────────────────
-    // A baseline is a real, editable Version (its own task-list tab) that
-    // this version is compared against — not a frozen snapshot blob. Set/
-    // Update Baseline pushes the current tasks into that Version's tab (via
-    // the same save mechanism "+ New Version" already uses); the comparison
-    // itself reads that Version's LIVE tasks read-only via the normal
-    // doGet(taskSheetName=...) endpoint, so edits made directly in the
-    // baseline Version (switch to it via "Edit Baseline") show up after a
-    // Refresh without needing to re-run Set/Update.
-    var baselineVersionTaskSheetName = ''; // taskSheetName of the Version used as baseline; '' = none linked
+    // ── Baseline comparison (V2.0, reworked twice) ───────────────────────
+    // A baseline is simply an EXISTING Version this version is linked to for
+    // comparison — no data is copied anywhere, so any Version can be the
+    // baseline of any other, and comparing an arbitrary pair of schedules is
+    // just: switch the active version to one, pick the other in the "Compare
+    // against" select. The comparison reads the linked Version's LIVE tasks
+    // read-only via the normal doGet(taskSheetName=...) endpoint (same one
+    // Version-switching already uses), so it's always current — edits made
+    // directly in the linked Version (switch to it via "Edit Baseline") show
+    // up after a Refresh, no separate sync step required.
+    // taskSheetName of the Version used as baseline; '' = none linked. Can't
+    // use '' to also mean "linked to the Default version" (the app already
+    // uses '' as taskSheetName's own sentinel for "the default version" —
+    // see switchToVersion()/deleteCurrentVersion()'s `!taskSheetName` checks
+    // — reusing it here would make "unlinked" indistinguishable from "linked
+    // to Default"), so linking to Default stores BASELINE_DEFAULT_SENTINEL
+    // instead; _baselineActualTaskSheetName() translates it back wherever the
+    // real taskSheetName convention is needed.
+    var baselineVersionTaskSheetName = '';
+    var BASELINE_DEFAULT_SENTINEL = '__DEFAULT_VERSION__';
+    function _baselineActualTaskSheetName(v) {
+      return v === BASELINE_DEFAULT_SENTINEL ? '' : v;
+    }
     var baselineColor   = '#94a3b8';       // ghost bar/marker color — customizable, shared by live + print
-    var baselineCapturedAt = '';  // ISO string — last Set/Update Baseline sync time (informational)
+    var baselineCapturedAt = '';  // ISO string — when the link was last set/changed (informational)
     var baselineById       = {};  // taskId -> {type, start:Date, end:Date, group}
     var baselineByKey      = {};  // normKey(group|name) -> {type, start:Date, end:Date, group} — fallback if taskId lookup misses
     var _baselineGroupRange = {}; // discipline -> {start:Date, end:Date} — aggregate range for group-header ghost bars
@@ -2600,9 +2638,9 @@
     // Re-fetches the linked baseline Version's tasks (read-only, via the same
     // doGet endpoint Version-switching already uses) and rebuilds the lookup
     // maps + per-discipline range used for group-bar ghosts. Call after
-    // Set/Update Baseline, after Load, and from the popover's Refresh button
-    // (for when the baseline Version was edited directly and the comparison
-    // should pick that up without a full re-sync).
+    // linking/unlinking, after Load, and from the popover's Refresh button
+    // (for when the linked Version was edited directly and the comparison
+    // should pick that up).
     async function _fetchBaselineComparisonData() {
       baselineById = {}; baselineByKey = {}; _baselineGroupRange = {}; baselineUnmatchedCount = 0;
       if (!baselineVersionTaskSheetName || !sheetsURL) {
@@ -2611,8 +2649,12 @@
       }
       _baselineFetchInFlight = true;
       try {
+        // doGet is happy to receive the literal default sheet name directly
+        // (it's equivalent to omitting the param) — only switchToVersion()/
+        // _versionDisplayName() need the '' convention translated back.
+        var _fetchSheetName = baselineVersionTaskSheetName === BASELINE_DEFAULT_SENTINEL ? DEFAULT_TASK_SHEET_NAME : baselineVersionTaskSheetName;
         var url = sheetsURL + (sheetsURL.indexOf('?') === -1 ? '?' : '&') +
-          'taskSheetName=' + encodeURIComponent(baselineVersionTaskSheetName) + '&_=' + Date.now();
+          'taskSheetName=' + encodeURIComponent(_fetchSheetName) + '&_=' + Date.now();
         var resp = await fetch(url, { method: 'GET', cache: 'no-store' });
         var data = await resp.json();
         if (!data.success && data.error) throw new Error(data.error);
@@ -2654,14 +2696,46 @@
       _refreshBaselinePopover();
     }
 
-    // Syncs the Baseline popover's checkbox/labels/buttons to current state —
-    // called on open, and after any link/sync/clear/fetch.
+    // Populates the "Compare against" select with every known Version —
+    // Default plus versions[] — EXCLUDING whichever version is currently
+    // active (comparing a version against itself would be a meaningless
+    // no-op ghost-on-top-of-itself). Any version can be picked, including
+    // ones that are themselves comparing against a third version — this is
+    // deliberately unrestricted so any version can serve as the baseline for
+    // any other, and switching which one you're on lets you compare any pair.
+    function _buildBaselineVersionOptions() {
+      var sel = document.getElementById('baseline-version-select');
+      if (!sel) return;
+      var prevValue = baselineVersionTaskSheetName || '';
+      sel.innerHTML = '';
+      var noneOpt = document.createElement('option');
+      noneOpt.value = ''; noneOpt.textContent = '(none)';
+      sel.appendChild(noneOpt);
+
+      var activeNorm = (taskSheetName || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase();
+      var allVersions = [{ name: DEFAULT_TASK_SHEET_NAME, taskSheetName: '' }].concat(versions.filter(function(v) {
+        return (v.taskSheetName || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase() !== DEFAULT_TASK_SHEET_NAME.trim().toUpperCase();
+      }));
+      allVersions.forEach(function(v) {
+        var vsn = v.taskSheetName || '';
+        var vNorm = (vsn || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase();
+        if (vNorm === activeNorm) return; // can't compare a version against itself
+        var opt = document.createElement('option');
+        opt.value = vsn || BASELINE_DEFAULT_SENTINEL; // '' is reserved for "(none)" — see var declaration above
+        opt.textContent = vsn ? (v.name || vsn) : DEFAULT_TASK_SHEET_NAME;
+        sel.appendChild(opt);
+      });
+      sel.value = prevValue;
+      if (sel.value !== prevValue) sel.value = ''; // linked version no longer exists (deleted) — fall back to none
+    }
+
+    // Syncs the Baseline popover's checkbox/select/labels/buttons to current
+    // state — called on open, and after any link/fetch.
     function _refreshBaselinePopover() {
       var cb = document.getElementById('baseline-show-cb');
+      var sel = document.getElementById('baseline-version-select');
       var capturedLabel  = document.getElementById('baseline-captured-label');
       var unmatchedLabel = document.getElementById('baseline-unmatched-label');
-      var setBtn   = document.getElementById('baseline-set-btn');
-      var clearBtn = document.getElementById('baseline-clear-btn');
       var editBtn  = document.getElementById('baseline-edit-btn');
       var refreshBtn = document.getElementById('baseline-refresh-btn');
       var colorPicker = document.getElementById('baseline-color-picker');
@@ -2670,14 +2744,15 @@
       if (cb) {
         cb.checked  = showBaseline;
         cb.disabled = !hasBaseline;
-        if (cb.parentElement) cb.parentElement.title = hasBaseline ? '' : 'No baseline version linked for this version';
+        if (cb.parentElement) cb.parentElement.title = hasBaseline ? '' : 'No version linked for comparison';
       }
+      _buildBaselineVersionOptions();
       if (colorPicker) colorPicker.value = baselineColor || '#94a3b8';
       if (capturedLabel) {
         capturedLabel.textContent = hasBaseline
-          ? 'Comparing against "' + _versionDisplayName(baselineVersionTaskSheetName) + '"' +
-            (baselineCapturedAt ? ' · synced ' + new Date(baselineCapturedAt).toLocaleString() : '')
-          : 'No baseline version linked yet.';
+          ? 'Comparing against "' + _versionDisplayName(_baselineActualTaskSheetName(baselineVersionTaskSheetName)) + '"' +
+            (baselineCapturedAt ? ' · linked ' + new Date(baselineCapturedAt).toLocaleString() : '')
+          : 'Pick a version above to compare against.';
       }
       if (unmatchedLabel) {
         if (baselineUnmatchedCount > 0) {
@@ -2688,101 +2763,31 @@
           unmatchedLabel.style.display = 'none';
         }
       }
-      if (setBtn)     setBtn.textContent = hasBaseline ? 'Update Baseline' : 'Set Baseline';
-      if (clearBtn)   clearBtn.style.display   = hasBaseline ? '' : 'none';
       if (editBtn)    editBtn.style.display    = hasBaseline ? '' : 'none';
       if (refreshBtn) refreshBtn.style.display = hasBaseline ? '' : 'none';
     }
 
-    // Pushes the current tasks into the linked baseline Version's tab
-    // (creating it — named "Baseline: <this version>" — the first time), then
-    // immediately persists the baselineVersionTaskSheetName/baselineCapturedAt
-    // pointer onto THIS version's own settings via a normal Save, and
-    // refetches the comparison data. The baseline Version itself is a first-
-    // class Version afterward — switch to it (Edit Baseline) and its edits
-    // stick; they're only overwritten by clicking Update Baseline again.
-    async function _captureBaseline() {
-      if (!sheetsURL) { alert('No Google Sheets connection set up yet.\nClick ⚙ Setup to add your Apps Script URL.'); return; }
-      if (_saveInFlight) { alert('A save to Google Sheets is still in progress.\nPlease wait for it to finish.'); return; }
-
-      var isUpdate = !!baselineVersionTaskSheetName;
-      if (isUpdate) {
-        var ok = confirm('This will overwrite the linked baseline version ("' +
-          _versionDisplayName(baselineVersionTaskSheetName) + '") with the current schedule.\n' +
-          'Any edits made directly in that version\'s tasks will be replaced. Continue?');
-        if (!ok) return;
-      }
-
-      var targetSheet = baselineVersionTaskSheetName;
-      var isNew = !targetSheet;
-      if (isNew) {
-        var base = (taskSheetName || DEFAULT_TASK_SHEET_NAME) + ' - BASELINE';
-        var candidate = base;
-        var existingNames = versions.map(function(v) { return (v.taskSheetName || DEFAULT_TASK_SHEET_NAME).trim().toUpperCase(); });
-        var n = 2;
-        while (existingNames.indexOf(candidate.toUpperCase()) !== -1) { candidate = base + ' ' + n; n++; }
-        targetSheet = candidate;
-      }
-
-      var setBtn = document.getElementById('baseline-set-btn');
-      if (setBtn) setBtn.disabled = true;
-      _syncDot('busy', 'Syncing baseline…');
-      try {
-        var payload = {
-          settings: { taskSheetName: targetSheet }, // minimal — NOT collectSettings(), so this doesn't overwrite the baseline version's own display settings
-          tasks: tasks.map(function(t) {
-            return {
-              id: t.id, taskId: null, // fresh IDs in the baseline version's own ID space, not the active version's
-              name: t.name || '', group: t.group || '', sub: t.sub || '', type: t.type || 'bar',
-              start: formatDate(t.start), end: formatDate(t.end),
-              color: t.color || '#0284c7', colorOverride: t.colorOverride || '',
-              note: t.note || '', notes: t.notes || '', person: t.person || '',
-              dashed: t.dashed ? 'true' : 'false', dashedOutline: t.dashedOutline ? 'true' : 'false',
-              symbol: t.symbol || '',
-              dependencies: '' // deps reference this version's runtime IDs — meaningless to carry into a separate version
-            };
-          }),
-          newVersionSourceSheet: taskSheetName || DEFAULT_TASK_SHEET_NAME
-        };
-        if (isNew) payload.versions = versions.concat([{ name: 'Baseline: ' + _versionDisplayName(taskSheetName), taskSheetName: targetSheet }]);
-
-        var resp = await fetch(sheetsURL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(payload) });
-        var result = await resp.json();
-        if (!result.success) throw new Error(result.error || 'Unknown error from script');
-
-        if (isNew) versions.push({ name: 'Baseline: ' + _versionDisplayName(taskSheetName), taskSheetName: targetSheet });
-        baselineVersionTaskSheetName = targetSheet;
-        baselineCapturedAt = new Date().toISOString();
-        markDirty();
-        await saveToSheets(); // persists the pointer settings onto THIS version's own settings tab
-        await _fetchBaselineComparisonData();
-        _syncDot('ok', 'Baseline synced');
-        if (statusText) statusText.textContent = '☁ Baseline synced at ' + new Date().toLocaleTimeString();
-      } catch (err) {
-        _syncDot('err', 'Baseline sync failed');
-        alert('Could not sync baseline:\n' + err.message);
-      } finally {
-        if (setBtn) setBtn.disabled = false;
-        _refreshBaselinePopover();
-      }
-    }
-
-    // Unlinks the baseline comparison — does NOT delete the baseline Version
-    // itself (it's a first-class Version now; delete it from the Version
-    // dropdown like any other if it's no longer wanted).
-    async function _clearBaseline() {
-      if (!baselineVersionTaskSheetName) return;
-      var ok = confirm('Stop comparing against "' + _versionDisplayName(baselineVersionTaskSheetName) + '"?\n' +
-        'The version itself is not deleted — switch to it from the Version dropdown, or delete it from there.');
-      if (!ok) return;
-      baselineVersionTaskSheetName = '';
-      baselineCapturedAt = '';
-      baselineById = {}; baselineByKey = {}; _baselineGroupRange = {}; baselineUnmatchedCount = 0;
+    // Links (or unlinks, when newTaskSheetName is '') this version's baseline
+    // comparison to an existing Version — no task data is copied anywhere;
+    // any Version can be any other Version's baseline just by picking it
+    // here, which is what makes comparing an arbitrary pair of schedules as
+    // simple as switching the active version and re-picking. Persists
+    // immediately via a normal Save, then re-fetches the comparison data.
+    async function _linkBaselineVersion(newTaskSheetName) {
+      baselineVersionTaskSheetName = newTaskSheetName || '';
+      baselineCapturedAt = baselineVersionTaskSheetName ? new Date().toISOString() : '';
       markDirty();
       _refreshBaselinePopover();
-      renderGantt();
-      refreshTaskTable();
-      await saveToSheets(); // persist the unlink immediately, matching Set/Update's immediate-persist behavior
+      if (sheetsURL && !_saveInFlight) {
+        _syncDot('busy', baselineVersionTaskSheetName ? 'Linking baseline…' : 'Unlinking baseline…');
+        try {
+          await saveToSheets(); // persists the pointer settings onto THIS version's own settings tab
+          _syncDot('ok', baselineVersionTaskSheetName ? 'Baseline linked' : 'Baseline unlinked');
+        } catch (err) {
+          _syncDot('err', 'Could not save baseline link');
+        }
+      }
+      await _fetchBaselineComparisonData();
     }
 
     // Wires the Baseline toolbar popover — reuses the generic Kanban floating-
@@ -2823,15 +2828,14 @@
         renderGantt();
       });
 
-      var setBtn = document.getElementById('baseline-set-btn');
-      if (setBtn) setBtn.addEventListener('click', _captureBaseline);
-      var clearBtn = document.getElementById('baseline-clear-btn');
-      if (clearBtn) clearBtn.addEventListener('click', _clearBaseline);
+      var sel = document.getElementById('baseline-version-select');
+      if (sel) sel.addEventListener('change', function() { _linkBaselineVersion(sel.value); });
+
       var editBtn = document.getElementById('baseline-edit-btn');
       if (editBtn) editBtn.addEventListener('click', function() {
         if (!baselineVersionTaskSheetName) return;
         panel.classList.remove('open');
-        switchToVersion(baselineVersionTaskSheetName);
+        switchToVersion(_baselineActualTaskSheetName(baselineVersionTaskSheetName));
       });
       var refreshBtn = document.getElementById('baseline-refresh-btn');
       if (refreshBtn) refreshBtn.addEventListener('click', function() {
@@ -10507,8 +10511,8 @@
       };
       if (opts.newVersionSourceSheet) payload.newVersionSourceSheet = opts.newVersionSourceSheet;
       if (opts.newVersionBlank) payload.newVersionBlank = true;
-      // Baseline (V2.0): no longer sent from here — a baseline is a real
-      // Version now, synced via its own dedicated POST in _captureBaseline().
+      // Baseline (V2.0): no task data to send here — a baseline is just a
+      // link to an existing Version (_linkBaselineVersion()), no copy made.
       // This normal Save just needs to persist the pointer settings
       // (baselineVersionTaskSheetName / baselineColor / baselineCapturedAt /
       // showBaseline), which collectSettings() above already includes.
