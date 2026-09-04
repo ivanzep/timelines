@@ -5,6 +5,18 @@
 
   VERSION HISTORY
   ───────────────
+  V2.0  2026-09-04
+    • Fixed bar-edge drag/resize snapping to arbitrary-looking ~3-4 day
+      jumps when Scale was set to Day. Root cause: "Snap" (drag-resize
+      granularity, snapDate()) is a separate control from "Scale" (tick/
+      zoom granularity) and defaults to Week (7 days) regardless of Scale —
+      so at Day scale, a drag still rounds to the nearest 7-day gridline
+      measured from the chart's left edge, which reads as an arbitrary 0-3.5
+      day jump instead of moving by whole days. Switching Scale to Day now
+      also sets Snap to Day (only in that direction — switching to any other
+      Scale leaves Snap untouched, and the user can still manually pick a
+      coarser Snap afterward if they want it).
+
   V2.0  2026-09-03 (cont'd, 2)
     • Baseline linking generalized: any Version can now be the baseline of
       any other Version — the popover's "Set/Update Baseline" push-a-copy
@@ -8676,7 +8688,21 @@
       exportExcelBtn.addEventListener('click', exportToExcel);
       chartStartInput.addEventListener('change', renderGantt);
       chartEndInput.addEventListener('change', renderGantt);
-      scaleSelect.addEventListener('change', function() { currentScale = scaleSelect.value; setZoom(100); });
+      scaleSelect.addEventListener('change', function() {
+        currentScale = scaleSelect.value;
+        // Snap (drag-resize granularity) is a separate control from Scale
+        // (tick/zoom granularity) — defaults to Week (7 days) and stays
+        // there across a Scale change unless explicitly picked otherwise.
+        // Switching to Day scale is a clear signal the user wants
+        // day-level precision, so nudge Snap to match; left at Week it
+        // silently rounds drag results to the nearest 7-day gridline from
+        // the chart's left edge, which reads as the bar jumping by an
+        // arbitrary-looking 0-3.5 days instead of moving by whole days.
+        if (currentScale === 'day' && snapSelect && snapSelect.value !== '1') {
+          snapSelect.value = '1';
+        }
+        setZoom(100);
+      });
 
       zoomInBtn.addEventListener('click', function() { setZoom(zoomLevel + 20); });
       zoomOutBtn.addEventListener('click', function() { setZoom(zoomLevel - 20); });
